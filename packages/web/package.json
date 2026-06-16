@@ -2,7 +2,7 @@
   "name": "@opencode-ai/web",
   "type": "module",
   "license": "MIT",
-  "version": "1.17.3",
+  "version": "1.0.0",
   "scripts": {
     "dev": "astro dev",
     "dev:remote": "VITE_API_URL=https://api.ottili.one/coder astro dev",
@@ -36,7 +36,7 @@
     "vscode-languageserver-types": "3.17.5"
   },
   "devDependencies": {
-    "opencode": "workspace:*",
+    "ottili-coder": "workspace:*",
     "@types/node": "catalog:",
     "@astrojs/check": "0.9.6",
     "typescript": "catalog:"

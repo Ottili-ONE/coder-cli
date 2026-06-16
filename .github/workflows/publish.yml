@@ -4,6 +4,7 @@ run-name: "${{ format('release {0}', inputs.bump) }}"
 on:
   push:
     branches:
+      - main
       - ci
       - dev
       - beta
@@ -51,7 +52,7 @@ jobs:
 
       - name: Install Ottili Coder
         if: inputs.bump || inputs.version
-        run: bun i -g ottili-coder-ai
+        run: bun i -g ottili-coder
 
       - id: version
         run: |

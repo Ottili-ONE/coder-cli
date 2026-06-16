@@ -37,15 +37,15 @@ await $`cp ./script/postinstall.mjs ./dist/${pkg.name}/postinstall.mjs`
 await Bun.file(`./dist/${pkg.name}/LICENSE`).write(await Bun.file("../../LICENSE").text())
 await Bun.file(`./dist/${pkg.name}/bin/${pkg.name}.exe`).write(
   [
-    `echo "Error: ${pkg.name}-ai's postinstall script was not run." >&2`,
+    `echo "Error: ${pkg.name}'s postinstall script was not run." >&2`,
     'echo "" >&2',
     'echo "This occurs when using --ignore-scripts during installation, or when using a" >&2',
     'echo "package manager like pnpm that does not run postinstall scripts by default." >&2',
     'echo "" >&2',
     'echo "To fix this, run the postinstall script manually:" >&2',
-    `echo "  cd node_modules/${pkg.name}-ai && node postinstall.mjs" >&2`,
+    `echo "  cd node_modules/${pkg.name} && node postinstall.mjs" >&2`,
     'echo "" >&2',
-    `echo "Or reinstall ${pkg.name}-ai without the --ignore-scripts flag." >&2`,
+    `echo "Or reinstall ${pkg.name} without the --ignore-scripts flag." >&2`,
     "exit 1",
     "",
   ].join("\n"),
@@ -54,10 +54,16 @@ await Bun.file(`./dist/${pkg.name}/bin/${pkg.name}.exe`).write(
 await Bun.file(`./dist/${pkg.name}/package.json`).write(
   JSON.stringify(
     {
-      name: pkg.name + "-ai",
+      name: pkg.name,
       bin: {
         [pkg.name]: `./bin/${pkg.name}.exe`,
       },
+      description: "Ottili ONE Coder — autonomous AI coding agent for the terminal",
+      repository: {
+        type: "git",
+        url: "https://github.com/Ottili-ONE/coder-cli",
+      },
+      keywords: ["ottili", "ottili-one", "coder", "ai", "cli", "agent", "terminal"],
       scripts: {
         postinstall: "node ./postinstall.mjs",
       },
@@ -76,7 +82,7 @@ const tasks = Object.entries(binaries).map(async ([name]) => {
   await publish(`./dist/${name}`, name, binaries[name])
 })
 await Promise.all(tasks)
-await publish(`./dist/${pkg.name}`, `${pkg.name}-ai`, version)
+await publish(`./dist/${pkg.name}`, pkg.name, version)
 
 const image = "ghcr.io/Ottili-ONE/coder-cli"
 const platforms = "linux/amd64,linux/arm64"
@@ -201,7 +207,7 @@ if (!Script.preview) {
     console.error("GITHUB_TOKEN is required to update homebrew tap")
     process.exit(1)
   }
-  const tap = `https://x-access-token:${token}@github.com/anomalyco/homebrew-tap.git`
+  const tap = `https://x-access-token:${token}@github.com/Ottili-ONE/homebrew-tap.git`
   await $`rm -rf ./dist/homebrew-tap`
   await $`git clone ${tap} ./dist/homebrew-tap`
   await Bun.file("./dist/homebrew-tap/ottiliCoder.rb").write(homebrewFormula)
