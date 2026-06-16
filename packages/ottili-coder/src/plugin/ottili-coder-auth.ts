@@ -1,7 +1,6 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 import { loginOttiliOneViaBrowser } from "@/account/ottili-one"
 import { persistOttiliOneLogin } from "@/account/persist-ottili-login"
-import { AppRuntime } from "@/effect/app-runtime"
 
 export async function OttiliCoderAuthPlugin(_input: PluginInput): Promise<Hooks> {
   return {
@@ -21,6 +20,7 @@ export async function OttiliCoderAuthPlugin(_input: PluginInput): Promise<Hooks>
               callback: async () => {
                 try {
                   const result = await login
+                  const { AppRuntime } = await import("@/effect/app-runtime")
                   await AppRuntime.runPromise(persistOttiliOneLogin(result))
                   return {
                     type: "success" as const,
