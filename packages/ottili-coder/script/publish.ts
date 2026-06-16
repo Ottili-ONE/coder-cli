@@ -19,15 +19,14 @@ async function publish(dir: string, name: string, version: string) {
     console.log(`already published ${name}@${version}`)
     return
   }
+  await $`rm -f *.tgz .npmrc.publish`.cwd(dir).nothrow()
   await $`bun pm pack`.cwd(dir)
-  const npmrcFlag =
-    process.env.NPM_TOKEN && !process.env.NPM_CONFIG_USERCONFIG
-      ? [`--userconfig`, `${dir}/.npmrc.publish`]
-      : []
-  if (npmrcFlag.length === 2) {
-    await Bun.write(String(npmrcFlag[1]), `//registry.npmjs.org/:_authToken=${process.env.NPM_TOKEN}\n`)
+  const npmrcPath = "/tmp/ottili-coder-npmrc.publish"
+  if (process.env.NPM_TOKEN && !process.env.NPM_CONFIG_USERCONFIG) {
+    await Bun.write(npmrcPath, `//registry.npmjs.org/:_authToken=${process.env.NPM_TOKEN}\n`)
+    process.env.NPM_CONFIG_USERCONFIG = npmrcPath
   }
-  await $`npm publish *.tgz --access public --tag ${Script.channel} ${npmrcFlag}`.cwd(dir)
+  await $`npm publish *.tgz --access public --tag ${Script.channel}`.cwd(dir)
 }
 
 const binaries: Record<string, string> = {}
