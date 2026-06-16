@@ -38,6 +38,7 @@ await $`cp ./README.npm.md ./dist/${pkg.name}/README.md`
 await Bun.file(`./dist/${pkg.name}/LICENSE`).write(await Bun.file("../../LICENSE").text())
 await Bun.file(`./dist/${pkg.name}/bin/${pkg.name}.exe`).write(
   [
+    "#!/usr/bin/env sh",
     `echo "Error: ${pkg.name}'s postinstall script was not run." >&2`,
     'echo "" >&2',
     'echo "This occurs when using --ignore-scripts during installation, or when using a" >&2',
@@ -51,6 +52,9 @@ await Bun.file(`./dist/${pkg.name}/bin/${pkg.name}.exe`).write(
     "",
   ].join("\n"),
 )
+if (process.platform !== "win32") {
+  await $`chmod 755 ./dist/${pkg.name}/bin/${pkg.name}.exe`.cwd(dir)
+}
 
 await Bun.file(`./dist/${pkg.name}/package.json`).write(
   JSON.stringify(

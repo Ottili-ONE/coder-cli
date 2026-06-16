@@ -25,8 +25,15 @@ const archMap = {
 const platform = platformMap[os.platform()] ?? os.platform()
 const arch = archMap[os.arch()] ?? os.arch()
 const base = `ottili-coder-${platform}-${arch}`
-const sourceBinary = platform === "windows" ? "ottiliCoder.exe" : "ottili-coder"
-const targetBinary = path.join(__dirname, "bin", "ottiliCoder.exe")
+const sourceBinary = platform === "windows" ? "ottili-coder.exe" : "ottili-coder"
+
+function binTargetPath() {
+  const binEntry = packageJson.bin?.["ottili-coder"] ?? "./bin/ottili-coder.exe"
+  return path.resolve(__dirname, binEntry.replace(/^\.\//, ""))
+}
+
+const targetBinary = binTargetPath()
+const legacyBinary = path.join(__dirname, "bin", "ottiliCoder.exe")
 
 function supportsAvx2() {
   if (arch !== "x64") return false
@@ -168,9 +175,19 @@ function main() {
   for (const name of packageNames()) {
     try {
       copyBinary(resolveBinary(name), targetBinary)
-      if (verifyBinary()) return
+      if (verifyBinary()) {
+        if (legacyBinary !== targetBinary && fs.existsSync(legacyBinary)) {
+          fs.unlinkSync(legacyBinary)
+        }
+        return
+      }
     } catch {
-      if (installPackage(name) && verifyBinary()) return
+      if (installPackage(name) && verifyBinary()) {
+        if (legacyBinary !== targetBinary && fs.existsSync(legacyBinary)) {
+          fs.unlinkSync(legacyBinary)
+        }
+        return
+      }
     }
   }
 
