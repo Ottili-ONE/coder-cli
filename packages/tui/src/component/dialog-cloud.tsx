@@ -125,7 +125,7 @@ export function DialogCloud() {
   }
 
   return (
-    <DialogSelect
+    <DialogSelect<CloudJob | "loading" | "empty">
       title="Ottili Cloud"
       titleView={
         <box flexDirection="row" gap={2} alignItems="center">
@@ -162,7 +162,7 @@ export function DialogCloud() {
             void (async () => {
               try {
                 await disconnectCloud(sdk)
-                toast.show({ title: "Cloud disconnected", variant: "info" })
+                toast.show({ title: "Cloud disconnected", message: "Ottili Cloud was disconnected.", variant: "info" })
                 dialog.replace(() => <DialogCloud />)
                 await refresh()
               } catch (error) {

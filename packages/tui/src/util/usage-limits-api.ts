@@ -1,4 +1,6 @@
-import type { SDK } from "@opencode-ai/sdk/v2"
+import type { useSDK } from "../context/sdk"
+
+type Sdk = ReturnType<typeof useSDK>
 
 export type UsageLimitItem = {
   key: string
@@ -24,7 +26,7 @@ export type UsageLimitsResponse =
       message?: string
     }
 
-export async function fetchUsageLimits(sdk: SDK): Promise<UsageLimitsResponse> {
+export async function fetchUsageLimits(sdk: Sdk): Promise<UsageLimitsResponse> {
   const response = await sdk.fetch(`${sdk.url}/experimental/account/usage-limits`, {
     headers: { Accept: "application/json" },
   })

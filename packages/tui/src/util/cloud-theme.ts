@@ -1,12 +1,13 @@
+import type { RGBA } from "@opentui/core"
 import type { CloudJobStatus } from "./cloud-api"
 
 export function cloudStatusColor(status: string, theme: {
-  success: string
-  error: string
-  warning: string
-  info: string
-  textMuted: string
-  text: string
+  success: RGBA
+  error: RGBA
+  warning: RGBA
+  info: RGBA
+  textMuted: RGBA
+  text: RGBA
 }) {
   switch (status) {
     case "completed":
