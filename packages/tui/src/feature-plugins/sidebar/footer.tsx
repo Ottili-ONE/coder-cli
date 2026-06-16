@@ -1,6 +1,8 @@
 import type { TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, Show } from "solid-js"
+import { BrandLabel } from "../../component/brand-label"
+import { ThemeModeLabel } from "../../component/theme-mode-label"
 import { abbreviateHome } from "../../runtime"
 import { useTuiPaths } from "../../context/runtime"
 
@@ -11,7 +13,7 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
   const theme = () => props.api.theme.current
   const has = createMemo(() =>
     props.api.state.provider.some(
-      (item) => item.id !== "opencode" || Object.values(item.models).some((model) => model.cost?.input !== 0),
+      (item) => item.id !== "ottili-coder" || Object.values(item.models).some((model) => model.cost?.input !== 0),
     ),
   )
   const done = createMemo(() => props.api.kv.get("dismissed_getting_started", false))
@@ -53,13 +55,23 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
                 ✕
               </text>
             </box>
-            <text fg={theme().textMuted}>OpenCode includes free models so you can start immediately.</text>
+            <text fg={theme().textMuted}>Ottili Coder includes free models so you can start immediately.</text>
             <text fg={theme().textMuted}>
-              Connect from 75+ providers to use other models, including Claude, GPT, Gemini etc
+              Connect from 75+ providers to use Claude, GPT, Gemini and more.
             </text>
-            <box flexDirection="row" gap={1} justifyContent="space-between">
-              <text fg={theme().text}>Connect provider</text>
-              <text fg={theme().textMuted}>/connect</text>
+            <box gap={0}>
+              <box flexDirection="row" gap={1} justifyContent="space-between">
+                <text fg={theme().text}>Connect provider</text>
+                <text fg={theme().primary}>/connect</text>
+              </box>
+              <box flexDirection="row" gap={1} justifyContent="space-between">
+                <text fg={theme().textMuted}>Ottili ONE account</text>
+                <text fg={theme().textMuted}>/login</text>
+              </box>
+              <box flexDirection="row" gap={1} justifyContent="space-between">
+                <text fg={theme().textMuted}>Plan usage</text>
+                <text fg={theme().textMuted}>/usage</text>
+              </box>
             </box>
           </box>
         </box>
@@ -68,13 +80,10 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
         <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
         <span style={{ fg: theme().text }}>{path().name}</span>
       </text>
-      <text fg={theme().textMuted}>
-        <span style={{ fg: theme().success }}>•</span> <b>Open</b>
-        <span style={{ fg: theme().text }}>
-          <b>Code</b>
-        </span>{" "}
-        <span>{props.api.app.version}</span>
-      </text>
+      <box flexDirection="row" gap={2} alignItems="center">
+        <ThemeModeLabel mode={props.api.theme.mode()} muted={theme().textMuted} />
+        <BrandLabel fg={theme().text} muted={theme().textMuted} version={props.api.app.version} />
+      </box>
     </box>
   )
 }

@@ -1,17 +1,17 @@
 ---
 title: GitHub
-description: Bruk opencode i GitHub-problemer og pull-forespørsler.
+description: Bruk ottili-coder i GitHub-problemer og pull-forespørsler.
 ---
 
-OpenCode integreres med GitHub-arbeidsflyten din. Nevn `/opencode` eller `/oc` i kommentaren din, og OpenCode vil utføre oppgaver i din GitHub Actions-løper.
+Ottili Coder integreres med GitHub-arbeidsflyten din. Nevn `/ottili-coder` eller `/oc` i kommentaren din, og Ottili Coder vil utføre oppgaver i din GitHub Actions-løper.
 
 ---
 
 ## Funksjoner
 
-- **Triage saker**: Be OpenCode se på en sak og forklare den for deg.
-- **Fiks og implementer**: Be OpenCode om å fikse en sak eller implementere en funksjon. Den vil jobbe i en ny gren og sende inn en PR med alle endringene.
-- **Sikkert**: OpenCode kjører i GitHub-runners.
+- **Triage saker**: Be Ottili Coder se på en sak og forklare den for deg.
+- **Fiks og implementer**: Be Ottili Coder om å fikse en sak eller implementere en funksjon. Den vil jobbe i en ny gren og sende inn en PR med alle endringene.
+- **Sikkert**: Ottili Coder kjører i GitHub-runners.
 
 ---
 
@@ -20,7 +20,7 @@ OpenCode integreres med GitHub-arbeidsflyten din. Nevn `/opencode` eller `/oc` i
 Kjør følgende kommando i et prosjekt som er et GitHub-repo:
 
 ```bash
-opencode github install
+ottili-coder github install
 ```
 
 Dette vil lede deg gjennom å installere GitHub-appen, lage arbeidsflyten og sette opp secrets (hemmeligheter).
@@ -37,10 +37,10 @@ Eller du kan sette den opp manuelt.
 
 2. **Legg til arbeidsflyten**
 
-   Legg til følgende arbeidsflytfil til `.github/workflows/opencode.yml` i repoen. Sørg for å sette riktig `model` og nødvendige API-nøkler i `env`.
+   Legg til følgende arbeidsflytfil til `.github/workflows/ottili-coder.yml` i repoen. Sørg for å sette riktig `model` og nødvendige API-nøkler i `env`.
 
-   ```yml title=".github/workflows/opencode.yml" {24,26}
-   name: opencode
+   ```yml title=".github/workflows/ottili-coder.yml" {24,26}
+   name: ottili-coder
 
    on:
      issue_comment:
@@ -49,10 +49,10 @@ Eller du kan sette den opp manuelt.
        types: [created]
 
    jobs:
-     opencode:
+     ottili-coder:
        if: |
          contains(github.event.comment.body, '/oc') ||
-         contains(github.event.comment.body, '/opencode')
+         contains(github.event.comment.body, '/ottili-coder')
        runs-on: ubuntu-latest
        permissions:
          id-token: write
@@ -63,7 +63,7 @@ Eller du kan sette den opp manuelt.
               fetch-depth: 1
               persist-credentials: false
 
-          - name: Run OpenCode
+          - name: Run Ottili Coder
            uses: anomalyco/opencode/github@latest
            env:
              ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -81,13 +81,13 @@ Eller du kan sette den opp manuelt.
 
 ## Konfigurasjon
 
-- `model`: Modellen som skal brukes med OpenCode. Tar formatet `provider/model`. Dette er **obligatorisk**.
+- `model`: Modellen som skal brukes med Ottili Coder. Tar formatet `provider/model`. Dette er **obligatorisk**.
 - `agent`: Agenten som skal brukes. Må være en primær agent. Faller tilbake til `default_agent` fra config eller `"build"` hvis ikke funnet.
-- `share`: Om OpenCode-økten skal deles. Standard er **true** for offentlige depoter.
-- `prompt`: Valgfri egendefinert melding for å overstyre standard oppførsel. Bruk dette til å tilpasse hvordan OpenCode behandler forespørsler.
-- `token`: Valgfritt GitHub-tilgangstoken for å utføre operasjoner som å lage kommentarer, foreta endringer og åpne pull-forespørsler. Som standard bruker OpenCode installasjonstilgangstokenet fra OpenCode GitHub-appen, så commits, kommentarer og pull-forespørsler ser ut til å komme fra appen.
+- `share`: Om Ottili Coder-økten skal deles. Standard er **true** for offentlige depoter.
+- `prompt`: Valgfri egendefinert melding for å overstyre standard oppførsel. Bruk dette til å tilpasse hvordan Ottili Coder behandler forespørsler.
+- `token`: Valgfritt GitHub-tilgangstoken for å utføre operasjoner som å lage kommentarer, foreta endringer og åpne pull-forespørsler. Som standard bruker Ottili Coder installasjonstilgangstokenet fra Ottili Coder GitHub-appen, så commits, kommentarer og pull-forespørsler ser ut til å komme fra appen.
 
-  Alternativt kan du bruke GitHub Action-løperens [innebygde `GITHUB_TOKEN`](https://docs.github.com/en/actions/tutorials/authenticate-with-github_token) uten å installere OpenCode GitHub-appen. Bare sørg for å gi de nødvendige tillatelsene i arbeidsflyten din:
+  Alternativt kan du bruke GitHub Action-løperens [innebygde `GITHUB_TOKEN`](https://docs.github.com/en/actions/tutorials/authenticate-with-github_token) uten å installere Ottili Coder GitHub-appen. Bare sørg for å gi de nødvendige tillatelsene i arbeidsflyten din:
 
   ```yaml
   permissions:
@@ -103,30 +103,30 @@ Eller du kan sette den opp manuelt.
 
 ## Støttede hendelser
 
-OpenCode kan utløses av følgende GitHub-hendelser:
+Ottili Coder kan utløses av følgende GitHub-hendelser:
 
 | Hendelsestype                 | Utløst av                               | Detaljer                                                                                                                |
 | ----------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `issue_comment`               | Kommentar på sak eller PR               | Nevn `/opencode` eller `/oc` i kommentaren din. OpenCode leser kontekst og kan opprette grener, åpne PR-er eller svare. |
-| `pull_request_review_comment` | Kommenter spesifikke kodelinjer i en PR | Nevn `/opencode` eller `/oc` mens du ser gjennom koden. OpenCode mottar filbane, linjenummer og diff-kontekst.          |
-| `issues`                      | Sak åpnet eller redigert                | Utløs OpenCode automatisk når saker opprettes eller endres. Krever `prompt` inngang.                                    |
-| `pull_request`                | PR åpnet eller oppdatert                | Utløs OpenCode automatisk når PR-er åpnes, synkroniseres eller gjenåpnes. Nyttig for automatiserte anmeldelser.         |
-| `schedule`                    | Cron-basert tidsplan                    | Kjør OpenCode etter en tidsplan. Krever `prompt` inngang. Utdata går til logger og PR (ingen sak å kommentere).         |
-| `workflow_dispatch`           | Manuell utløser fra GitHub UI           | Utløs OpenCode på forespørsel via fanen Handlinger. Krever `prompt` inngang. Utdata går til logger og PR-er.            |
+| `issue_comment`               | Kommentar på sak eller PR               | Nevn `/ottili-coder` eller `/oc` i kommentaren din. Ottili Coder leser kontekst og kan opprette grener, åpne PR-er eller svare. |
+| `pull_request_review_comment` | Kommenter spesifikke kodelinjer i en PR | Nevn `/ottili-coder` eller `/oc` mens du ser gjennom koden. Ottili Coder mottar filbane, linjenummer og diff-kontekst.          |
+| `issues`                      | Sak åpnet eller redigert                | Utløs Ottili Coder automatisk når saker opprettes eller endres. Krever `prompt` inngang.                                    |
+| `pull_request`                | PR åpnet eller oppdatert                | Utløs Ottili Coder automatisk når PR-er åpnes, synkroniseres eller gjenåpnes. Nyttig for automatiserte anmeldelser.         |
+| `schedule`                    | Cron-basert tidsplan                    | Kjør Ottili Coder etter en tidsplan. Krever `prompt` inngang. Utdata går til logger og PR (ingen sak å kommentere).         |
+| `workflow_dispatch`           | Manuell utløser fra GitHub UI           | Utløs Ottili Coder på forespørsel via fanen Handlinger. Krever `prompt` inngang. Utdata går til logger og PR-er.            |
 
 ### Eksempel på tidsplan
 
-Kjør OpenCode på en tidsplan for å utføre automatiserte oppgaver:
+Kjør Ottili Coder på en tidsplan for å utføre automatiserte oppgaver:
 
-```yaml title=".github/workflows/opencode-scheduled.yml"
-name: Scheduled OpenCode Task
+```yaml title=".github/workflows/ottili-coder-scheduled.yml"
+name: Scheduled Ottili Coder Task
 
 on:
   schedule:
     - cron: "0 9 * * 1" # Every Monday at 9am UTC
 
 jobs:
-  opencode:
+  ottili-coder:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -139,7 +139,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run OpenCode
+      - name: Run Ottili Coder
         uses: anomalyco/opencode/github@latest
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -150,7 +150,7 @@ jobs:
             If you find issues worth addressing, open an issue to track them.
 ```
 
-For planlagte arrangementer er `prompt`-inngangen **påkrevd** siden det ikke er noen kommentarer å trekke ut instruksjoner fra. Planlagte workflows kjører uten brukerkontekst for tillatelsessjekking, så arbeidsflyten må gi `contents: write` og `pull-requests: write` hvis du forventer at OpenCode oppretter grener eller PR-er.
+For planlagte arrangementer er `prompt`-inngangen **påkrevd** siden det ikke er noen kommentarer å trekke ut instruksjoner fra. Planlagte workflows kjører uten brukerkontekst for tillatelsessjekking, så arbeidsflyten må gi `contents: write` og `pull-requests: write` hvis du forventer at Ottili Coder oppretter grener eller PR-er.
 
 ---
 
@@ -158,8 +158,8 @@ For planlagte arrangementer er `prompt`-inngangen **påkrevd** siden det ikke er
 
 Gjennomgå PR-er automatisk når de åpnes eller oppdateres:
 
-```yaml title=".github/workflows/opencode-review.yml"
-name: opencode-review
+```yaml title=".github/workflows/ottili-coder-review.yml"
+name: ottili-coder-review
 
 on:
   pull_request:
@@ -191,7 +191,7 @@ jobs:
             - Suggest improvements
 ```
 
-For `pull_request`-hendelser, hvis ingen `prompt` er oppgitt, går OpenCode som standard gjennom PR-en.
+For `pull_request`-hendelser, hvis ingen `prompt` er oppgitt, går Ottili Coder som standard gjennom PR-en.
 
 ---
 
@@ -199,7 +199,7 @@ For `pull_request`-hendelser, hvis ingen `prompt` er oppgitt, går OpenCode som 
 
 Automatisk triage av nye saker. Dette eksemplet filtrerer til kontoer eldre enn 30 dager for å redusere spam:
 
-```yaml title=".github/workflows/opencode-triage.yml"
+```yaml title=".github/workflows/ottili-coder-triage.yml"
 name: Issue Triage
 
 on:
@@ -252,9 +252,9 @@ For `issues`-hendelser er `prompt`-inngangen **påkrevd** siden det ikke er noen
 
 ## Egendefinerte prompter
 
-Overstyr standardprompten for å tilpasse oppførselen til OpenCode for arbeidsflyten din.
+Overstyr standardprompten for å tilpasse oppførselen til Ottili Coder for arbeidsflyten din.
 
-```yaml title=".github/workflows/opencode.yml"
+```yaml title=".github/workflows/ottili-coder.yml"
 - uses: anomalyco/opencode/github@latest
   with:
     model: anthropic/claude-sonnet-4-5
@@ -271,10 +271,10 @@ Dette er nyttig for å håndheve spesifikke vurderingskriterier, kodestandarder 
 
 ## Eksempler
 
-Her er noen eksempler på hvordan du kan bruke OpenCode i GitHub.
+Her er noen eksempler på hvordan du kan bruke Ottili Coder i GitHub.
 
 :::tip
-Du kan konfigurere til å bruke en annen triggerfrase enn `@opencode`.
+Du kan konfigurere til å bruke en annen triggerfrase enn `@ottili-coder`.
 :::
 
 - **Forklar en sak (issue)**
@@ -282,20 +282,20 @@ Du kan konfigurere til å bruke en annen triggerfrase enn `@opencode`.
   Legg til denne kommentaren i en GitHub-sak.
 
   ```
-  /opencode explain this issue
+  /ottili-coder explain this issue
   ```
 
-  OpenCode vil lese hele tråden, inkludert alle kommentarer, og svare med en tydelig forklaring.
+  Ottili Coder vil lese hele tråden, inkludert alle kommentarer, og svare med en tydelig forklaring.
 
 - **Fiks en sak**
 
   I en GitHub-sak, si:
 
   ```
-  /opencode fix this
+  /ottili-coder fix this
   ```
 
-  Og OpenCode vil opprette en ny gren, implementere endringene og åpne en PR med endringene.
+  Og Ottili Coder vil opprette en ny gren, implementere endringene og åpne en PR med endringene.
 
 - **Se gjennom PR-er og gjør endringer**
 
@@ -305,18 +305,18 @@ Du kan konfigurere til å bruke en annen triggerfrase enn `@opencode`.
   Delete the attachment from S3 when the note is removed /oc
   ```
 
-  OpenCode vil implementere den forespurte endringen og committe den til samme PR.
+  Ottili Coder vil implementere den forespurte endringen og committe den til samme PR.
 
 - **Review av spesifikke kodelinjer**
 
-  Legg igjen en kommentar direkte på kodelinjer i PRs "Filer"-fane. OpenCode oppdager automatisk filen, linjenumrene og diff-konteksten for å gi presise svar.
+  Legg igjen en kommentar direkte på kodelinjer i PRs "Filer"-fane. Ottili Coder oppdager automatisk filen, linjenumrene og diff-konteksten for å gi presise svar.
 
   ```
   [Comment on specific lines in Files tab]
   /oc add error handling here
   ```
 
-  Når du kommenterer spesifikke linjer, mottar OpenCode:
+  Når du kommenterer spesifikke linjer, mottar Ottili Coder:
   - Den nøyaktige filen blir gjennomgått
   - De spesifikke kodelinjene
   - Den omkringliggende diff-konteksten

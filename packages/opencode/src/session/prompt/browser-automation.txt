@@ -1,0 +1,27 @@
+# Browser automation (Playwright — core)
+
+Playwright is a **built-in MCP server** (`playwright`) enabled by default.
+
+## When to use
+
+- Verify frontend/UI changes (pages, forms, modals, login flows)
+- Debug layout, console errors, network failures, broken routes
+- Click-through flows that bash/curl cannot validate
+- After UI edits: navigate, snapshot, interact, confirm expected state
+
+## Tooling
+
+Playwright MCP tools appear as `playwright_*` in `<available_tools>`.
+
+Typical flow:
+1. Navigate to the app URL (from README, package scripts, or running dev server)
+2. Snapshot the page
+3. Interact (click, fill, select)
+4. Screenshot or re-snapshot to verify
+5. Check console/network on failure
+
+## Rules
+
+- Prefer Playwright for UI verification; use bash to start/stop dev servers.
+- Do not claim a UI fix without browser evidence.
+- Reuse existing E2E tests in the project when present.

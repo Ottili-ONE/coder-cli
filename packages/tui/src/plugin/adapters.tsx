@@ -6,7 +6,7 @@ import type { useSDK } from "../context/sdk"
 import type { useSync } from "../context/sync"
 import type { useTheme } from "../context/theme"
 import { Dialog as DialogUI, type useDialog } from "../ui/dialog"
-import type { useOpencodeKeymap } from "../keymap"
+import type { useOttiliCoderKeymap } from "../keymap"
 import type { useKV } from "../context/kv"
 import { DialogAlert } from "../ui/dialog-alert"
 import { DialogConfirm } from "../ui/dialog-confirm"
@@ -24,7 +24,7 @@ type Input = {
   version: string
   tuiConfig: TuiConfig.Resolved
   dialog: ReturnType<typeof useDialog>
-  keymap: ReturnType<typeof useOpencodeKeymap>
+  keymap: ReturnType<typeof useOttiliCoderKeymap>
   kv: ReturnType<typeof useKV>
   route: ReturnType<typeof useRoute>
   routes: PluginRoutes
@@ -158,6 +158,12 @@ function stateApi(sync: ReturnType<typeof useSync>): TuiPluginApi["state"] {
           error: item.status === "failed" ? item.error : undefined,
         }))
     },
+    account() {
+      return sync.data.account_status
+    },
+    cloud() {
+      return sync.data.cloud_status
+    },
   }
 }
 
@@ -186,10 +192,10 @@ export function createTuiApiAdapters(input: Input): Omit<TuiPluginApi, "lifecycl
     keymap: input.keymap,
     mode: {
       current() {
-        return Keymap.getOpencodeModeStack(input.keymap).current()
+        return Keymap.getOttiliCoderModeStack(input.keymap).current()
       },
       push(mode) {
-        return Keymap.getOpencodeModeStack(input.keymap).push(mode)
+        return Keymap.getOttiliCoderModeStack(input.keymap).push(mode)
       },
     },
     route: {

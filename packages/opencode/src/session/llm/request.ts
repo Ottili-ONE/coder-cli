@@ -15,7 +15,7 @@ import { jsonSchema, tool as aiTool, type ModelMessage, type Tool } from "ai"
 import type { Plugin } from "@/plugin"
 import { mergeDeep } from "remeda"
 
-const USER_AGENT = `opencode/${InstallationVersion}`
+const USER_AGENT = `ottili-coder/${InstallationVersion}`
 
 type PrepareInput = {
   readonly user: SessionV1.User
@@ -164,7 +164,7 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
     })
   }
 
-  const opencodeProjectID = input.model.providerID.startsWith("opencode")
+  const ottiliCoderProjectID = input.model.providerID.startsWith("ottili-coder")
     ? (yield* InstanceState.context).project.id
     : undefined
 
@@ -175,12 +175,12 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
     params,
     messageTransformOptions: options,
     headers: {
-      ...(input.model.providerID.startsWith("opencode")
+      ...(input.model.providerID.startsWith("ottili-coder")
         ? {
-            ...(opencodeProjectID ? { "x-opencode-project": opencodeProjectID } : {}),
-            "x-opencode-session": input.sessionID,
-            "x-opencode-request": input.user.id,
-            "x-opencode-client": input.flags.client,
+            ...(ottiliCoderProjectID ? { "x-ottili-coder-project": ottiliCoderProjectID } : {}),
+            "x-ottili-coder-session": input.sessionID,
+            "x-ottili-coder-request": input.user.id,
+            "x-ottili-coder-client": input.flags.client,
             "User-Agent": USER_AGENT,
           }
         : {

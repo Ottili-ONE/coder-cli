@@ -1,13 +1,13 @@
 // @ts-nocheck
 
-import { OpenCode } from "@opencode-ai/core"
+import { OttiliCoder } from "@opencode-ai/core"
 import { ReadTool } from "@opencode-ai/core/tools"
 
-const opencode = OpenCode.make({})
+const ottiliCoder = OttiliCoder.make({})
 
-opencode.tool.add(ReadTool)
+ottiliCoder.tool.add(ReadTool)
 
-opencode.tool.add({
+ottiliCoder.tool.add({
   name: "bash",
   schema: {
     type: "object",
@@ -22,13 +22,13 @@ opencode.tool.add({
   execute(input, ctx) {},
 })
 
-opencode.auth.add({
+ottiliCoder.auth.add({
   provider: "openai",
   type: "api",
   value: process.env.OPENAI_API_KEY,
 })
 
-opencode.agent.add({
+ottiliCoder.agent.add({
   name: "build",
   permissions: [],
   model: {
@@ -38,20 +38,20 @@ opencode.agent.add({
   },
 })
 
-const sessionID = await opencode.session.create({
+const sessionID = await ottiliCoder.session.create({
   agent: "build",
 })
 
-opencode.subscribe((event) => {
+ottiliCoder.subscribe((event) => {
   console.log(event)
 })
 
-await opencode.session.prompt({
+await ottiliCoder.session.prompt({
   sessionID,
   text: "hey what is up",
 })
 
-await opencode.session.prompt({
+await ottiliCoder.session.prompt({
   sessionID,
   text: "what is up with this",
   files: [
@@ -62,6 +62,6 @@ await opencode.session.prompt({
   ],
 })
 
-await opencode.session.wait()
+await ottiliCoder.session.wait()
 
-console.log(await opencode.session.messages(sessionID))
+console.log(await ottiliCoder.session.messages(sessionID))

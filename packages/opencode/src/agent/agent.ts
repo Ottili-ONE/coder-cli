@@ -10,7 +10,9 @@ import { Auth } from "../auth"
 import { ProviderTransform } from "@/provider/transform"
 
 import PROMPT_GENERATE from "./generate.txt"
+import PROMPT_ASK from "./prompt/ask.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
+import PROMPT_DEBUG from "./prompt/debug.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
@@ -81,7 +83,7 @@ export interface Interface {
 
 type State = Omit<Interface, "generate">
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/Agent") {}
+export class Service extends Context.Service<Service, Interface>()("@opencode-ai/Agent") {}
 
 export const use = serviceUse(Service)
 
@@ -139,6 +141,7 @@ export const layer = Layer.effect(
           build: {
             name: "build",
             description: "The default agent. Executes tools based on configured permissions.",
+            color: "#f97316",
             options: {},
             permission: Permission.merge(
               defaults,
@@ -154,6 +157,7 @@ export const layer = Layer.effect(
           plan: {
             name: "plan",
             description: "Plan mode. Disallows all edit tools.",
+            color: "#3b82f6",
             options: {},
             permission: Permission.merge(
               defaults,
@@ -168,8 +172,69 @@ export const layer = Layer.effect(
                 },
                 edit: {
                   "*": "deny",
-                  [path.join(".opencode", "plans", "*.md")]: "allow",
+                  [path.join(".ottili-coder", "plans", "*.md")]: "allow",
                   [path.relative(ctx.worktree, path.join(Global.Path.data, path.join("plans", "*.md")))]: "allow",
+                },
+              }),
+              user,
+            ),
+            mode: "primary",
+            native: true,
+          },
+          debug: {
+            name: "debug",
+            description:
+              "Debug mode. Investigate failures, ask clarifying questions, and diagnose issues before changing code.",
+            color: "#ef4444",
+            prompt: PROMPT_DEBUG,
+            temperature: 0.2,
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                question: "allow",
+                bash: "allow",
+                read: "allow",
+                grep: "allow",
+                glob: "allow",
+                list: "allow",
+                webfetch: "allow",
+                websearch: "allow",
+                edit: "ask",
+                write: "ask",
+                plan_enter: "deny",
+                plan_exit: "deny",
+                task: {
+                  general: "deny",
+                },
+              }),
+              user,
+            ),
+            mode: "primary",
+            native: true,
+          },
+          ask: {
+            name: "ask",
+            description:
+              "Ask mode. Answer questions about the codebase without editing files or running shell commands.",
+            color: "#a855f7",
+            prompt: PROMPT_ASK,
+            temperature: 0.3,
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                question: "allow",
+                bash: "deny",
+                edit: {
+                  "*": "deny",
+                },
+                write: "deny",
+                plan_enter: "deny",
+                plan_exit: "deny",
+                todowrite: "deny",
+                task: {
+                  general: "deny",
                 },
               }),
               user,

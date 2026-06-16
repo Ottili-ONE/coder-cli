@@ -3,11 +3,11 @@
  */
 export const config = {
   // Base URL
-  baseUrl: "https://opencode.ai",
+  baseUrl: "https://ottili.one/coder",
 
   // GitHub
   github: {
-    repoUrl: "https://github.com/anomalyco/opencode",
+    repoUrl: "https://github.com/Ottili-ONE/coder-cli",
     starsFormatted: {
       compact: "160K",
       full: "160,000",
@@ -16,8 +16,8 @@ export const config = {
 
   // Social links
   social: {
-    twitter: "https://x.com/opencode",
-    discord: "https://discord.gg/opencode",
+    twitter: "https://x.com/ottili-coder",
+    discord: "https://discord.gg/ottili-coder",
   },
 
   // Static stats (used on landing page)

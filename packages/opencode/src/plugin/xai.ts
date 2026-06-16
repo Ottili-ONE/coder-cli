@@ -106,7 +106,7 @@ function authHeaders() {
   return {
     "Content-Type": "application/x-www-form-urlencoded",
     Accept: "application/json",
-    "User-Agent": `opencode/${InstallationVersion}`,
+    "User-Agent": `ottili-coder/${InstallationVersion}`,
   }
 }
 
@@ -141,7 +141,7 @@ export function buildAuthorizeUrl(
 ): string {
   // `plan=generic` opts the consent screen into xAI's generic OAuth plan tier;
   // without it, accounts.x.ai rejects loopback OAuth from non-allowlisted
-  // clients. `referrer=opencode` lets xAI attribute opencode-originated
+  // clients. `referrer=ottili-coder` lets xAI attribute ottili-coder-originated
   // logins in their OAuth server logs (best-effort attribution while we
   // continue to reuse the Grok-CLI client_id).
   const params = new URLSearchParams({
@@ -154,7 +154,7 @@ export function buildAuthorizeUrl(
     state,
     nonce,
     plan: "generic",
-    referrer: "opencode",
+    referrer: "ottili-coder",
   })
   return `${options.authorizeUrl ?? AUTHORIZE_URL}?${params.toString()}`
 }
@@ -306,7 +306,7 @@ export async function pollDeviceCodeToken(
 const HTML_SUCCESS = `<!doctype html>
 <html>
   <head>
-    <title>OpenCode - xAI Authorization Successful</title>
+    <title>Ottili Coder - xAI Authorization Successful</title>
     <style>
       body {
         font-family:
@@ -337,7 +337,7 @@ const HTML_SUCCESS = `<!doctype html>
   <body>
     <div class="container">
       <h1>Authorization Successful</h1>
-      <p>You can close this window and return to OpenCode.</p>
+      <p>You can close this window and return to Ottili Coder.</p>
     </div>
     <script>
       setTimeout(() => window.close(), 2000)
@@ -348,7 +348,7 @@ const HTML_SUCCESS = `<!doctype html>
 const HTML_ERROR = (error: string) => `<!doctype html>
 <html>
   <head>
-    <title>OpenCode - xAI Authorization Failed</title>
+    <title>Ottili Coder - xAI Authorization Failed</title>
     <style>
       body {
         font-family:
@@ -504,7 +504,7 @@ async function startOAuthServer(): Promise<{ port: number; redirectUri: string }
       // After listen() succeeds, install a permanent log-only listener so
       // that subsequent server errors (e.g. accept() failures, socket-level
       // errors) don't trip Node's default "unhandled error event = throw"
-      // behavior and crash the entire opencode process. Matches the silent-
+      // behavior and crash the entire ottili-coder process. Matches the silent-
       // swallow behavior the Codex plugin gets from its permanent
       // `oauthServer!.on("error", reject)`.
       resolve()
@@ -649,7 +649,7 @@ export async function XaiAuthPlugin(input: PluginInput, options: XaiAuthPluginOp
               }
             }
             headers.set("authorization", `Bearer ${currentAuth.access}`)
-            headers.set("User-Agent", `opencode/${InstallationVersion}`)
+            headers.set("User-Agent", `ottili-coder/${InstallationVersion}`)
 
             return fetch(requestInput, { ...init, headers })
           },

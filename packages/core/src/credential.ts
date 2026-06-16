@@ -99,7 +99,7 @@ export interface Interface {
   readonly forConnector: (connectorID: ConnectorSchema.ID) => Effect.Effect<Info[]>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/Credential") {}
+export class Service extends Context.Service<Service, Interface>()("@opencode-ai/v2/Credential") {}
 
 export const legacyImportLayer = Layer.effectDiscard(
   Effect.gen(function* () {

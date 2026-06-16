@@ -105,8 +105,8 @@ function skin(api: TuiPluginApi): Skin {
     muted: ink(api, "textMuted", "#a5a5a5"),
     subtle: ink(api, "borderSubtle", "#6f6f6f"),
     key: ink(api, "warning", "#ffd75f"),
-    accent: ink(api, "primary", "#5f87ff"),
-    tab: ink(api, "primary", "#5f87ff"),
+    accent: ink(api, "primary", "#f97316"),
+    tab: ink(api, "primary", "#f97316"),
     tabText: ink(api, "selectedListItemText", "#ffffff"),
   }
 }
@@ -171,13 +171,16 @@ function layout(value: unknown): Layout {
 function HomeHint(props: { api: TuiPluginApi }) {
   const trigger = commandShortcut(props.api, command.toggle)
   const look = createMemo(() => skin(props.api))
+  const fresh = createMemo(() => props.api.state.session.count() === 0)
 
   return (
-    <box width="100%" maxWidth={75} alignItems="center" paddingTop={1} flexShrink={0}>
-      <text fg={look().muted} wrapMode="none">
-        Show keyboard shortcuts with <span style={{ fg: look().subtle }}>{trigger() || command.toggle}</span>
-      </text>
-    </box>
+    <Show when={!fresh()}>
+      <box width="100%" maxWidth={75} alignItems="center" flexShrink={0} paddingTop={1}>
+        <text fg={look().muted} wrapMode="none">
+          Show keyboard shortcuts with <span style={{ fg: look().subtle }}>{trigger() || command.toggle}</span>
+        </text>
+      </box>
+    </Show>
   )
 }
 

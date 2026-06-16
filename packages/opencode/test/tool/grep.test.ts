@@ -51,15 +51,15 @@ const full = (p: string) => (process.platform === "win32" ? Filesystem.normalize
 const githubBase = <A, E, R>(url: string, self: Effect.Effect<A, E, R>) =>
   Effect.acquireUseRelease(
     Effect.sync(() => {
-      const previous = process.env.OPENCODE_REPO_CLONE_GITHUB_BASE_URL
-      process.env.OPENCODE_REPO_CLONE_GITHUB_BASE_URL = url
+      const previous = process.env.OTTILI_CODER_REPO_CLONE_GITHUB_BASE_URL
+      process.env.OTTILI_CODER_REPO_CLONE_GITHUB_BASE_URL = url
       return previous
     }),
     () => self,
     (previous) =>
       Effect.sync(() => {
-        if (previous) process.env.OPENCODE_REPO_CLONE_GITHUB_BASE_URL = previous
-        else delete process.env.OPENCODE_REPO_CLONE_GITHUB_BASE_URL
+        if (previous) process.env.OTTILI_CODER_REPO_CLONE_GITHUB_BASE_URL = previous
+        else delete process.env.OTTILI_CODER_REPO_CLONE_GITHUB_BASE_URL
       }),
   )
 
@@ -180,7 +180,7 @@ describe("tool.grep", () => {
 
       yield* TestInstance
       const tmp = yield* Effect.acquireRelease(
-        Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "opencode-grep-alias-"))),
+        Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "ottili-coder-grep-alias-"))),
         (dir) => Effect.promise(() => fs.rm(dir, { recursive: true, force: true })),
       )
       const real = path.join(tmp, "real")

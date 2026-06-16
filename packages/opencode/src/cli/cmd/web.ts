@@ -31,14 +31,14 @@ function getNetworkIPs() {
 export const WebCommand = effectCmd({
   command: "web",
   builder: (yargs) => withNetworkOptions(yargs),
-  describe: "start opencode server and open web interface",
-  // Server loads instances per-request via x-opencode-directory header — no
+  describe: "start ottili-coder server and open web interface",
+  // Server loads instances per-request via x-ottili-coder-directory header — no
   // ambient project InstanceContext needed at startup.
   instance: false,
   handler: Effect.fn("Cli.web")(function* (args) {
     const { Server } = yield* Effect.promise(() => import("../../server/server"))
-    if (!Flag.OPENCODE_SERVER_PASSWORD) {
-      UI.println(UI.Style.TEXT_WARNING_BOLD + "!  OPENCODE_SERVER_PASSWORD is not set; server is unsecured.")
+    if (!Flag.OTTILI_CODER_SERVER_PASSWORD) {
+      UI.println(UI.Style.TEXT_WARNING_BOLD + "!  OTTILI_CODER_SERVER_PASSWORD is not set; server is unsecured.")
     }
     const opts = yield* resolveNetworkOptions(args)
     const server = yield* Effect.promise(() => Server.listen(opts))

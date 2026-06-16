@@ -19,6 +19,7 @@ export function Footer() {
   })
   const directory = useDirectory()
   const connected = useConnected()
+  const account = createMemo(() => sync.data.account_status)
 
   const [store, setStore] = createStore({
     welcome: false,
@@ -56,10 +57,28 @@ export function Footer() {
         <Switch>
           <Match when={store.welcome}>
             <text fg={theme.text}>
-              Get started <span style={{ fg: theme.textMuted }}>/connect</span>
+              Get started{" "}
+              <span style={{ fg: theme.textMuted }}>/connect</span>
+              <Show when={!account().loggedIn}>
+                {" "}
+                · <span style={{ fg: theme.textMuted }}>/login</span>
+              </Show>
             </text>
           </Match>
-          <Match when={connected()}>
+          <Match when={!connected()}>
+            <text fg={theme.primary}>/connect</text>
+            <Show when={account().loggedIn}>
+              <text fg={theme.textMuted}>/usage</text>
+            </Show>
+            <Show when={!account().loggedIn}>
+              <text fg={theme.textMuted}>/login</text>
+            </Show>
+          </Match>
+          <Match when={connected() && !account().loggedIn}>
+            <text fg={theme.textMuted}>/login</text>
+            <text fg={theme.textMuted}>/status</text>
+          </Match>
+          <Match when={connected() && account().loggedIn}>
             <Show when={permissions().length > 0}>
               <text fg={theme.warning}>
                 <span style={{ fg: theme.warning }}>△</span> {permissions().length} Permission
@@ -83,6 +102,7 @@ export function Footer() {
               </text>
             </Show>
             <text fg={theme.textMuted}>/status</text>
+            <text fg={theme.textMuted}>/usage</text>
           </Match>
         </Switch>
       </box>

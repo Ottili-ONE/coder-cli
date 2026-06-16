@@ -42,16 +42,16 @@ describe("GoogleVertexPlugin", () => {
       yield* plugin.add(GoogleVertexPlugin)
       const transform = yield* catalog.transform()
       yield* transform((catalog) =>
-        catalog.provider.update(ProviderV2.ID.opencode, (provider) => {
+        catalog.provider.update(ProviderV2.ID.ottiliCoder, (provider) => {
           provider.api = {
             type: "aisdk",
             package: "@ai-sdk/openai-compatible",
-            url: "https://opencode.ai/zen/v1",
+            url: "https://ottili.one/coder/zen/v1",
           }
         }),
       )
 
-      const provider = yield* catalog.provider.get(ProviderV2.ID.opencode)
+      const provider = yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)
       expect(provider.request.body).toEqual({})
     }),
   )

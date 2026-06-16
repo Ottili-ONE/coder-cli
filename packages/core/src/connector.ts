@@ -229,7 +229,7 @@ export interface Interface {
   }
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/Connector") {}
+export class Service extends Context.Service<Service, Interface>()("@opencode-ai/v2/Connector") {}
 
 enableMapSet()
 

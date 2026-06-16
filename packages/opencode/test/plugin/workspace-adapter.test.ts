@@ -100,10 +100,10 @@ describe("plugin.workspace", () => {
 
       yield* Effect.promise(() =>
         Bun.write(
-          path.join(dir, "opencode.json"),
+          path.join(dir, "ottiliCoder.json"),
           JSON.stringify(
             {
-              $schema: "https://opencode.ai/config.json",
+              $schema: "https://ottili.one/coder/config.json",
               plugin: [pathToFileURL(file).href],
             },
             null,

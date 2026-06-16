@@ -2,7 +2,7 @@ import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { RunCommand } from "./cli/cmd/run"
 import { GenerateCommand } from "./cli/cmd/generate"
-import { ConsoleCommand } from "./cli/cmd/account"
+import { ConsoleCommand, AccountCommand } from "./cli/cmd/account"
 import { ProvidersCommand } from "./cli/cmd/providers"
 import { AgentCommand } from "./cli/cmd/agent"
 import { UpgradeCommand } from "./cli/cmd/upgrade"
@@ -16,6 +16,7 @@ import { DebugCommand } from "./cli/cmd/debug"
 import { StatsCommand } from "./cli/cmd/stats"
 import { McpCommand } from "./cli/cmd/mcp"
 import { GithubCommand } from "./cli/cmd/github"
+import { CloudCommand } from "./cli/cmd/cloud"
 import { ExportCommand } from "./cli/cmd/export"
 import { ImportCommand } from "./cli/cmd/import"
 import { AttachCommand } from "./cli/cmd/attach"
@@ -34,7 +35,7 @@ const args = hideBin(process.argv)
 
 function show(out: string) {
   const text = out.trimStart()
-  if (!text.startsWith("opencode ")) {
+  if (!text.startsWith("ottili-coder ")) {
     process.stderr.write(UI.logo() + EOL + EOL)
     process.stderr.write(text + EOL)
     return
@@ -44,7 +45,7 @@ function show(out: string) {
 
 const cli = yargs(args)
   .parserConfiguration({ "populate--": true })
-  .scriptName("opencode")
+  .scriptName("ottili-coder")
   .wrap(100)
   .help("help", "show help")
   .alias("help", "h")
@@ -64,17 +65,17 @@ const cli = yargs(args)
     type: "boolean",
   })
   .middleware(async (opts) => {
-    if (opts.printLogs) process.env.OPENCODE_PRINT_LOGS = "1"
-    if (opts.logLevel) process.env.OPENCODE_LOG_LEVEL = opts.logLevel
+    if (opts.printLogs) process.env.OTTILI_CODER_PRINT_LOGS = "1"
+    if (opts.logLevel) process.env.OTTILI_CODER_LOG_LEVEL = opts.logLevel
     if (opts.pure) {
-      process.env.OPENCODE_PURE = "1"
+      process.env.OTTILI_CODER_PURE = "1"
     }
 
     Heap.start()
 
     process.env.AGENT = "1"
     process.env.OPENCODE = "1"
-    process.env.OPENCODE_PID = String(process.pid)
+    process.env.OTTILI_CODER_PID = String(process.pid)
   })
   .usage("")
   .completion("completion", "generate shell completion script")
@@ -85,6 +86,7 @@ const cli = yargs(args)
   .command(RunCommand)
   .command(GenerateCommand)
   .command(DebugCommand)
+  .command(AccountCommand)
   .command(ConsoleCommand)
   .command(ProvidersCommand)
   .command(AgentCommand)
@@ -97,6 +99,7 @@ const cli = yargs(args)
   .command(ExportCommand)
   .command(ImportCommand)
   .command(GithubCommand)
+  .command(CloudCommand)
   .command(PrCommand)
   .command(SessionCommand)
   .command(PluginCommand)

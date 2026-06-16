@@ -5,7 +5,7 @@ import { MouseButton, Renderable, RGBA } from "@opentui/core"
 import { createStore } from "solid-js/store"
 import { useToast } from "./toast"
 import { Flag } from "@opencode-ai/core/flag/flag"
-import { useBindings, useOpencodeModeStack } from "../keymap"
+import { useBindings, useOttiliCoderModeStack } from "../keymap"
 import { useClipboard } from "../context/clipboard"
 
 export function Dialog(
@@ -45,7 +45,7 @@ export function Dialog(
       paddingTop={dimensions().height / 4}
       left={0}
       top={0}
-      backgroundColor={RGBA.fromInts(0, 0, 0, 150)}
+      backgroundColor={RGBA.fromValues(theme.background.r, theme.background.g, theme.background.b, 150)}
     >
       <box
         onMouseUp={(e: { stopPropagation(): void }) => {
@@ -73,7 +73,7 @@ function init() {
   })
 
   const renderer = useRenderer()
-  const modeStack = useOpencodeModeStack()
+  const modeStack = useOttiliCoderModeStack()
 
   createEffect(() => {
     if (store.stack.length === 0) return
@@ -200,14 +200,14 @@ export function DialogProvider(props: ParentProps) {
         position="absolute"
         zIndex={3000}
         onMouseDown={(evt: { button: number; preventDefault(): void; stopPropagation(): void }) => {
-          if (!Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
+          if (!Flag.OTTILI_CODER_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
           if (evt.button !== MouseButton.RIGHT) return
 
           if (!copySelection()) return
           evt.preventDefault()
           evt.stopPropagation()
         }}
-        onMouseUp={!Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT ? copySelection : undefined}
+        onMouseUp={!Flag.OTTILI_CODER_EXPERIMENTAL_DISABLE_COPY_ON_SELECT ? copySelection : undefined}
       >
         <Show when={value.stack.length}>
           <Dialog onClose={() => value.clear()} size={value.size}>

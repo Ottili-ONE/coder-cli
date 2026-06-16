@@ -1,4 +1,4 @@
-// Opencode publish boundary for core events. Attach routed instance location
+// Ottili Coder publish boundary for core events. Attach routed instance location
 // so direct EventV2 consumers can isolate directory/workspace streams.
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { InstanceRef, WorkspaceRef } from "@/effect/instance-ref"
@@ -12,7 +12,7 @@ import "@opencode-ai/core/catalog"
 import "@opencode-ai/core/session/event"
 import { Context, Effect, Layer } from "effect"
 
-export class Service extends Context.Service<Service, EventV2.Interface>()("@opencode/EventV2Bridge") {}
+export class Service extends Context.Service<Service, EventV2.Interface>()("@opencode-ai/EventV2Bridge") {}
 
 export const layer = Layer.effect(
   Service,

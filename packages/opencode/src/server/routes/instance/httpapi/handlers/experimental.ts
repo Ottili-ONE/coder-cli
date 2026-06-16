@@ -1,4 +1,6 @@
 import { Account } from "@/account/account"
+import { Auth } from "@/auth"
+import { OttiliCloud } from "@/cloud/cloud"
 import { Agent } from "@/agent/agent"
 import { BackgroundJob } from "@/background/job"
 import { Config } from "@/config/config"
@@ -26,6 +28,7 @@ function mapWorktreeError<A, R>(self: Effect.Effect<A, Worktree.Error, R>) {
 export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "experimental", (handlers) =>
   Effect.gen(function* () {
     const account = yield* Account.Service
+    const auth = yield* Auth.Service
     const agents = yield* Agent.Service
     const config = yield* Config.Service
     const mcp = yield* MCP.Service
@@ -85,6 +88,150 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
         .use(ctx.payload.accountID, Option.some(ctx.payload.orgID))
         .pipe(Effect.catch(() => Effect.fail(new HttpApiError.BadRequest({}))))
       return true
+    })
+
+    const loginAccount = Effect.fn("ExperimentalHttpApi.accountLogin")(function* (ctx: {
+      payload: { authUrl?: string }
+    }) {
+      const result = yield* account.loginOttiliOne(ctx.payload.authUrl).pipe(
+        Effect.catchAll((cause) =>
+          Effect.fail(
+            new HttpApiError.BadRequest({
+              message: cause instanceof Error ? cause.message : String(cause),
+            }),
+          ),
+        ),
+      )
+      return { email: result.email }
+    })
+
+    const accountStatus = Effect.fn("ExperimentalHttpApi.accountStatus")(function* () {
+      return yield* account.status().pipe(
+        Effect.catch(() => Effect.succeed({ loggedIn: false as const })),
+      )
+    })
+
+    const accountLogout = Effect.fn("ExperimentalHttpApi.accountLogout")(function* () {
+      yield* account
+        .logout()
+        .pipe(Effect.catch(() => Effect.fail(new HttpApiError.InternalServerError({}))))
+      delete process.env.OTTILI_CODER_CONSOLE_TOKEN
+      yield* auth.remove("ottili-coder").pipe(Effect.catch(() => Effect.void))
+      return { ok: true }
+    })
+
+    const accountUsageLimits = Effect.fn("ExperimentalHttpApi.accountUsageLimits")(function* () {
+      return yield* account.usageLimits().pipe(
+        Effect.catch(() =>
+          Effect.succeed({
+            loggedIn: false as const,
+          }),
+        ),
+      )
+    })
+
+    const cloudTry = <A>(run: () => Promise<A>) =>
+      Effect.tryPromise({
+        try: run,
+        catch: (cause) =>
+          new HttpApiError.BadRequest({
+            message: cause instanceof Error ? cause.message : String(cause),
+          }),
+      })
+
+    const cloudStatus = Effect.fn("ExperimentalHttpApi.cloudStatus")(function* () {
+      const config = OttiliCloud.resolveConfig()
+      if (!config.token) {
+        return { configured: false, dashboardUrl: config.dashboardUrl }
+      }
+      const jobs = yield* cloudTry(() => OttiliCloud.listJobs())
+      const activeJobs = jobs.filter((job) => !OttiliCloud.isTerminal(job.status)).length
+      return {
+        configured: true,
+        dashboardUrl: config.dashboardUrl,
+        url: config.url,
+        ...(config.company ? { company: config.company } : {}),
+        activeJobs,
+      }
+    })
+
+    const cloudConnect = Effect.fn("ExperimentalHttpApi.cloudConnect")(function* (ctx: {
+      payload: { url?: string; token: string; company?: string }
+    }) {
+      const token = ctx.payload.token.trim()
+      if (!token) return yield* Effect.fail(new HttpApiError.BadRequest({ message: "API key is required." }))
+
+      const existing = OttiliCloud.loadConfigFile()
+      const url = ctx.payload.url?.trim() || existing.url || "https://api.ottili.one"
+      const company = ctx.payload.company?.trim() || existing.company
+      OttiliCloud.saveConfigFile({ url, token, company: company || undefined })
+      yield* cloudTry(() => OttiliCloud.listJobs())
+      const config = OttiliCloud.resolveConfig()
+      return { ok: true, dashboardUrl: config.dashboardUrl }
+    })
+
+    const cloudDisconnect = Effect.fn("ExperimentalHttpApi.cloudDisconnect")(function* () {
+      OttiliCloud.disconnect()
+      return { ok: true }
+    })
+
+    const cloudJobs = Effect.fn("ExperimentalHttpApi.cloudJobs")(function* () {
+      const jobs = yield* cloudTry(() => OttiliCloud.listJobs())
+      return { jobs }
+    })
+
+    const cloudJob = Effect.fn("ExperimentalHttpApi.cloudJob")(function* (ctx: { params: { jobId: number } }) {
+      return yield* cloudTry(() => OttiliCloud.getJob(ctx.params.jobId))
+    })
+
+    const cloudCreateJob = Effect.fn("ExperimentalHttpApi.cloudCreateJob")(function* (ctx: {
+      payload: {
+        objective: string
+        title?: string
+        mode?: "autonomous_build" | "continuous_coding"
+        target_task_count?: number
+        repository_id?: number
+        execution_target?: "local" | "github_agent"
+        default_agent?: string
+        auto_create_pr?: boolean
+      }
+    }) {
+      const objective = ctx.payload.objective.trim()
+      if (!objective) return yield* Effect.fail(new HttpApiError.BadRequest({ message: "Objective is required." }))
+      const target =
+        ctx.payload.execution_target ??
+        (ctx.payload.repository_id !== undefined ? ("github_agent" as const) : undefined)
+      return yield* cloudTry(() =>
+        OttiliCloud.createJob({
+          objective,
+          title: ctx.payload.title,
+          mode: ctx.payload.mode,
+          target_task_count: ctx.payload.target_task_count,
+          repository_id: ctx.payload.repository_id,
+          execution_target: target,
+          default_agent: ctx.payload.default_agent,
+          auto_create_pr: ctx.payload.auto_create_pr,
+        }),
+      )
+    })
+
+    const cloudJobCancel = Effect.fn("ExperimentalHttpApi.cloudJobCancel")(function* (ctx: {
+      params: { jobId: number }
+    }) {
+      return yield* cloudTry(() => OttiliCloud.jobAction(ctx.params.jobId, "cancel"))
+    })
+
+    const cloudJobEvents = Effect.fn("ExperimentalHttpApi.cloudJobEvents")(function* (ctx: {
+      params: { jobId: number }
+    }) {
+      const events = yield* cloudTry(() => OttiliCloud.listJobEvents(ctx.params.jobId))
+      return { events }
+    })
+
+    const cloudJobDashboard = Effect.fn("ExperimentalHttpApi.cloudJobDashboard")(function* (ctx: {
+      params: { jobId: number }
+    }) {
+      return { url: OttiliCloud.dashboardJobUrl(ctx.params.jobId) }
     })
 
     const tool = Effect.fn("ExperimentalHttpApi.tool")(function* (ctx: { query: typeof ToolListQuery.Type }) {
@@ -174,6 +321,19 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       .handle("console", getConsole)
       .handle("consoleOrgs", listConsoleOrgs)
       .handle("consoleSwitch", switchConsole)
+      .handle("accountLogin", loginAccount)
+      .handle("accountStatus", accountStatus)
+      .handle("accountLogout", accountLogout)
+      .handle("accountUsageLimits", accountUsageLimits)
+      .handle("cloudStatus", cloudStatus)
+      .handle("cloudConnect", cloudConnect)
+      .handle("cloudDisconnect", cloudDisconnect)
+      .handle("cloudJobs", cloudJobs)
+      .handle("cloudJob", cloudJob)
+      .handle("cloudCreateJob", cloudCreateJob)
+      .handle("cloudJobCancel", cloudJobCancel)
+      .handle("cloudJobEvents", cloudJobEvents)
+      .handle("cloudJobDashboard", cloudJobDashboard)
       .handle("tool", tool)
       .handle("toolIDs", toolIDs)
       .handle("worktree", worktree)

@@ -36,7 +36,7 @@ function dynamicPlugin(layer = npmLayer) {
 function tempEntrypoint(source: string) {
   return Effect.acquireRelease(
     Effect.promise(async () => {
-      const directory = await fs.mkdtemp(path.join(os.tmpdir(), "opencode-provider-dynamic-"))
+      const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ottili-coder-provider-dynamic-"))
       const entrypoint = path.join(directory, "provider.mjs")
       await Bun.write(entrypoint, source)
       return { directory, entrypoint }

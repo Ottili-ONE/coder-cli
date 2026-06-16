@@ -10,6 +10,7 @@ import {
   hasTheme,
   isTheme,
   resolveTheme,
+  resolveThemeName,
   selectedForeground,
   setCustomThemes,
   setSystemTheme,
@@ -38,7 +39,7 @@ const themeSource: ThemeSource = {
   async discover() {
     const directories = [Global.Path.config]
     for (let current = process.cwd(); ; current = path.dirname(current)) {
-      directories.push(path.join(current, ".opencode"))
+      directories.push(path.join(current, ".ottili-coder"))
       if (path.dirname(current) === current) break
     }
     return discoverThemes(directories)
@@ -70,6 +71,7 @@ export {
   hasTheme,
   isTheme,
   resolveTheme,
+  resolveThemeName,
   selectedForeground,
   terminalMode,
   tint,
@@ -93,7 +95,7 @@ const [store, setStore] = createStore<State>({
   themes: allThemes(),
   mode: "dark",
   lock: undefined,
-  active: "opencode",
+  active: "ottili-coder",
   ready: false,
 })
 
@@ -110,16 +112,27 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       if (value === "dark" || value === "light") return value
       return
     }
+    const pickConfigured = (value: unknown) => {
+      if (value === "dark" || value === "light" || value === "system") return value
+      return "system" as const
+    }
 
     setStore(
       produce((draft) => {
         const lock = pick(kv.get("theme_mode_lock"))
-        const mode = lock ?? pick(renderer.themeMode) ?? props.mode
+        const configured = pickConfigured(config.theme_mode)
+        const terminal = pick(renderer.themeMode)
+        const fallback = props.mode
+        const mode =
+          lock ??
+          (configured === "light" ? "light" : configured === "dark" ? "dark" : undefined) ??
+          terminal ??
+          fallback
         if (!lock && pick(kv.get("theme_mode")) !== undefined) kv.set("theme_mode", undefined)
         draft.mode = mode
         draft.lock = lock
-        const active = config.theme ?? kv.get("theme", "opencode")
-        draft.active = typeof active === "string" ? active : "opencode"
+        const active = config.theme ?? kv.get("theme", "ottili-coder")
+        draft.active = typeof active === "string" ? active : "ottili-coder"
         draft.ready = false
       }),
     )
@@ -140,7 +153,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
             }, {}),
           )
         })
-        .catch(() => setStore("active", "opencode"))
+        .catch(() => setStore("active", "ottili-coder"))
     }
 
     onMount(() => {
@@ -159,7 +172,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
           if (!colors.palette[0]) {
             if (hasResolvedSystemTheme) return
             setSystemTheme(undefined)
-            if (store.active === "system") setStore("active", "opencode")
+            if (store.active === "system") setStore("active", "ottili-coder")
             return
           }
           const next = store.lock ?? terminalMode(colors) ?? mode
@@ -174,7 +187,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
         .catch(() => {
           if (hasResolvedSystemTheme) return
           setSystemTheme(undefined)
-          if (store.active === "system") setStore("active", "opencode")
+          if (store.active === "system") setStore("active", "ottili-coder")
         })
     }
 
@@ -254,16 +267,17 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     })
 
     const values = createMemo(() => {
-      const active = store.themes[store.active]
+      const activeName = resolveThemeName(store.active)
+      const active = store.themes[activeName]
       if (active) return resolveTheme(active, store.mode)
 
       const saved = kv.get("theme")
       if (typeof saved === "string") {
-        const theme = store.themes[saved]
+        const theme = store.themes[resolveThemeName(saved)]
         if (theme) return resolveTheme(theme, store.mode)
       }
 
-      return resolveTheme(store.themes.opencode, store.mode)
+      return resolveTheme(store.themes.ottiliCoder, store.mode)
     })
 
     createEffect(() => renderer.setBackgroundColor(values().background))

@@ -7,7 +7,7 @@ import type {
   WorkspaceAdapter as PluginWorkspaceAdapter,
 } from "@opencode-ai/plugin"
 import { Config } from "@/config/config"
-import { createOpencodeClient } from "@opencode-ai/sdk"
+import { createOttiliCoderClient } from "@opencode-ai/sdk"
 import { ServerAuth } from "@/server/auth"
 import { CodexAuthPlugin } from "./openai/codex"
 import { Session } from "@/session/session"
@@ -18,6 +18,8 @@ import { PoeAuthPlugin } from "opencode-poe-auth"
 import { CloudflareAIGatewayAuthPlugin, CloudflareWorkersAuthPlugin } from "./cloudflare"
 import { AzureAuthPlugin } from "./azure"
 import { DigitalOceanAuthPlugin } from "./digitalocean"
+import { OttiliAutoPlugin } from "./ottili-auto"
+import { OttiliCoderAuthPlugin } from "./ottili-coder-auth"
 import { XaiAuthPlugin } from "./xai"
 import { Effect, Layer, Context } from "effect"
 import { EffectBridge } from "@/effect/bridge"
@@ -54,7 +56,7 @@ export interface Interface {
   readonly init: () => Effect.Effect<void>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/Plugin") {}
+export class Service extends Context.Service<Service, Interface>()("@opencode-ai/Plugin") {}
 
 export function experimentalWebSocketsEnabled(input: { enabled: boolean; channel?: string }) {
   return input.enabled || ["local", "dev", "beta"].includes(input.channel ?? InstallationChannel)
@@ -75,6 +77,8 @@ function internalPlugins(flags: RuntimeFlags.Info): PluginInstance[] {
     CloudflareAIGatewayAuthPlugin,
     AzureAuthPlugin,
     DigitalOceanAuthPlugin,
+    OttiliAutoPlugin,
+    OttiliCoderAuthPlugin,
     XaiAuthPlugin,
   ]
 }
@@ -136,7 +140,7 @@ export const layer = Layer.effect(
 
         const { Server } = yield* Effect.promise(() => import("../server/server"))
 
-        const client = createOpencodeClient({
+        const client = createOttiliCoderClient({
           baseUrl: "http://localhost:4096",
           directory: ctx.directory,
           headers: ServerAuth.headers(),

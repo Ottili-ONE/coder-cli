@@ -55,6 +55,8 @@ it.instance("returns default native agents when no config", () =>
     const names = agents.map((a) => a.name)
     expect(names).toContain("build")
     expect(names).toContain("plan")
+    expect(names).toContain("debug")
+    expect(names).toContain("ask")
     expect(names).toContain("general")
     expect(names).toContain("explore")
     expect(names).toContain("compaction")
@@ -74,14 +76,14 @@ it.instance("build agent has correct default properties", () =>
   }),
 )
 
-it.instance("plan agent denies edits except .opencode/plans/*", () =>
+it.instance("plan agent denies edits except .ottili-coder/plans/*", () =>
   Effect.gen(function* () {
     const plan = yield* load((svc) => svc.get("plan"))
     expect(plan).toBeDefined()
     // Wildcard is denied
     expect(evalPerm(plan, "edit")).toBe("deny")
     // But specific path is allowed
-    expect(Permission.evaluate("edit", ".opencode/plans/foo.md", plan!.permission).action).toBe("allow")
+    expect(Permission.evaluate("edit", ".ottili-coder/plans/foo.md", plan!.permission).action).toBe("allow")
   }),
 )
 
@@ -92,6 +94,43 @@ it.instance("plan agent denies the general subagent by default", () =>
     expect(Permission.evaluate("task", "general", plan!.permission).action).toBe("deny")
     expect(Permission.evaluate("task", "explore", plan!.permission).action).toBe("allow")
     expect(Permission.evaluate("task", "custom", plan!.permission).action).toBe("allow")
+  }),
+)
+
+it.instance("debug agent is optimized for diagnosis with cautious edits", () =>
+  Effect.gen(function* () {
+    const debug = yield* load((svc) => svc.get("debug"))
+    expect(debug).toBeDefined()
+    expect(debug?.mode).toBe("primary")
+    expect(debug?.native).toBe(true)
+    expect(debug?.color).toBe("#ef4444")
+    expect(evalPerm(debug, "question")).toBe("allow")
+    expect(evalPerm(debug, "bash")).toBe("allow")
+    expect(evalPerm(debug, "read")).toBe("allow")
+    expect(evalPerm(debug, "edit")).toBe("ask")
+    expect(evalPerm(debug, "write")).toBe("ask")
+    expect(evalPerm(debug, "plan_enter")).toBe("deny")
+    expect(Permission.evaluate("task", "general", debug!.permission).action).toBe("deny")
+    expect(Permission.evaluate("task", "explore", debug!.permission).action).toBe("allow")
+  }),
+)
+
+it.instance("ask agent answers questions without coding or shell access", () =>
+  Effect.gen(function* () {
+    const ask = yield* load((svc) => svc.get("ask"))
+    expect(ask).toBeDefined()
+    expect(ask?.mode).toBe("primary")
+    expect(ask?.native).toBe(true)
+    expect(ask?.color).toBe("#a855f7")
+    expect(evalPerm(ask, "question")).toBe("allow")
+    expect(evalPerm(ask, "read")).toBe("allow")
+    expect(evalPerm(ask, "grep")).toBe("allow")
+    expect(evalPerm(ask, "bash")).toBe("deny")
+    expect(evalPerm(ask, "edit")).toBe("deny")
+    expect(evalPerm(ask, "write")).toBe("deny")
+    expect(evalPerm(ask, "plan_enter")).toBe("deny")
+    expect(Permission.evaluate("task", "general", ask!.permission).action).toBe("deny")
+    expect(Permission.evaluate("task", "explore", ask!.permission).action).toBe("allow")
   }),
 )
 
@@ -603,7 +642,7 @@ it.instance(
   () =>
     Effect.gen(function* () {
       const test = yield* TestInstance
-      const skillDir = path.join(test.directory, ".opencode", "skill", "perm-skill")
+      const skillDir = path.join(test.directory, ".ottili-coder", "skill", "perm-skill")
       yield* Effect.promise(() =>
         Bun.write(
           path.join(skillDir, "SKILL.md"),
@@ -617,11 +656,11 @@ description: Permission skill.
         ),
       )
 
-      const home = process.env.OPENCODE_TEST_HOME
-      process.env.OPENCODE_TEST_HOME = test.directory
+      const home = process.env.OTTILI_CODER_TEST_HOME
+      process.env.OTTILI_CODER_TEST_HOME = test.directory
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => {
-          process.env.OPENCODE_TEST_HOME = home
+          process.env.OTTILI_CODER_TEST_HOME = home
         }),
       )
 
@@ -754,6 +793,8 @@ it.instance(
       agent: {
         build: { disable: true },
         plan: { disable: true },
+        debug: { disable: true },
+        ask: { disable: true },
       },
     },
   },

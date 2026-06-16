@@ -16,9 +16,9 @@ app
     openAPIRouteHandler(app, {
       documentation: {
         info: {
-          title: "Opencode Enterprise API",
+          title: "Ottili Coder Enterprise API",
           version: "1.0.0",
-          description: "Opencode Enterprise API endpoints",
+          description: "Ottili Coder Enterprise API endpoints",
         },
         openapi: "3.1.1",
       },

@@ -77,13 +77,13 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         current: undefined as string | undefined,
       })
       const colors = createMemo(() => [
-        theme.secondary,
+        theme.primary,
+        theme.info,
+        theme.error,
         theme.accent,
         theme.success,
         theme.warning,
-        theme.primary,
-        theme.error,
-        theme.info,
+        theme.secondary,
       ])
       return {
         list() {

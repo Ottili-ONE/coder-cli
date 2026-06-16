@@ -2,7 +2,9 @@ import { cmd } from "./cmd"
 import { Duration, Effect, Match, Option } from "effect"
 import { UI } from "../ui"
 import { Account } from "@/account/account"
+import { summarizeUsageLimits, usageBar } from "@/account/usage-limits"
 import { AccountID, OrgID, PollExpired, type PollResult, type AccountError } from "@/account/schema"
+import { defaultOttiliOneAuthUrl } from "@/account/ottili-one"
 import { effectCmd } from "../effect-cmd"
 import * as Prompt from "../effect/prompt"
 import open from "open"
@@ -13,9 +15,11 @@ const println = (msg: string) => Effect.sync(() => UI.println(msg))
 
 const dim = (value: string) => UI.Style.TEXT_DIM + value + UI.Style.TEXT_NORMAL
 
+const bold = (value: string) => UI.Style.TEXT_NORMAL_BOLD + value + UI.Style.TEXT_NORMAL
+
 const activeSuffix = (isActive: boolean) => (isActive ? dim(" (active)") : "")
 
-export const defaultConsoleUrl = "https://console.opencode.ai"
+export const defaultConsoleUrl = "https://console.ottili.one/coder"
 
 export const formatAccountLabel = (account: { email: string; url: string }, isActive: boolean) =>
   `${account.email} ${dim(account.url)}${activeSuffix(isActive)}`
@@ -37,6 +41,24 @@ const isActiveOrgChoice = (
   active: Option.Option<{ id: AccountID; active_org_id: OrgID | null }>,
   choice: { accountID: AccountID; orgID: OrgID },
 ) => Option.isSome(active) && active.value.id === choice.accountID && active.value.active_org_id === choice.orgID
+
+const ottiliOneLoginEffect = Effect.fn("ottiliOneLogin")(function* (authUrl?: string) {
+  const service = yield* Account.Service
+
+  yield* Prompt.intro("Sign in with Ottili")
+  yield* Prompt.log.info("Opening your browser to sign in to your Ottili ONE account...")
+  yield* Prompt.log.info(`Auth service: ${authUrl ?? defaultOttiliOneAuthUrl}`)
+
+  const s = Prompt.spinner()
+  yield* s.start("Waiting for authorization...")
+
+  const result = yield* service.loginOttiliOne(authUrl).pipe(
+    Effect.tapError(() => s.stop("Sign in failed", 1)),
+  )
+
+  yield* s.stop("Logged in as " + result.email)
+  yield* Prompt.outro("Signed in as " + result.email)
+})
 
 const loginEffect = Effect.fn("login")(function* (url: string) {
   const service = yield* Account.Service
@@ -174,6 +196,99 @@ const openEffect = Effect.fn("open")(function* () {
   yield* Prompt.outro("Opened " + url)
 })
 
+const usageEffect = Effect.fn("usage")(function* (includeAll = false) {
+  const service = yield* Account.Service
+  const data = yield* service.usageLimits({ includeAll })
+
+  yield* Prompt.intro("Usage Limits")
+
+  if (!data.loggedIn) {
+    yield* Prompt.log.info("Not signed in to Ottili ONE.")
+    yield* Prompt.log.info("Run: ottili-coder account login")
+    yield* Prompt.outro("Sign in required")
+    return
+  }
+
+  if (data.planName || data.planCode) {
+    yield* println(bold(data.planName ?? data.planCode ?? "Company plan"))
+  }
+  if (data.billingStatus) {
+    yield* println(dim(`Billing: ${data.billingStatus}`))
+  }
+  if (data.periodEnd) {
+    yield* println(dim(`Period ends: ${new Date(data.periodEnd).toLocaleDateString()}`))
+  }
+  if (data.message) {
+    yield* println(UI.Style.TEXT_WARNING + data.message + UI.Style.TEXT_NORMAL)
+  }
+
+  if (data.items.length) {
+    const summary = summarizeUsageLimits(data.items)
+    if (summary.finite > 0) {
+      yield* println(
+        dim(
+          `${summary.ok} healthy · ${summary.warning} near limit · ${summary.exceeded} exceeded · avg ${summary.avgPercent}%`,
+        ),
+      )
+    }
+  }
+
+  if (!data.items.length) {
+    yield* println("No usage limits returned for this plan yet.")
+  } else {
+    yield* println("")
+    for (const item of data.items) {
+      const tone =
+        item.status === "exceeded"
+          ? UI.Style.TEXT_DANGER
+          : item.status === "warning"
+            ? UI.Style.TEXT_WARNING
+            : UI.Style.TEXT_SUCCESS
+      yield* println(`${bold(item.label)}  ${tone}${item.status}${UI.Style.TEXT_NORMAL}`)
+      const value = item.unlimited
+        ? `${item.used.toLocaleString()} / ∞`
+        : item.limit == null
+          ? `${item.used.toLocaleString()}`
+          : `${item.used.toLocaleString()} / ${item.limit.toLocaleString()}`
+      yield* println(`  ${value}`)
+      if (!item.unlimited) {
+        yield* println(`  ${usageBar(item.percent, 20)} ${item.percent}%`)
+      }
+      yield* println("")
+    }
+  }
+
+  yield* println(dim(`Dashboard: ${data.dashboardUrl}`))
+  yield* Prompt.outro("Done")
+})
+
+export const UsageCommand = effectCmd({
+  command: "usage",
+  describe: "show Ottili ONE plan usage limits",
+  instance: false,
+  builder: (yargs) =>
+    yargs.boolean("all").describe("show all limits, including unused unlimited rows"),
+  handler: Effect.fn("Cli.account.usage")(function* (args) {
+    UI.empty()
+    yield* Effect.orDie(usageEffect(Boolean(args.all)))
+  }),
+})
+
+export const AccountLoginCommand = effectCmd({
+  command: "login [auth-url]",
+  describe: "sign in to your Ottili ONE account via browser",
+  instance: false,
+  builder: (yargs) =>
+    yargs.positional("auth-url", {
+      describe: "Ottili Auth base URL",
+      type: "string",
+    }),
+  handler: Effect.fn("Cli.account.ottili.login")(function* (args) {
+    UI.empty()
+    yield* Effect.orDie(ottiliOneLoginEffect(args["auth-url"]))
+  }),
+})
+
 export const LoginCommand = effectCmd({
   command: "login [url]",
   describe: false,
@@ -232,6 +347,33 @@ export const OpenCommand = effectCmd({
     UI.empty()
     yield* Effect.orDie(openEffect())
   }),
+})
+
+export const AccountCommand = cmd({
+  command: "account",
+  describe: "manage your Ottili ONE account",
+  builder: (yargs) =>
+    yargs
+      .command({
+        ...AccountLoginCommand,
+      })
+      .command({
+        ...LogoutCommand,
+        describe: "log out from Ottili ONE",
+      })
+      .command({
+        ...SwitchCommand,
+        describe: "switch active company",
+      })
+      .command({
+        ...OrgsCommand,
+        describe: "list companies",
+      })
+      .command({
+        ...UsageCommand,
+      })
+      .demandCommand(),
+  async handler() {},
 })
 
 export const ConsoleCommand = cmd({

@@ -138,9 +138,74 @@ type IssueQueryResponse = {
   }
 }
 
-const AGENT_USERNAME = "opencode-agent[bot]"
+// The GitHub App slug (github.com/apps/<slug>) and the published action ref are
+// deployment-specific, so they are env-configurable instead of hard-coded. Set
+// OTTILI_CODER_GITHUB_APP_SLUG to the real app slug and
+// OTTILI_CODER_GITHUB_ACTION_REF to override the published action repo ref.
+// The default points at the public Ottili Coder action.
+const APP_SLUG = process.env["OTTILI_CODER_GITHUB_APP_SLUG"]?.trim() || "ottili-coder"
+const APP_INSTALL_URL = `https://github.com/apps/${APP_SLUG}`
+const ACTION_REF =
+  process.env["OTTILI_CODER_GITHUB_ACTION_REF"]?.trim() || "Ottili-ONE/coder/.github/actions/ottili-coder@main"
+const AGENT_USERNAME = `${APP_SLUG}[bot]`
 const AGENT_REACTION = "eyes"
-const WORKFLOW_FILE = ".github/workflows/opencode.yml"
+const WORKFLOW_FILE = ".github/workflows/ottiliCoder.yml"
+
+// Live progress callback: the runner reports its todo completion to CodeHelm so
+// the dashboard advances tasks live. Authorization is a GitHub OIDC token, which
+// we mint fresh for each report (tokens are short-lived; a single one captured at
+// run start would expire mid-run). The OIDC request URL/token are provided by
+// GitHub to every step when the workflow has `permissions: id-token: write`.
+const PROGRESS_URL =
+  process.env["OTTILI_CODER_PROGRESS_URL"]?.trim() || "https://api.ottili.one/coder/progress"
+const PROGRESS_AUDIENCE = "api.ottili.one"
+
+let _oidcToken: { value: string; fetchedAt: number } | undefined
+
+/** Mint a fresh GitHub Actions OIDC token (cached ~2 min). Returns "" if unavailable. */
+async function freshOidcToken(): Promise<string> {
+  // Prefer an explicitly provided token (BYOK fallback / testing).
+  const provided = process.env["OTTILI_CODER_OIDC_TOKEN"]?.trim()
+  if (provided && provided.split(".").length === 3) return provided
+
+  const url = process.env["ACTIONS_ID_TOKEN_REQUEST_URL"]?.trim()
+  const reqToken = process.env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]?.trim()
+  if (!url || !reqToken) return ""
+
+  if (_oidcToken && Date.now() - _oidcToken.fetchedAt < 120_000) return _oidcToken.value
+  try {
+    const res = await fetch(`${url}&audience=${encodeURIComponent(PROGRESS_AUDIENCE)}`, {
+      headers: { Authorization: `bearer ${reqToken}`, "User-Agent": "ottili-coder-github-action/1.0" },
+      signal: AbortSignal.timeout(8000),
+    })
+    const data = (await res.json()) as { value?: string }
+    const value = (data.value ?? "").trim()
+    if (value.split(".").length === 3) {
+      _oidcToken = { value, fetchedAt: Date.now() }
+      return value
+    }
+  } catch {
+    // ignore — progress is best-effort
+  }
+  return ""
+}
+
+/** Fire-and-forget progress report (never blocks or fails the run). */
+async function reportProgress(completed: number, total: number, label?: string): Promise<void> {
+  if (total <= 0) return
+  try {
+    const token = await freshOidcToken()
+    if (!token) return
+    await fetch(PROGRESS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "ottili-coder-github-action/1.0" },
+      body: JSON.stringify({ oidc_token: token, completed, total, label }),
+      signal: AbortSignal.timeout(8000),
+    })
+  } catch {
+    // Progress is best-effort; a failed report must never affect the run.
+  }
+}
 
 // Event categories for routing
 // USER_EVENTS: triggered by user actions, have actor/issueId, support reactions/comments
@@ -200,7 +265,7 @@ export const githubInstall = Effect.fn("Cli.github.install")(function* () {
             "",
             "    3. Go to a GitHub issue and comment `/oc summarize` to see the agent in action",
             "",
-            "   Learn more about the GitHub agent - https://opencode.ai/docs/github/#usage-examples",
+            "   Learn more about the GitHub agent - https://ottili.one/coder/docs/github/#usage-examples",
           ].join("\n"),
         )
       }
@@ -226,7 +291,7 @@ export const githubInstall = Effect.fn("Cli.github.install")(function* () {
 
       async function promptProvider() {
         const priority: Record<string, number> = {
-          opencode: 0,
+          ottiliCoder: 0,
           anthropic: 1,
           openai: 2,
           google: 3,
@@ -284,7 +349,7 @@ export const githubInstall = Effect.fn("Cli.github.install")(function* () {
         if (installation) return s.stop("GitHub app already installed")
 
         // Open browser
-        const url = "https://github.com/apps/opencode-agent"
+        const url = APP_INSTALL_URL
         const command =
           process.platform === "darwin"
             ? `open "${url}"`
@@ -320,7 +385,7 @@ export const githubInstall = Effect.fn("Cli.github.install")(function* () {
         s.stop("Installed GitHub app")
 
         async function getInstallation() {
-          return await fetch(`https://api.opencode.ai/get_github_app_installation?owner=${app.owner}&repo=${app.repo}`)
+          return await fetch(`https://api.ottili.one/coder/get_github_app_installation?owner=${app.owner}&repo=${app.repo}`)
             .then((res) => res.json())
             .then((data) => data.installation)
         }
@@ -334,7 +399,7 @@ export const githubInstall = Effect.fn("Cli.github.install")(function* () {
 
         await Filesystem.write(
           path.join(app.root, WORKFLOW_FILE),
-          `name: opencode
+          `name: ottili-coder
 
 on:
   issue_comment:
@@ -343,12 +408,12 @@ on:
     types: [created]
 
 jobs:
-  opencode:
+  ottiliCoder:
     if: |
       contains(github.event.comment.body, ' /oc') ||
       startsWith(github.event.comment.body, '/oc') ||
-      contains(github.event.comment.body, ' /opencode') ||
-      startsWith(github.event.comment.body, '/opencode')
+      contains(github.event.comment.body, ' /ottili-coder') ||
+      startsWith(github.event.comment.body, '/ottili-coder')
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -361,8 +426,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run opencode
-        uses: anomalyco/opencode/github@latest${envStr}
+      - name: Run ottili-coder
+        uses: ${ACTION_REF}${envStr}
         with:
           model: ${provider}/${model}`,
         )
@@ -426,7 +491,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
         ? (payload as IssueCommentEvent | IssuesEvent).issue.number
         : (payload as PullRequestEvent | PullRequestReviewCommentEvent).pull_request.number
     const runUrl = `/${owner}/${repo}/actions/runs/${runId}`
-    const shareBaseUrl = isMock ? "https://dev.opencode.ai" : "https://opencode.ai"
+    const shareBaseUrl = isMock ? "https://dev.ottili.one/coder" : "https://ottili.one/coder"
 
     let appToken: string
     let octoRest: Octokit
@@ -494,7 +559,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
         await addReaction(commentType)
       }
 
-      // Setup opencode session
+      // Setup ottili-coder session
       const repoData = await fetchRepo()
       session = await runLocalEffect(
         sessionSvc.create({
@@ -514,7 +579,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
         await runLocalEffect(sessionShare.share(session.id))
         return session.id.slice(-8)
       })()
-      console.log("opencode session", session.id)
+      console.log("ottili-coder session", session.id)
 
       // Handle event types:
       // REPO_EVENTS (schedule, workflow_dispatch): no issue/PR context, output to logs/PR only
@@ -687,7 +752,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
 
     function normalizeOidcBaseUrl(): string {
       const value = process.env["OIDC_BASE_URL"]
-      if (!value) return "https://api.opencode.ai"
+      if (!value) return "https://api.ottili.one/coder"
       return value.replace(/\/+$/, "")
     }
 
@@ -736,7 +801,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
       }
 
       const reviewContext = getReviewCommentContext()
-      const mentions = (process.env["MENTIONS"] || "/opencode,/oc")
+      const mentions = (process.env["MENTIONS"] || "/ottiliCoder,/oc")
         .split(",")
         .map((m) => m.trim().toLowerCase())
         .filter(Boolean)
@@ -857,6 +922,21 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
                 : "Unknown"
             console.log()
             printEvent(color, tool, title)
+
+            // Live progress: when the agent updates its todo list, report how many
+            // todos are done so CodeHelm advances the dashboard tasks one-by-one.
+            if (part.tool === "todowrite") {
+              try {
+                const todos = (part.state.input as { todos?: Array<{ status?: string }> })?.todos ?? []
+                if (Array.isArray(todos) && todos.length > 0) {
+                  const done = todos.filter((t) => t?.status === "completed" || t?.status === "cancelled").length
+                  const current = todos.find((t) => t?.status === "in_progress") as { content?: string } | undefined
+                  void reportProgress(done, todos.length, current?.content)
+                }
+              } catch {
+                // never let progress reporting affect the run
+              }
+            }
           }
 
           if (part.type === "text") {
@@ -887,7 +967,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
     }
 
     async function chat(message: string, files: PromptFiles = []) {
-      console.log("Sending message to opencode...")
+      console.log("Sending message to ottiliCoder...")
 
       return runLocalEffect(
         Effect.gen(function* () {
@@ -975,7 +1055,7 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
 
     async function getOidcToken() {
       try {
-        return await core.getIDToken("opencode-github-action")
+        return await core.getIDToken("ottili-coder-github-action")
       } catch (error) {
         console.error("Failed to get OIDC token:", error instanceof Error ? error.message : error)
         throw new Error(
@@ -1076,9 +1156,9 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
         .join("")
       if (type === "schedule" || type === "dispatch") {
         const hex = crypto.randomUUID().slice(0, 6)
-        return `opencode/${type}-${hex}-${timestamp}`
+        return `ottili-coder/${type}-${hex}-${timestamp}`
       }
-      return `opencode/${type}${issueId}-${timestamp}`
+      return `ottili-coder/${type}${issueId}-${timestamp}`
     }
 
     async function pushToNewBranch(summary: string, branch: string, commit: boolean, isSchedule: boolean) {
@@ -1156,6 +1236,21 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
     async function assertPermissions() {
       // Only called for non-schedule events, so actor is defined
       console.log(`Asserting permissions for user ${actor}...`)
+
+      // The platform's own GitHub App bot is a trusted trigger source: only the
+      // backend (which holds the App private key) can make it post a `/oc`
+      // comment. App bots are not repo collaborators, so the collaborator API
+      // returns "none" and would otherwise block fully-automated runs. Allow the
+      // configured bot (and any extra trusted actors) to bypass the check.
+      const trusted = new Set(
+        [AGENT_USERNAME, ...(process.env["OTTILI_CODER_TRUSTED_ACTORS"]?.split(",") ?? [])]
+          .map((name) => name.trim().toLowerCase())
+          .filter(Boolean),
+      )
+      if (actor && trusted.has(actor.toLowerCase())) {
+        console.log(`  trusted automation actor (${actor}), skipping collaborator check`)
+        return
+      }
 
       let permission
       try {
@@ -1350,9 +1445,9 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
         const titleAlt = encodeURIComponent(session.title.substring(0, 50))
         const title64 = Buffer.from(session.title.substring(0, 700), "utf8").toString("base64")
 
-        return `<a href="${shareBaseUrl}/s/${shareId}"><img width="200" alt="${titleAlt}" src="https://social-cards.sst.dev/opencode-share/${title64}.png?model=${providerID}/${modelID}&version=${session.version}&id=${shareId}" /></a>\n`
+        return `<a href="${shareBaseUrl}/s/${shareId}"><img width="200" alt="${titleAlt}" src="https://social-cards.sst.dev/ottili-coder-share/${title64}.png?model=${providerID}/${modelID}&version=${session.version}&id=${shareId}" /></a>\n`
       })()
-      const shareUrl = shareId ? `[opencode session](${shareBaseUrl}/s/${shareId})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
+      const shareUrl = shareId ? `[ottili-coder session](${shareBaseUrl}/s/${shareId})&nbsp;&nbsp;|&nbsp;&nbsp;` : ""
       return `\n\n${image}${shareUrl}[github run](${runUrl})`
     }
 
@@ -1413,7 +1508,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
       return [
         "<github_action_context>",
         "You are running as a GitHub Action. Important:",
-        "- Git push and PR creation are handled AUTOMATICALLY by the opencode infrastructure after your response",
+        "- Git push and PR creation are handled AUTOMATICALLY by the ottili-coder infrastructure after your response",
         "- Do NOT include warnings or disclaimers about GitHub tokens, workflow permissions, or PR creation capabilities",
         "- Do NOT suggest manual steps for creating PRs or pushing code - this happens automatically",
         "- Focus only on the code changes and your analysis/response",
@@ -1551,7 +1646,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
       return [
         "<github_action_context>",
         "You are running as a GitHub Action. Important:",
-        "- Git push and PR creation are handled AUTOMATICALLY by the opencode infrastructure after your response",
+        "- Git push and PR creation are handled AUTOMATICALLY by the ottili-coder infrastructure after your response",
         "- Do NOT include warnings or disclaimers about GitHub tokens, workflow permissions, or PR creation capabilities",
         "- Do NOT suggest manual steps for creating PRs or pushing code - this happens automatically",
         "- Focus only on the code changes and your analysis/response",

@@ -17,7 +17,7 @@ export class SessionLocationMiddleware extends HttpApiMiddleware.Service<
   {
     provides: LocationServices
   }
->()("@opencode/HttpApiSessionLocation", {
+>()("@opencode-ai/HttpApiSessionLocation", {
   error: [InvalidRequestError, SessionNotFoundError],
 }) {}
 

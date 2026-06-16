@@ -1,33 +1,33 @@
 ---
 title: GitLab
-description: Bruk opencode i GitLab-problemer og Merge Requests.
+description: Bruk ottili-coder i GitLab-problemer og Merge Requests.
 ---
 
-OpenCode integreres med GitLab arbeidsflyten gjennom GitLab CI/CD pipeline eller med GitLab Duo.
+Ottili Coder integreres med GitLab arbeidsflyten gjennom GitLab CI/CD pipeline eller med GitLab Duo.
 
-I begge tilfeller vil OpenCode kjøre på GitLab Runners.
+I begge tilfeller vil Ottili Coder kjøre på GitLab Runners.
 
 ---
 
 ## GitLab CI
 
-OpenCode fungerer i en vanlig GitLab-pipeline. Du kan bygge den inn i en pipeline som en [CI-komponent](https://docs.gitlab.com/ee/ci/components/)
+Ottili Coder fungerer i en vanlig GitLab-pipeline. Du kan bygge den inn i en pipeline som en [CI-komponent](https://docs.gitlab.com/ee/ci/components/)
 
-Her bruker vi en fellesskapsskapt CI/CD-komponent for OpenCode — [nagyv/gitlab-opencode](https://gitlab.com/nagyv/gitlab-opencode).
+Her bruker vi en fellesskapsskapt CI/CD-komponent for Ottili Coder — [nagyv/gitlab-opencode](https://gitlab.com/nagyv/gitlab-opencode).
 
 ---
 
 ### Funksjoner
 
-- **Bruk tilpasset konfigurasjon per jobb**: Konfigurer OpenCode med en tilpasset konfigurasjonskatalog, for eksempel `./config/#custom-directory` for å aktivere eller deaktivere funksjonalitet per OpenCode-anrop.
-- **Minimalt oppsett**: CI-komponenten setter opp OpenCode i bakgrunnen, du trenger bare å lage OpenCode-konfigurasjonen og den første ledeteksten.
+- **Bruk tilpasset konfigurasjon per jobb**: Konfigurer Ottili Coder med en tilpasset konfigurasjonskatalog, for eksempel `./config/#custom-directory` for å aktivere eller deaktivere funksjonalitet per Ottili Coder-anrop.
+- **Minimalt oppsett**: CI-komponenten setter opp Ottili Coder i bakgrunnen, du trenger bare å lage Ottili Coder-konfigurasjonen og den første ledeteksten.
 - **Fleksibel**: CI-komponenten støtter flere innganger for å tilpasse virkemåten
 
 ---
 
 ### Oppsett
 
-1. Lagre OpenCode sin autentiserings-JSON som en CI-miljøvariabel av typen Fil under **Innstillinger** > **CI/CD** > **Variabler**. Sørg for å merke dem som "Masked and hidden".
+1. Lagre Ottili Coder sin autentiserings-JSON som en CI-miljøvariabel av typen Fil under **Innstillinger** > **CI/CD** > **Variabler**. Sørg for å merke dem som "Masked and hidden".
 2. Legg til følgende i `.gitlab-ci.yml`-filen.
 
    ```yaml title=".gitlab-ci.yml"
@@ -35,7 +35,7 @@ Her bruker vi en fellesskapsskapt CI/CD-komponent for OpenCode — [nagyv/gitlab
      - component: $CI_SERVER_FQDN/nagyv/gitlab-opencode/opencode@2
        inputs:
          config_dir: ${CI_PROJECT_DIR}/opencode-config
-         auth_json: $OPENCODE_AUTH_JSON # The variable name for your OpenCode authentication JSON
+         auth_json: $OTTILI_CODER_AUTH_JSON # The variable name for your Ottili Coder authentication JSON
          command: optional-custom-command
          message: "Your prompt here"
    ```
@@ -46,23 +46,23 @@ For flere inndata og brukstilfeller [sjekk ut dokumentene](https://gitlab.com/ex
 
 ## GitLab Duo
 
-OpenCode integreres med din GitLab arbeidsflyt.
-Nevn `@opencode` i en kommentar, og OpenCode vil utføre oppgaver innenfor din GitLab CI-pipeline.
+Ottili Coder integreres med din GitLab arbeidsflyt.
+Nevn `@ottili-coder` i en kommentar, og Ottili Coder vil utføre oppgaver innenfor din GitLab CI-pipeline.
 
 ---
 
 ### Funksjoner
 
-- **Triage av saker**: Be OpenCode se på en sak og forklare den for deg.
-- **Fiks og implementer**: Be OpenCode om å fikse en sak eller implementere en funksjon.
+- **Triage av saker**: Be Ottili Coder se på en sak og forklare den for deg.
+- **Fiks og implementer**: Be Ottili Coder om å fikse en sak eller implementere en funksjon.
   Det vil opprette en ny gren og sende en Merge Request med endringene.
-- **Sikkert**: OpenCode kjører på GitLab Runners.
+- **Sikkert**: Ottili Coder kjører på GitLab Runners.
 
 ---
 
 ### Oppsett
 
-OpenCode kjører i GitLab CI/CD pipeline, her er det du trenger for å sette den opp:
+Ottili Coder kjører i GitLab CI/CD pipeline, her er det du trenger for å sette den opp:
 
 :::tip
 Sjekk ut [**GitLab-dokumentene**](https://docs.gitlab.com/user/duo_agent_platform/agent_assistant/) for oppdaterte instruksjoner.
@@ -82,7 +82,7 @@ Sjekk ut [**GitLab-dokumentene**](https://docs.gitlab.com/user/duo_agent_platfor
     ```yaml
     image: node:22-slim
     commands:
-      - echo "Installing opencode"
+      - echo "Installing ottili-coder"
       - npm install --global opencode-ai
       - echo "Installing glab"
       - export GITLAB_TOKEN=$GITLAB_TOKEN_OPENCODE
@@ -91,10 +91,10 @@ Sjekk ut [**GitLab-dokumentene**](https://docs.gitlab.com/user/duo_agent_platfor
       - apt-get install --yes glab
       - echo "Configuring glab"
       - echo $GITLAB_HOST
-      - echo "Creating OpenCode auth configuration"
-      - mkdir --parents ~/.local/share/opencode
+      - echo "Creating Ottili Coder auth configuration"
+      - mkdir --parents ~/.local/share/ottili-coder
       - |
-        cat > ~/.local/share/opencode/auth.json << EOF
+        cat > ~/.local/share/ottili-coder/auth.json << EOF
         {
           "anthropic": {
             "type": "api",
@@ -103,13 +103,13 @@ Sjekk ut [**GitLab-dokumentene**](https://docs.gitlab.com/user/duo_agent_platfor
         }
         EOF
       - echo "Configuring git"
-      - git config --global user.email "opencode@gitlab.com"
-      - git config --global user.name "OpenCode"
+      - git config --global user.email "ottili-coder@gitlab.com"
+      - git config --global user.name "Ottili Coder"
       - echo "Testing glab"
       - glab issue list
-      - echo "Running OpenCode"
+      - echo "Running Ottili Coder"
       - |
-        opencode run "
+        ottili-coder run "
         You are an AI assistant helping with GitLab operations.
 
         Context: $AI_FLOW_CONTEXT
@@ -158,10 +158,10 @@ Du kan se [GitLab CLI agents docs](https://docs.gitlab.com/user/duo_agent_platfo
 
 ### Eksempler
 
-Her er noen eksempler på hvordan du kan bruke OpenCode i GitLab.
+Her er noen eksempler på hvordan du kan bruke Ottili Coder i GitLab.
 
 :::tip
-Du kan konfigurere til å bruke en annen triggerfrase enn `@opencode`.
+Du kan konfigurere til å bruke en annen triggerfrase enn `@ottili-coder`.
 :::
 
 - **Forklar en sak**
@@ -169,27 +169,27 @@ Du kan konfigurere til å bruke en annen triggerfrase enn `@opencode`.
   Legg til denne kommentaren i en GitLab-sak.
 
   ```
-  @opencode explain this issue
+  @ottili-coder explain this issue
   ```
 
-  OpenCode vil lese saken og svare med en klar forklaring.
+  Ottili Coder vil lese saken og svare med en klar forklaring.
 
 - **Fiks en sak**
 
   I en GitLab-sak, si:
 
   ```
-  @opencode fix this
+  @ottili-coder fix this
   ```
 
-  OpenCode vil opprette en ny gren, implementere endringene og åpne en Merge Request med endringene.
+  Ottili Coder vil opprette en ny gren, implementere endringene og åpne en Merge Request med endringene.
 
 - **Review av Merge Requests**
 
   Legg igjen følgende kommentar på en GitLab Merge Request.
 
   ```
-  @opencode review this merge request
+  @ottili-coder review this merge request
   ```
 
-  OpenCode vil gjennomgå Merge Request-en og gi tilbakemelding.
+  Ottili Coder vil gjennomgå Merge Request-en og gi tilbakemelding.

@@ -8,14 +8,14 @@ import { tmpdir } from "./fixture/fixture"
 
 test("addTheme writes into module theme store", () => {
   const name = `plugin-theme-${Date.now()}`
-  expect(addTheme(name, DEFAULT_THEMES.opencode)).toBe(true)
+  expect(addTheme(name, DEFAULT_THEMES.ottiliCoder)).toBe(true)
   expect(allThemes()[name]).toBeDefined()
 })
 
 test("addTheme keeps first theme for duplicate names", () => {
   const name = `plugin-theme-keep-${Date.now()}`
-  const one = structuredClone(DEFAULT_THEMES.opencode)
-  const two = structuredClone(DEFAULT_THEMES.opencode)
+  const one = structuredClone(DEFAULT_THEMES.ottiliCoder)
+  const two = structuredClone(DEFAULT_THEMES.ottiliCoder)
   one.theme.primary = "#101010"
   two.theme.primary = "#fefefe"
 
@@ -33,12 +33,12 @@ test("addTheme ignores entries without a theme object", () => {
 test("hasTheme checks theme presence", () => {
   const name = `plugin-theme-has-${Date.now()}`
   expect(hasTheme(name)).toBe(false)
-  expect(addTheme(name, DEFAULT_THEMES.opencode)).toBe(true)
+  expect(addTheme(name, DEFAULT_THEMES.ottiliCoder)).toBe(true)
   expect(hasTheme(name)).toBe(true)
 })
 
 test("resolveTheme rejects circular color refs", () => {
-  const item = structuredClone(DEFAULT_THEMES.opencode)
+  const item = structuredClone(DEFAULT_THEMES.ottiliCoder)
   item.defs = { ...item.defs, one: "two", two: "one" }
   item.theme.primary = "one"
   expect(() => resolveTheme(item, "dark")).toThrow("Circular color reference")
@@ -66,6 +66,31 @@ test("terminalMode derives mode from refreshed background", () => {
 
 test("terminalMode does not derive mode from ANSI slot zero", () => {
   expect(terminalMode(terminalColors(null, ["#000000"]))).toBeUndefined()
+})
+
+function rgbaHex(color: { toInts: () => [number, number, number, number] }) {
+  const [r, g, b] = color.toInts()
+  return `#${[r, g, b].map((value) => value.toString(16).padStart(2, "0")).join("")}`
+}
+
+test("resolveTheme resolves ottiliCoder light palette", () => {
+  const dark = resolveTheme(DEFAULT_THEMES.ottiliCoder, "dark")
+  const light = resolveTheme(DEFAULT_THEMES.ottiliCoder, "light")
+
+  expect(rgbaHex(dark.background)).not.toBe(rgbaHex(light.background))
+  expect(rgbaHex(light.primary)).toBe("#f97316")
+  expect(rgbaHex(light.background)).toBe("#fafaf9")
+  expect(rgbaHex(light.text)).toBe("#1c1917")
+})
+
+test("resolveTheme uses mode-specific diff backgrounds", () => {
+  const dark = resolveTheme(DEFAULT_THEMES.ottiliCoder, "dark")
+  const light = resolveTheme(DEFAULT_THEMES.ottiliCoder, "light")
+
+  expect(rgbaHex(dark.diffAddedBg)).toBe("#1a241c")
+  expect(rgbaHex(light.diffAddedBg)).toBe("#e7f5eb")
+  expect(rgbaHex(dark.diffRemovedBg)).toBe("#2a1a1c")
+  expect(rgbaHex(light.diffRemovedBg)).toBe("#fce8ea")
 })
 
 test("custom theme precedence follows directory order", async () => {

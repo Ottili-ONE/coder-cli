@@ -1,10 +1,11 @@
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import type { Agent } from "../../src/agent/agent"
 import { NamedError } from "@opencode-ai/core/util/error"
 import { Skill } from "../../src/skill"
 import { Permission } from "../../src/permission"
-import { SystemPrompt } from "../../src/session/system"
+import { SystemPrompt, corePrompt } from "../../src/session/system"
+import { sessionToolCatalog } from "../../src/session/capabilities"
 import { LocationServiceMap } from "@opencode-ai/core/location-layer"
 import { testEffect } from "../lib/effect"
 
@@ -83,4 +84,27 @@ describe("session.system", () => {
       expect(output).not.toContain("manual-skill")
     }),
   )
+
+  test("corePrompt includes product context for primary agents", () => {
+    const prompt = corePrompt(build)
+    expect(prompt).toHaveLength(4)
+    expect(prompt[0]).toContain("Ottili Coder")
+    expect(prompt[0]).toContain("current working directory")
+    expect(prompt[1]).toContain("Tooling overview")
+    expect(prompt[2]).toContain("Playwright")
+    expect(prompt[3]).toContain("Endurance")
+    expect(corePrompt({ ...build, hidden: true })).toEqual([])
+    expect(corePrompt({ ...build, mode: "subagent" })).toEqual([])
+  })
+
+  test("sessionToolCatalog lists enabled tools", () => {
+    const catalog = sessionToolCatalog({
+      read: { description: "- Read files", parameters: {}, execute: async () => ({}) },
+      websearch: { description: "- Search the web", parameters: {}, execute: async () => ({}) },
+      task: { description: "- Launch subagents", parameters: {}, execute: async () => ({}) },
+    })
+    expect(catalog).toContain("<available_tools>")
+    expect(catalog).toContain("websearch")
+    expect(catalog).toContain("task")
+  })
 })

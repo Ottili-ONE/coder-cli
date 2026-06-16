@@ -1,0 +1,98 @@
+# Ottili Coder — drop this into your target repo at:
+#   .github/workflows/ottili-coder.yml
+#
+# Trigger it by commenting "/oc <task>" (or "/ottili-coder <task>") on any issue
+# or PR. The runner downloads the CLI from ottili.one/coder/install, runs the
+# agent, and opens a PR.
+#
+# ─── Choose your tier ──────────────────────────────────────────────────────
+#
+# MANAGED PLAN (recommended — zero secrets needed):
+#   The platform provides the model key. Your workflow uses the GitHub OIDC
+#   token to authenticate to api.ottili.one/coder/token, which returns
+#   short-lived credentials for the platform's AI provider.
+#   Prerequisites:
+#     1. Install the GitHub App: https://github.com/apps/ottili-coder
+#     2. Connect the repo in your CodeHelm workspace (dashboard → Repositories)
+#     3. Set workspace plan to "managed" (dashboard → Settings → Plan)
+#     No API key secret is needed.
+#
+# BYOK (Bring Your Own Key):
+#   You configure your own provider API key as a GitHub Actions secret.
+#   Any model supported by the CLI can be used. Not metered by the platform.
+#   Prerequisites:
+#     1. Install the GitHub App: https://github.com/apps/ottili-coder
+#     2. Add a repo/org Actions secret with your provider key (see below).
+#
+# ───────────────────────────────────────────────────────────────────────────
+name: ottili-coder
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  ottili-coder:
+    # Only run when the trigger phrase is in the comment.
+    if: >
+      ${{ contains(github.event.comment.body, '/ottili-coder') ||
+          contains(github.event.comment.body, '/oc') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      # Required for managed-plan OIDC token exchange:
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      # ── OPTION A: Managed plan (no provider secret required) ──────────────
+      - name: Run ottili-coder (managed plan)
+        uses: Ottili-ONE/coder/.github/actions/ottili-coder@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OTTILI_CODER_INSTALL_URL: https://ottili.one/coder/install
+        with:
+          # The platform picks the default managed model (google/gemini-2.5-flash).
+          # Override with any model on the managed allowlist, e.g.:
+          #   model: google/gemini-2.5-pro
+          model: openrouter/openai/gpt-5.4-mini
+          use_platform_broker: "true"
+          use_github_token: "true"
+
+      # ── OPTION B: BYOK — Gemini ───────────────────────────────────────────
+      # - name: Run ottili-coder (BYOK Gemini)
+      #   uses: Ottili-ONE/coder/.github/actions/ottili-coder@main
+      #   env:
+      #     GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     OTTILI_CODER_INSTALL_URL: https://ottili.one/coder/install
+      #   with:
+      #     model: openrouter/openai/gpt-5.4-mini
+      #     use_github_token: "true"
+
+      # ── OPTION C: BYOK — Anthropic ────────────────────────────────────────
+      # - name: Run ottili-coder (BYOK Anthropic)
+      #   uses: Ottili-ONE/coder/.github/actions/ottili-coder@main
+      #   env:
+      #     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     OTTILI_CODER_INSTALL_URL: https://ottili.one/coder/install
+      #   with:
+      #     model: anthropic/claude-sonnet-4-5
+      #     use_github_token: "true"
+
+      # ── OPTION D: BYOK — OpenRouter (access 100+ models) ─────────────────
+      # - name: Run ottili-coder (BYOK OpenRouter)
+      #   uses: Ottili-ONE/coder/.github/actions/ottili-coder@main
+      #   env:
+      #     OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     OTTILI_CODER_INSTALL_URL: https://ottili.one/coder/install
+      #   with:
+      #     model: openrouter/anthropic/claude-sonnet-latest
+      #     use_github_token: "true"

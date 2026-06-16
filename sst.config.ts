@@ -3,7 +3,7 @@
 export default $config({
   app(input) {
     return {
-      name: "opencode",
+      name: "ottili-coder",
       removal: input?.stage === "production" ? "retain" : "remove",
       protect: ["production"].includes(input?.stage),
       home: "cloudflare",
@@ -14,8 +14,8 @@ export default $config({
           profile: process.env.GITHUB_ACTIONS
             ? undefined
             : input.stage === "production"
-              ? "opencode-production"
-              : "opencode-dev",
+              ? "ottili-coder-production"
+              : "ottili-coder-dev",
         },
         stripe: {
           version: "0.0.28",

@@ -3,10 +3,20 @@ import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, Show } from "solid-js"
 import { Tips } from "./tips-view"
 import { useBindings } from "../../keymap"
+import { useTerminalDimensions } from "@opentui/solid"
+import { useTuiConfig } from "../../config"
 
 const id = "internal:home-tips"
 
 function View(props: { api: TuiPluginApi; hidden: boolean; show: boolean; connected: boolean }) {
+  const dimensions = useTerminalDimensions()
+  const tuiConfig = useTuiConfig()
+  const contentMaxWidth = createMemo(() => {
+    const configured = tuiConfig.prompt?.max_width
+    if (configured === "auto") return Math.max(75, Math.floor(dimensions().width * 0.7))
+    return configured ?? 75
+  })
+
   useBindings(() => ({
     commands: [
       {
@@ -24,7 +34,7 @@ function View(props: { api: TuiPluginApi; hidden: boolean; show: boolean; connec
   }))
 
   return (
-    <box width="100%" maxWidth={75} alignItems="center" paddingTop={3} flexShrink={1}>
+    <box width="100%" maxWidth={contentMaxWidth()} alignItems="stretch" paddingTop={1} flexShrink={1}>
       <Show when={props.show}>
         <Tips api={props.api} connected={props.connected} />
       </Show>
@@ -41,10 +51,10 @@ const tui: TuiPlugin = async (api) => {
         const first = createMemo(() => api.state.session.count() === 0)
         const connected = createMemo(() =>
           api.state.provider.some(
-            (item) => item.id !== "opencode" || Object.values(item.models).some((model) => model.cost?.input !== 0),
+            (item) => item.id !== "ottili-coder" || Object.values(item.models).some((model) => model.cost?.input !== 0),
           ),
         )
-        const show = createMemo(() => (!first() || !connected()) && !hidden())
+        const show = createMemo(() => !first() && !hidden())
         return <View api={api} hidden={hidden()} show={show()} connected={connected()} />
       },
     },

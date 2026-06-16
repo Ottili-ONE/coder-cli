@@ -127,7 +127,7 @@ export interface Interface {
   readonly removeSandbox: (id: ProjectV2.ID, directory: string) => Effect.Effect<void>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/Project") {}
+export class Service extends Context.Service<Service, Interface>()("@opencode-ai/Project") {}
 
 type GitResult = { code: number; text: string; stderr: string }
 
@@ -168,7 +168,7 @@ export const layer = Layer.effect(
         }),
       )
 
-    const fakeVcs = Schema.decodeUnknownSync(Schema.optional(ProjectVcs))(Flag.OPENCODE_FAKE_VCS)
+    const fakeVcs = Schema.decodeUnknownSync(Schema.optional(ProjectVcs))(Flag.OTTILI_CODER_FAKE_VCS)
 
     const scope = yield* Scope.Scope
 

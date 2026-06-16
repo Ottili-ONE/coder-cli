@@ -24,19 +24,19 @@ export const directories = Effect.fn("ConfigPaths.directories")(function* (direc
   const afs = yield* FSUtil.Service
   return unique([
     Global.Path.config,
-    ...(!Flag.OPENCODE_DISABLE_PROJECT_CONFIG
+    ...(!Flag.OTTILI_CODER_DISABLE_PROJECT_CONFIG
       ? yield* afs.up({
-          targets: [".opencode"],
+          targets: [".ottili-coder"],
           start: directory,
           stop: worktree,
         })
       : []),
     ...(yield* afs.up({
-      targets: [".opencode"],
+      targets: [".ottili-coder"],
       start: Global.Path.home,
       stop: Global.Path.home,
     })),
-    ...(Flag.OPENCODE_CONFIG_DIR ? [Flag.OPENCODE_CONFIG_DIR] : []),
+    ...(Flag.OTTILI_CODER_CONFIG_DIR ? [Flag.OTTILI_CODER_CONFIG_DIR] : []),
   ])
 })
 

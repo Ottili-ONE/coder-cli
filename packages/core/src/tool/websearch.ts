@@ -63,17 +63,17 @@ export interface Config {
   readonly parallelApiKey?: string
 }
 
-export class ConfigService extends Context.Service<ConfigService, Config>()("@opencode/v2/WebSearchConfig") {}
+export class ConfigService extends Context.Service<ConfigService, Config>()("@opencode-ai/v2/WebSearchConfig") {}
 
 /** Isolates the retained product environment contract from the generic tool implementation. */
 export const defaultConfigLayer = Layer.sync(ConfigService, () =>
   ConfigService.of({
     provider:
-      process.env.OPENCODE_WEBSEARCH_PROVIDER === "exa" || process.env.OPENCODE_WEBSEARCH_PROVIDER === "parallel"
-        ? process.env.OPENCODE_WEBSEARCH_PROVIDER
+      process.env.OTTILI_CODER_WEBSEARCH_PROVIDER === "exa" || process.env.OTTILI_CODER_WEBSEARCH_PROVIDER === "parallel"
+        ? process.env.OTTILI_CODER_WEBSEARCH_PROVIDER
         : undefined,
-    enableExa: truthy("OPENCODE_EXPERIMENTAL") || truthy("OPENCODE_ENABLE_EXA") || truthy("OPENCODE_EXPERIMENTAL_EXA"),
-    enableParallel: truthy("OPENCODE_ENABLE_PARALLEL") || truthy("OPENCODE_EXPERIMENTAL_PARALLEL"),
+    enableExa: truthy("OTTILI_CODER_EXPERIMENTAL") || truthy("OTTILI_CODER_ENABLE_EXA") || truthy("OTTILI_CODER_EXPERIMENTAL_EXA"),
+    enableParallel: truthy("OTTILI_CODER_ENABLE_PARALLEL") || truthy("OTTILI_CODER_EXPERIMENTAL_PARALLEL"),
     exaApiKey: process.env.EXA_API_KEY,
     parallelApiKey: process.env.PARALLEL_API_KEY,
   }),
@@ -229,7 +229,7 @@ export const layer = Layer.effectDiscard(
                         // V2 invocation context does not safely expose the model yet.
                       },
                       {
-                        "User-Agent": `opencode/${InstallationVersion}`,
+                        "User-Agent": `ottili-coder/${InstallationVersion}`,
                         ...(config.parallelApiKey ? { Authorization: `Bearer ${config.parallelApiKey}` } : {}),
                       },
                     )

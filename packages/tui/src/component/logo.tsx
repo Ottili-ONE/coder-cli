@@ -1,6 +1,6 @@
 import { BoxRenderable, MouseButton, MouseEvent, RGBA, TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
-import { For, createMemo, createSignal, onCleanup, onMount, type JSX } from "solid-js"
+import { For, Show, createMemo, createSignal, onCleanup, onMount, type JSX } from "solid-js"
 import { useTheme, tint } from "../context/theme"
 import { go, logo } from "../logo"
 
@@ -857,20 +857,22 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
         {(line, index) => (
           <box flexDirection="row" gap={1}>
             <box flexDirection="row">
-              {renderLine(line, index(), props.ink ?? theme.textMuted, !!props.ink, 0, frame(), dusk(), idleState())}
+              {renderLine(line, index(), props.ink ?? tint(theme.text, theme.primary, 0.42), !!props.ink, 0, frame(), dusk(), idleState())}
             </box>
-            <box flexDirection="row">
-              {renderLine(
-                ctx.shape.right[index()],
-                index(),
-                props.ink ?? theme.text,
-                true,
-                ctx.LEFT + GAP,
-                frame(),
-                dusk(),
-                idleState(),
-              )}
-            </box>
+            <Show when={(ctx.shape.right[index()] ?? "").length > 0}>
+              <box flexDirection="row">
+                {renderLine(
+                  ctx.shape.right[index()] ?? "",
+                  index(),
+                  props.ink ?? theme.text,
+                  true,
+                  ctx.LEFT + GAP,
+                  frame(),
+                  dusk(),
+                  idleState(),
+                )}
+              </box>
+            </Show>
           </box>
         )}
       </For>

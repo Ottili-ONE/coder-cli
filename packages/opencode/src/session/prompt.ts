@@ -9,11 +9,14 @@ import { SessionRevert } from "./revert"
 import { Session } from "./session"
 import { Agent } from "../agent/agent"
 import { Provider } from "@/provider/provider"
+import * as OttiliAuto from "@/provider/ottili-auto"
+import { OTTILI_AUTO_TARGETS } from "@/provider/ottili-auto/constants"
 
 import { type Tool as AITool, tool, jsonSchema } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
-import { SystemPrompt } from "./system"
+import { SystemPrompt, corePrompt } from "./system"
+import { Capabilities } from "./capabilities"
 import { Instruction } from "./instruction"
 import { Plugin } from "../plugin"
 import MAX_STEPS from "../session/prompt/max-steps.txt"
@@ -92,7 +95,7 @@ export interface Interface {
   readonly resolvePromptParts: (template: string) => Effect.Effect<PromptInput["parts"]>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/SessionPrompt") {}
+export class Service extends Context.Service<Service, Interface>()("@opencode-ai/SessionPrompt") {}
 
 export const layer = Layer.effect(
   Service,
@@ -199,10 +202,24 @@ export const layer = Layer.effect(
 
       const ag = yield* agents.get("title")
       if (!ag) return
+
+      let titleProviderID = input.providerID
+      let titleModelID = input.modelID
+      if (OttiliAuto.isOttiliAutoModel(titleProviderID, titleModelID)) {
+        const userText = OttiliAuto.extractLatestUserText(context)
+        const resolved = OttiliAuto.resolveExecutionTargetSync({
+          agent: firstInfo.agent,
+          userText: onlySubtasks ? subtasks.map((p) => p.prompt).join("\n") : userText,
+          assistantText: "",
+        })
+        titleProviderID = resolved.providerID
+        titleModelID = resolved.modelID
+      }
+
       const mdl = ag.model
         ? yield* provider.getModel(ag.model.providerID, ag.model.modelID)
-        : ((yield* provider.getSmallModel(input.providerID)) ??
-          (yield* provider.getModel(input.providerID, input.modelID)))
+        : ((yield* provider.getSmallModel(titleProviderID)) ??
+          (yield* provider.getModel(titleProviderID, titleModelID)))
       const msgs = onlySubtasks
         ? [{ role: "user" as const, content: subtasks.map((p) => p.prompt).join("\n") }]
         : yield* MessageV2.toModelMessagesEffect(context, mdl)
@@ -610,6 +627,129 @@ export const layer = Layer.effect(
         })
       }
       return yield* Effect.die(err)
+    })
+
+    const resolveTurnModel = Effect.fn("SessionPrompt.resolveTurnModel")(function* (input: {
+      providerID: ProviderV2.ID
+      modelID: ModelV2.ID
+      sessionID: SessionID
+      agent: string
+      messages: SessionV1.WithParts[]
+    }) {
+      if (!OttiliAuto.isOttiliAutoModel(input.providerID, input.modelID)) {
+        return {
+          model: yield* getModel(input.providerID, input.modelID, input.sessionID),
+        }
+      }
+
+      const routeInput = {
+        agent: input.agent,
+        userText: OttiliAuto.extractLatestUserText(input.messages),
+        assistantText: OttiliAuto.extractLatestAssistantText(input.messages),
+      }
+      const lastUser = input.messages.findLast((message) => message.info.role === "user")
+
+      const publishSynthetic = Effect.fn("SessionPrompt.publishAutoSynthetic")(function* (text: string) {
+        if (lastUser) {
+          yield* sessions.updatePart({
+            id: PartID.ascending(),
+            messageID: lastUser.info.id,
+            sessionID: input.sessionID,
+            type: "text",
+            text,
+            synthetic: true,
+          })
+        }
+        if (flags.experimentalEventSystem) {
+          yield* events.publish(SessionEvent.Synthetic, {
+            sessionID: input.sessionID,
+            messageID: SessionMessage.ID.create(),
+            timestamp: DateTime.makeUnsafe(Date.now()),
+            text,
+          })
+        }
+      })
+
+      yield* publishSynthetic("Ottili Auto wählt Modell…")
+
+      const autoProvider = yield* provider.getProvider(ProviderV2.ID.make("ottili-auto")).pipe(
+        Effect.catchAll(() => Effect.succeed(undefined)),
+      )
+
+      const autoRoute = yield* Effect.tryPromise({
+        try: () =>
+          OttiliAuto.route(routeInput, {
+            apiKey: autoProvider?.key ?? OttiliAuto.resolveOpenRouterApiKey(),
+          }),
+        catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+      }).pipe(
+        Effect.catchAll((error) =>
+          Effect.sync(() => OttiliAuto.ruleBasedRoute(routeInput)).pipe(
+            Effect.tap(() =>
+              Effect.logWarning("ottili-auto router failed, using rule fallback", {
+                error: error.message,
+              }),
+            ),
+          ),
+        ),
+      )
+
+      yield* Effect.logInfo("ottili-auto routed", {
+        selected: `${autoRoute.providerID}/${autoRoute.modelID}`,
+        model: autoRoute.model,
+        reason: autoRoute.reason,
+        confidence: autoRoute.confidence,
+        routerCost: autoRoute.routerCost,
+        routerSource: autoRoute.routerSource,
+      })
+
+      yield* publishSynthetic(OttiliAuto.formatRouteAnnouncement(autoRoute))
+
+      if (flags.experimentalEventSystem) {
+        yield* events.publish(SessionEvent.ModelSwitched, {
+          sessionID: input.sessionID,
+          messageID: SessionMessage.ID.create(),
+          timestamp: DateTime.makeUnsafe(Date.now()),
+          model: {
+            id: autoRoute.modelID,
+            providerID: autoRoute.providerID,
+            variant: ModelV2.VariantID.make("default"),
+          },
+        })
+      }
+
+      const tryModel = (providerID: ProviderV2.ID, modelID: ModelV2.ID) =>
+        provider.getModel(providerID, modelID).pipe(
+          Effect.catchTag("ProviderModelNotFoundError", () => Effect.succeed(undefined)),
+        )
+
+      const routed =
+        (yield* tryModel(autoRoute.providerID, autoRoute.modelID)) ??
+        (yield* Effect.logWarning("ottili-auto routed model unavailable, using gpt-5.4-mini fallback", {
+          selected: `${autoRoute.providerID}/${autoRoute.modelID}`,
+        }).pipe(
+          Effect.flatMap(() =>
+            tryModel(
+              OTTILI_AUTO_TARGETS["gpt-5.4-mini"].providerID,
+              OTTILI_AUTO_TARGETS["gpt-5.4-mini"].modelID,
+            ),
+          ),
+        ))
+
+      if (!routed) {
+        const message =
+          "Ottili Auto konnte kein Modell laden. Bitte mit /login anmelden (OAuth im Browser)."
+        yield* events.publish(Session.Event.Error, {
+          sessionID: input.sessionID,
+          error: new NamedError.Unknown({ message }).toObject(),
+        })
+        throw new NamedError.Unknown({ message })
+      }
+
+      return {
+        model: routed,
+        autoRoute,
+      }
     })
 
     const currentModel = Effect.fnUntraced(function* (sessionID: SessionID) {
@@ -1191,7 +1331,15 @@ export const layer = Layer.effect(
               history: msgs,
             }).pipe(Effect.ignore, Effect.forkIn(scope))
 
-          const model = yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID)
+          const resolved = yield* resolveTurnModel({
+            providerID: lastUser.model.providerID,
+            modelID: lastUser.model.modelID,
+            sessionID,
+            agent: lastUser.agent,
+            messages: msgs,
+          })
+          const model = resolved.model
+          const autoRoute = resolved.autoRoute
           const task = tasks.pop()
 
           if (task?.type === "subtask") {
@@ -1244,7 +1392,7 @@ export const layer = Layer.effect(
             agent: agent.name,
             variant: lastUser.model.variant,
             path: { cwd: ctx.directory, root: ctx.worktree },
-            cost: 0,
+            cost: autoRoute?.routerCost ?? 0,
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
             modelID: model.id,
             providerID: model.providerID,
@@ -1330,7 +1478,14 @@ export const layer = Layer.effect(
               instruction.system().pipe(Effect.orDie),
               MessageV2.toModelMessagesEffect(msgs, model),
             ])
-            const system = [...env, ...instructions, ...(skills ? [skills] : [])]
+            const catalog = Capabilities.sessionToolCatalog(tools)
+            const system = [
+              ...corePrompt(agent),
+              ...(catalog ? [catalog] : []),
+              ...env,
+              ...instructions,
+              ...(skills ? [skills] : []),
+            ]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
             const result = yield* handle.process({

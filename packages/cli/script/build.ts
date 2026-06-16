@@ -87,11 +87,11 @@ for (const item of targets) {
       windows: {},
     },
     define: {
-      OPENCODE_VERSION: `'${Script.version}'`,
-      OPENCODE_CLI_NAME: `'${binary}'`,
-      OPENCODE_MODELS_DEV: modelsData,
-      OPENCODE_CHANNEL: `'${Script.channel}'`,
-      OPENCODE_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "undefined",
+      OTTILI_CODER_VERSION: `'${Script.version}'`,
+      OTTILI_CODER_CLI_NAME: `'${binary}'`,
+      OTTILI_CODER_MODELS_DEV: modelsData,
+      OTTILI_CODER_CHANNEL: `'${Script.channel}'`,
+      OTTILI_CODER_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "undefined",
       // FFF_LIBC selects the fff native lib variant: "musl" or "gnu".
       FFF_LIBC: item.os === "linux" ? `'${item.abi ?? "gnu"}'` : "undefined",
       OTUI_TREE_SITTER_WORKER_PATH:
@@ -114,7 +114,7 @@ for (const item of targets) {
         name: `@opencode-ai/${name}`,
         version: Script.version,
         license: "MIT",
-        repository: { type: "git", url: "git+https://github.com/anomalyco/opencode.git" },
+        repository: { type: "git", url: "git+https://github.com/Ottili-ONE/coder-cli.git" },
         os: [item.os],
         cpu: [item.arch],
       },

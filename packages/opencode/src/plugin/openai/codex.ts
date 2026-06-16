@@ -84,7 +84,7 @@ function buildAuthorizeUrl(redirectUri: string, pkce: PkceCodes, state: string):
     id_token_add_organizations: "true",
     codex_cli_simplified_flow: "true",
     state,
-    originator: "opencode",
+    originator: "ottili-coder",
   })
   return `${ISSUER}/oauth/authorize?${params.toString()}`
 }
@@ -139,7 +139,7 @@ async function refreshAccessToken(refreshToken: string, issuer = ISSUER): Promis
 const HTML_SUCCESS = `<!doctype html>
 <html>
   <head>
-    <title>OpenCode - Codex Authorization Successful</title>
+    <title>Ottili Coder - Codex Authorization Successful</title>
     <style>
       body {
         font-family:
@@ -170,7 +170,7 @@ const HTML_SUCCESS = `<!doctype html>
   <body>
     <div class="container">
       <h1>Authorization Successful</h1>
-      <p>You can close this window and return to OpenCode.</p>
+      <p>You can close this window and return to Ottili Coder.</p>
     </div>
     <script>
       setTimeout(() => window.close(), 2000)
@@ -181,7 +181,7 @@ const HTML_SUCCESS = `<!doctype html>
 const HTML_ERROR = (error: string) => `<!doctype html>
 <html>
   <head>
-    <title>OpenCode - Codex Authorization Failed</title>
+    <title>Ottili Coder - Codex Authorization Failed</title>
     <style>
       body {
         font-family:
@@ -540,7 +540,7 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                "User-Agent": `opencode/${InstallationVersion}`,
+                "User-Agent": `ottili-coder/${InstallationVersion}`,
               },
               body: JSON.stringify({ client_id: CLIENT_ID }),
             })
@@ -564,7 +564,7 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json",
-                      "User-Agent": `opencode/${InstallationVersion}`,
+                      "User-Agent": `ottili-coder/${InstallationVersion}`,
                     },
                     body: JSON.stringify({
                       device_auth_id: deviceData.device_auth_id,
@@ -623,8 +623,8 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
     },
     "chat.headers": async (input, output) => {
       if (input.model.providerID !== "openai") return
-      output.headers.originator = "opencode"
-      output.headers["User-Agent"] = `opencode/${InstallationVersion} (${os.platform()} ${os.release()}; ${os.arch()})`
+      output.headers.originator = "ottili-coder"
+      output.headers["User-Agent"] = `ottili-coder/${InstallationVersion} (${os.platform()} ${os.release()}; ${os.arch()})`
       output.headers["session-id"] = input.sessionID
       // Temporary fetch-layer hack: title generation currently shares the conversation
       // session ID, so the OpenAI plugin marks it for HTTP fallback until transport

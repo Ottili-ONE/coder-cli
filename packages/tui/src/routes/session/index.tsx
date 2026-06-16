@@ -54,6 +54,7 @@ import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { Sidebar } from "./sidebar"
+import { SessionHeaderStrip } from "./header-strip"
 import { SubagentFooter } from "./subagent-footer.tsx"
 import { filetype } from "../../util/filetype"
 import parsers from "../../parsers-config"
@@ -79,7 +80,7 @@ import { collapseToolOutput } from "../../util/collapse-tool-output"
 import { usePluginRuntime } from "../../plugin/runtime"
 import { DialogRetryAction } from "../../component/dialog-retry-action"
 import { getRevertDiffFiles } from "../../util/revert-diff"
-import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useOpencodeKeymap } from "../../keymap"
+import { OTTILI_CODER_BASE_MODE, useBindings, useCommandShortcut, useOttiliCoderKeymap } from "../../keymap"
 import { PathFormatterProvider, usePathFormatter } from "../../context/path-format"
 
 addDefaultParsers(parsers.parsers)
@@ -89,7 +90,7 @@ const GO_UPSELL_FREE_TIER_DONT_SHOW = "go_upsell_dont_show"
 const GO_UPSELL_ACCOUNT_RATE_LIMIT_LAST_SEEN_AT = "go_upsell_account_rate_limit_last_seen_at"
 const GO_UPSELL_ACCOUNT_RATE_LIMIT_DONT_SHOW = "go_upsell_account_rate_limit_dont_show"
 const GO_UPSELL_WINDOW = 86_400_000 // 24 hrs
-const GO_UPSELL_PROVIDERS = new Set(["opencode", "opencode-go"])
+const GO_UPSELL_PROVIDERS = new Set(["ottili-coder", "ottili-coder-go"])
 
 type RetryAction = Extract<SessionStatus, { type: "retry" }>["action"]
 
@@ -343,7 +344,7 @@ export function Session() {
     seeded = true
     r.set(route.prompt)
   }
-  const keymap = useOpencodeKeymap()
+  const keymap = useOttiliCoderKeymap()
   const dialog = useDialog()
   const renderer = useRenderer()
 
@@ -1105,12 +1106,12 @@ export function Session() {
   }))
 
   useBindings(() => ({
-    mode: OPENCODE_BASE_MODE,
+    mode: OTTILI_CODER_BASE_MODE,
     bindings: tuiConfig.keybinds.gather("session", sessionBindingCommands),
   }))
 
   useBindings(() => ({
-    mode: OPENCODE_BASE_MODE,
+    mode: OTTILI_CODER_BASE_MODE,
     enabled: foregroundTasks().length > 0,
     priority: 1,
     bindings: tuiConfig.keybinds.get("session.background"),
@@ -1139,6 +1140,8 @@ export function Session() {
     }
   })
 
+  const sidebarShortcut = useCommandShortcut("session.sidebar.toggle")
+
   // snap to bottom when session changes
   createEffect(on(() => route.sessionID, toBottom))
 
@@ -1165,6 +1168,9 @@ export function Session() {
       >
         <box flexDirection="row" flexGrow={1} minHeight={0}>
           <box flexGrow={1} minHeight={0} paddingBottom={1} paddingLeft={2} paddingRight={2} gap={1}>
+            <Show when={session() && !sidebarVisible()}>
+              <SessionHeaderStrip sessionID={route.sessionID} sidebarShortcut={sidebarShortcut()} />
+            </Show>
             <Show when={session()}>
               <scrollbox
                 ref={(r) => (scroll = r)}
@@ -1214,7 +1220,7 @@ export function Session() {
                               flexShrink={0}
                               border={["left"]}
                               customBorderChars={SplitBorder.customBorderChars}
-                              borderColor={theme.backgroundPanel}
+                              borderColor={theme.borderSubtle}
                             >
                               <box
                                 paddingTop={1}
@@ -1335,9 +1341,9 @@ export function Session() {
                   right={0}
                   bottom={0}
                   alignItems="flex-end"
-                  backgroundColor={RGBA.fromInts(0, 0, 0, 70)}
+                  backgroundColor={RGBA.fromValues(theme.background.r, theme.background.g, theme.background.b, 180)}
                 >
-                  <Sidebar sessionID={route.sessionID} />
+                  <Sidebar sessionID={route.sessionID} overlay />
                 </box>
               </Match>
             </Switch>
@@ -2010,7 +2016,7 @@ function BlockTool(props: {
       gap={1}
       backgroundColor={hover() ? theme.backgroundMenu : theme.backgroundPanel}
       customBorderChars={SplitBorder.customBorderChars}
-      borderColor={theme.background}
+      borderColor={theme.borderSubtle}
       onMouseOver={() => props.onClick && setHover(true)}
       onMouseOut={() => setHover(false)}
       onMouseUp={() => {

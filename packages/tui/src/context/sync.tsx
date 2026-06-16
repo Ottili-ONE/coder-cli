@@ -37,6 +37,38 @@ const emptyConsoleState: ConsoleState = {
   switchableOrgCount: 0,
 }
 
+export type AccountStatus = { loggedIn: false } | { loggedIn: true; email: string; orgName?: string }
+
+export type CloudStatus = { configured: false } | { configured: true; activeJobs?: number }
+
+const emptyAccountStatus: AccountStatus = { loggedIn: false }
+const emptyCloudStatus: CloudStatus = { configured: false }
+
+async function fetchAccountStatus(sdk: ReturnType<typeof useSDK>): Promise<AccountStatus> {
+  try {
+    const response = await sdk.fetch(`${sdk.url}/experimental/account/status`, {
+      headers: { Accept: "application/json" },
+    })
+    if (!response.ok) return emptyAccountStatus
+    return (await response.json()) as AccountStatus
+  } catch {
+    return emptyAccountStatus
+  }
+}
+
+async function fetchCloudStatus(sdk: ReturnType<typeof useSDK>): Promise<CloudStatus> {
+  try {
+    const response = await sdk.fetch(`${sdk.url}/experimental/cloud/status`, {
+      headers: { Accept: "application/json" },
+    })
+    if (!response.ok) return emptyCloudStatus
+    const data = (await response.json()) as { configured: boolean; activeJobs?: number }
+    return data.configured ? { configured: true, activeJobs: data.activeJobs } : emptyCloudStatus
+  } catch {
+    return emptyCloudStatus
+  }
+}
+
 function search<T>(items: T[], target: string, key: (item: T) => string) {
   let left = 0
   let right = items.length - 1
@@ -65,6 +97,8 @@ export const {
       provider_default: Record<string, string>
       provider_next: ProviderListResponse
       console_state: ConsoleState
+      account_status: AccountStatus
+      cloud_status: CloudStatus
       provider_auth: Record<string, ProviderAuthMethod[]>
       agent: Agent[]
       command: Command[]
@@ -107,6 +141,8 @@ export const {
         connected: [],
       },
       console_state: emptyConsoleState,
+      account_status: emptyAccountStatus,
+      cloud_status: emptyCloudStatus,
       provider_auth: {},
       config: {},
       status: "loading",
@@ -500,6 +536,8 @@ export const {
             }),
             sdk.client.provider.auth({ workspace }).then((x) => setStore("provider_auth", reconcile(x.data ?? {}))),
             sdk.client.vcs.get({ workspace }).then((x) => setStore("vcs", reconcile(x.data))),
+            fetchAccountStatus(sdk).then((status) => setStore("account_status", status)),
+            fetchCloudStatus(sdk).then((status) => setStore("cloud_status", status)),
             project.workspace.sync(),
           ]).then(() => {
             setStore("status", "complete")

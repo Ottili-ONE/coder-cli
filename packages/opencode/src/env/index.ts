@@ -2,6 +2,7 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { Context, Effect, Layer } from "effect"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
 import { InstanceState } from "@/effect/instance-state"
+import { bootstrapEnvFiles } from "@/provider/ottili-auto/env"
 
 type State = Record<string, string | undefined>
 
@@ -12,14 +13,19 @@ export interface Interface {
   readonly remove: (key: string) => Effect.Effect<void>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/Env") {}
+export class Service extends Context.Service<Service, Interface>()("@opencode-ai/Env") {}
 
 export const use = serviceUse(Service)
 
 export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const state = yield* InstanceState.make<State>(Effect.fn("Env.state")(() => Effect.succeed({ ...process.env })))
+    const state = yield* InstanceState.make<State>(
+      Effect.fn("Env.state")(function* (ctx) {
+        bootstrapEnvFiles({ directory: ctx.directory, worktree: ctx.worktree })
+        return { ...process.env }
+      }),
+    )
 
     const get = Effect.fn("Env.get")((key: string) => InstanceState.use(state, (env) => env[key]))
     const all = Effect.fn("Env.all")(() => InstanceState.get(state))

@@ -11,7 +11,7 @@ import { LocaleLinks } from "~/component/locale-links"
 import { config } from "~/config"
 import { useI18n } from "~/context/i18n"
 import { useLanguage } from "~/context/language"
-import desktopAppIcon from "../../asset/lander/opencode-desktop-icon.png"
+import desktopAppIcon from "../../asset/lander/ottili-coder-desktop-icon.png"
 import type { DownloadPlatform } from "./types"
 
 type OS = "macOS" | "Windows" | "Linux" | null
@@ -118,34 +118,34 @@ export default function Download() {
             <div data-component="section-content">
               <button
                 data-component="cli-row"
-                onClick={handleCopyClick("curl -fsSL https://opencode.ai/install | bash")}
+                onClick={handleCopyClick("curl -fsSL https://ottili.one/coder/install | bash")}
               >
                 <code>
-                  curl -fsSL https://<strong>opencode.ai/install</strong> | bash
+                  curl -fsSL https://<strong>ottili.one/coder/install</strong> | bash
                 </code>
                 <CopyStatus />
               </button>
-              <button data-component="cli-row" onClick={handleCopyClick("npm i -g opencode-ai")}>
+              <button data-component="cli-row" onClick={handleCopyClick("npm i -g ottili-coder-ai")}>
                 <code>
-                  npm i -g <strong>opencode-ai</strong>
+                  npm i -g <strong>ottili-coder-ai</strong>
                 </code>
                 <CopyStatus />
               </button>
-              <button data-component="cli-row" onClick={handleCopyClick("bun add -g opencode-ai")}>
+              <button data-component="cli-row" onClick={handleCopyClick("bun add -g ottili-coder-ai")}>
                 <code>
-                  bun add -g <strong>opencode-ai</strong>
+                  bun add -g <strong>ottili-coder-ai</strong>
                 </code>
                 <CopyStatus />
               </button>
-              <button data-component="cli-row" onClick={handleCopyClick("brew install anomalyco/tap/opencode")}>
+              <button data-component="cli-row" onClick={handleCopyClick("brew install anomalyco/tap/ottili-coder")}>
                 <code>
-                  brew install <strong>anomalyco/tap/opencode</strong>
+                  brew install <strong>anomalyco/tap/ottili-coder</strong>
                 </code>
                 <CopyStatus />
               </button>
-              <button data-component="cli-row" onClick={handleCopyClick("paru -S opencode")}>
+              <button data-component="cli-row" onClick={handleCopyClick("paru -S ottili-coder")}>
                 <code>
-                  paru -S <strong>opencode</strong>
+                  paru -S <strong>ottili-coder</strong>
                 </code>
                 <CopyStatus />
               </button>
@@ -157,9 +157,9 @@ export default function Download() {
               <span>[2]</span> {i18n.t("download.section.desktop")}
             </div>
             <div data-component="section-content">
-              <button data-component="cli-row" onClick={handleCopyClick("brew install --cask opencode-desktop")}>
+              <button data-component="cli-row" onClick={handleCopyClick("brew install --cask ottili-coder-desktop")}>
                 <code>
-                  brew install --cask <strong>opencode-desktop</strong>
+                  brew install --cask <strong>ottili-coder-desktop</strong>
                 </code>
                 <CopyStatus />
               </button>

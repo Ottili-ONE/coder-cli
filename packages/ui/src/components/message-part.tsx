@@ -309,6 +309,7 @@ function agentTitle(i18n: UiI18n, type?: string) {
 const agentTones: Record<string, string> = {
   ask: "var(--icon-agent-ask-base)",
   build: "var(--icon-agent-build-base)",
+  debug: "var(--icon-agent-debug-base)",
   docs: "var(--icon-agent-docs-base)",
   plan: "var(--icon-agent-plan-base)",
 }
@@ -316,6 +317,7 @@ const agentTones: Record<string, string> = {
 const agentPalette = [
   "var(--icon-agent-ask-base)",
   "var(--icon-agent-build-base)",
+  "var(--icon-agent-debug-base)",
   "var(--icon-agent-docs-base)",
   "var(--icon-agent-plan-base)",
   "var(--syntax-info)",

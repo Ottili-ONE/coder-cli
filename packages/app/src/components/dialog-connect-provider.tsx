@@ -422,16 +422,16 @@ export function DialogConnectProvider(props: { provider: string }) {
     return (
       <div class="flex flex-col gap-6">
         <Switch>
-          <Match when={provider().id === "opencode"}>
+          <Match when={provider().id === "ottili-coder"}>
             <div class="flex flex-col gap-4">
-              <div class="text-14-regular text-text-base">{language.t("provider.connect.opencodeZen.line1")}</div>
-              <div class="text-14-regular text-text-base">{language.t("provider.connect.opencodeZen.line2")}</div>
+              <div class="text-14-regular text-text-base">{language.t("provider.connect.ottiliCoderZen.line1")}</div>
+              <div class="text-14-regular text-text-base">{language.t("provider.connect.ottiliCoderZen.line2")}</div>
               <div class="text-14-regular text-text-base">
-                {language.t("provider.connect.opencodeZen.visit.prefix")}
-                <Link href="https://opencode.ai/zen" tabIndex={-1}>
-                  {language.t("provider.connect.opencodeZen.visit.link")}
+                {language.t("provider.connect.ottiliCoderZen.visit.prefix")}
+                <Link href="https://ottili.one/coder/zen" tabIndex={-1}>
+                  {language.t("provider.connect.ottiliCoderZen.visit.link")}
                 </Link>
-                {language.t("provider.connect.opencodeZen.visit.suffix")}
+                {language.t("provider.connect.ottiliCoderZen.visit.suffix")}
               </div>
             </div>
           </Match>

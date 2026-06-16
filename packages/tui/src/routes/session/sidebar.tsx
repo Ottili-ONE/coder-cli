@@ -7,7 +7,9 @@ import { InstallationChannel, InstallationVersion } from "@opencode-ai/core/inst
 import { usePluginRuntime } from "../../plugin/runtime"
 
 import { getScrollAcceleration } from "../../util/scroll"
+import { BrandLabel } from "../../component/brand-label"
 import { WorkspaceLabel } from "../../component/workspace-label"
+import { SplitBorder } from "../../ui/border"
 
 export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const pluginRuntime = usePluginRuntime()
@@ -34,6 +36,9 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
         paddingLeft={2}
         paddingRight={2}
         position={props.overlay ? "absolute" : "relative"}
+        border={props.overlay ? ["left"] : undefined}
+        borderColor={props.overlay ? theme.borderSubtle : undefined}
+        customBorderChars={props.overlay ? SplitBorder.customBorderChars : undefined}
       >
         <scrollbox
           flexGrow={1}
@@ -88,13 +93,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
 
         <box flexShrink={0} gap={1} paddingTop={1}>
           <pluginRuntime.Slot name="sidebar_footer" mode="single_winner" session_id={props.sessionID}>
-            <text fg={theme.textMuted}>
-              <span style={{ fg: theme.success }}>•</span> <b>Open</b>
-              <span style={{ fg: theme.text }}>
-                <b>Code</b>
-              </span>{" "}
-              <span>{InstallationVersion}</span>
-            </text>
+            <BrandLabel fg={theme.text} muted={theme.textMuted} version={InstallationVersion} />
           </pluginRuntime.Slot>
         </box>
       </box>

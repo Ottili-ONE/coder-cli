@@ -12,6 +12,7 @@ import { ReadTool } from "./read"
 import { TaskTool } from "./task"
 import { Database } from "@opencode-ai/core/database/database"
 import { TodoWriteTool } from "./todo"
+import { OttiliCloudTool } from "./cloud"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
@@ -53,8 +54,8 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 
-export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
-  return providerID === ProviderV2.ID.opencode || flags.exa || flags.parallel
+export function webSearchEnabled(_providerID?: ProviderV2.ID, _flags = { exa: false, parallel: false }) {
+  return true
 }
 
 type TaskDef = Tool.InferDef<typeof TaskTool>
@@ -78,7 +79,7 @@ export interface Interface {
   }) => Effect.Effect<Tool.Def[]>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/ToolRegistry") {}
+export class Service extends Context.Service<Service, Interface>()("@opencode-ai/ToolRegistry") {}
 
 export const layer = Layer.effect(
   Service,
@@ -94,6 +95,7 @@ export const layer = Layer.effect(
     const read = yield* ReadTool
     const question = yield* QuestionTool
     const todo = yield* TodoWriteTool
+    const ottilicloud = yield* OttiliCloudTool
     const lsptool = yield* LspTool
     const plan = yield* PlanExitTool
     const webfetch = yield* WebFetchTool
@@ -206,6 +208,7 @@ export const layer = Layer.effect(
           task: Tool.init(task),
           fetch: Tool.init(webfetch),
           todo: Tool.init(todo),
+          ottilicloud: Tool.init(ottilicloud),
           search: Tool.init(websearch),
           skill: Tool.init(skilltool),
           patch: Tool.init(patchtool),
@@ -228,11 +231,12 @@ export const layer = Layer.effect(
             tool.task,
             tool.fetch,
             tool.todo,
+            tool.ottilicloud,
             tool.search,
             tool.skill,
             tool.patch,
-            ...(flags.experimentalLspTool ? [tool.lsp] : []),
-            ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
+            tool.lsp,
+            ...(flags.client === "cli" ? [tool.plan] : []),
           ],
           task: tool.task,
           read: tool.read,

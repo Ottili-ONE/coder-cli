@@ -3,10 +3,11 @@ import { useSync } from "../context/sync"
 
 export function useConnected() {
   const sync = useSync()
-  return createMemo(() =>
-    sync.data.provider.some(
+  return createMemo(() => {
+    if (sync.data.account_status.loggedIn) return true
+    return sync.data.provider.some(
       (provider) =>
-        provider.id !== "opencode" || Object.values(provider.models).some((model) => model.cost?.input !== 0),
-    ),
-  )
+        provider.id !== "ottili-coder" || Object.values(provider.models).some((model) => model.cost?.input !== 0),
+    )
+  })
 }

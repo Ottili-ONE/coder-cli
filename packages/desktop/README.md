@@ -1,6 +1,6 @@
-# OpenCode Desktop
+# Ottili Coder Desktop
 
-The OpenCode Desktop app, built with Electron.
+The Ottili Coder Desktop app, built with Electron.
 
 ## Development
 

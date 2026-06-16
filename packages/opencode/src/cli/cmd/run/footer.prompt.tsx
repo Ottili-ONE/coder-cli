@@ -23,7 +23,7 @@ import {
   movePromptHistory,
   pushPromptHistory,
 } from "./prompt.shared"
-import { OPENCODE_BASE_MODE, useBindings } from "@opencode-ai/tui/keymap"
+import { OTTILI_CODER_BASE_MODE, useBindings } from "@opencode-ai/tui/keymap"
 import { realignEditorPromptParts, resolveEditorSlashValue } from "./prompt.editor"
 import { FOOTER_MENU_ROWS, createFooterMenuState, type RunFooterMenuItem } from "./footer.menu"
 import type { RunFooterTheme } from "./theme"
@@ -418,7 +418,7 @@ export function createPromptState(input: PromptInput): PromptState {
         description: "compose in your external editor",
       } satisfies SlashOption,
       { kind: "slash", name: "new", display: "/new", description: "start a new session" } satisfies SlashOption,
-      { kind: "slash", name: "exit", display: "/exit", description: "close OpenCode" } satisfies SlashOption,
+      { kind: "slash", name: "exit", display: "/exit", description: "close Ottili Coder" } satisfies SlashOption,
     ]
     const hidden = new Set(builtins.map((item) => item.name))
     const showSkillMenu = !shell() && skillCommands().length > 0 && !hasSkillsCommand()
@@ -977,7 +977,7 @@ export function createPromptState(input: PromptInput): PromptState {
   }
 
   useBindings(() => ({
-    mode: OPENCODE_BASE_MODE,
+    mode: OTTILI_CODER_BASE_MODE,
     enabled: baseBindingsEnabled(),
     commands: [
       {
@@ -994,7 +994,7 @@ export function createPromptState(input: PromptInput): PromptState {
   }))
 
   useBindings(() => ({
-    mode: OPENCODE_BASE_MODE,
+    mode: OTTILI_CODER_BASE_MODE,
     enabled: input.prompt(),
     commands: [
       {
@@ -1011,7 +1011,7 @@ export function createPromptState(input: PromptInput): PromptState {
   }))
 
   useBindings(() => ({
-    mode: OPENCODE_BASE_MODE,
+    mode: OTTILI_CODER_BASE_MODE,
     enabled: input.prompt() && !visible(),
     commands: [
       {
@@ -1027,7 +1027,7 @@ export function createPromptState(input: PromptInput): PromptState {
   }))
 
   useBindings(() => ({
-    mode: OPENCODE_BASE_MODE,
+    mode: OTTILI_CODER_BASE_MODE,
     enabled: input.prompt() && !visible(),
     commands: [
       {
@@ -1054,7 +1054,7 @@ export function createPromptState(input: PromptInput): PromptState {
   }))
 
   useBindings(() => ({
-    mode: OPENCODE_BASE_MODE,
+    mode: OTTILI_CODER_BASE_MODE,
     enabled: input.prompt() && !visible(),
     bindings: [
       {
@@ -1072,7 +1072,7 @@ export function createPromptState(input: PromptInput): PromptState {
   }))
 
   useBindings(() => ({
-    mode: OPENCODE_BASE_MODE,
+    mode: OTTILI_CODER_BASE_MODE,
     enabled: input.prompt() && shell() && !visible(),
     bindings: [
       {
@@ -1095,7 +1095,7 @@ export function createPromptState(input: PromptInput): PromptState {
   }))
 
   useBindings(() => ({
-    mode: OPENCODE_BASE_MODE,
+    mode: OTTILI_CODER_BASE_MODE,
     enabled: input.prompt() && visible(),
     commands: [
       {

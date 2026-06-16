@@ -1,8 +1,8 @@
-import { createOpencodeClient, createOpencodeServer } from "@opencode-ai/sdk"
+import { createOttiliCoderClient, createOttiliCoderServer } from "@opencode-ai/sdk"
 import { pathToFileURL } from "bun"
 
-const server = await createOpencodeServer()
-const client = createOpencodeClient({ baseUrl: server.url })
+const server = await createOttiliCoderServer()
+const client = createOttiliCoderClient({ baseUrl: server.url })
 
 const input = await Array.fromAsync(new Bun.Glob("packages/core/*.ts").scan())
 

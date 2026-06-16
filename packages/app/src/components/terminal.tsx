@@ -165,7 +165,7 @@ export const Terminal = (props: TerminalProps) => {
   const client = sdk.client
   const url = sdk.url
   const auth = server.current?.http
-  const username = auth?.username ?? "opencode"
+  const username = auth?.username ?? "ottili-coder"
   const password = auth?.password ?? ""
   const sameOrigin = new URL(url, location.href).origin === location.origin
   let container!: HTMLDivElement
@@ -485,7 +485,7 @@ export const Terminal = (props: TerminalProps) => {
             { ptyID: id, directory },
             {
               throwOnError: false,
-              headers: { "x-opencode-ticket": "1" },
+              headers: { "x-ottili-coder-ticket": "1" },
             },
           )
           .catch((err: unknown) => {

@@ -1,4 +1,4 @@
-import { createOpencodeClient } from "@opencode-ai/sdk/v2"
+import { createOttiliCoderClient } from "@opencode-ai/sdk/v2"
 import { RGBA, type CliRenderer } from "@opentui/core"
 import type { HostPluginApi } from "@opencode-ai/tui/plugin/slots"
 import { createTuiResolvedConfig } from "./tui-runtime"
@@ -127,7 +127,7 @@ export function createTuiPluginApi(opts: Opts = {}): HostPluginApi {
   const kv: Record<string, unknown> = {}
   const count = opts.count
   const ctrl = new AbortController()
-  const own = createOpencodeClient({
+  const own = createOttiliCoderClient({
     baseUrl: "http://localhost:4096",
   })
   const fallback = () => own
@@ -141,7 +141,7 @@ export function createTuiPluginApi(opts: Opts = {}): HostPluginApi {
   let depth = 0
   let size: "medium" | "large" | "xlarge" = "medium"
   const has = opts.theme?.has ?? (() => false)
-  let selected = opts.theme?.selected ?? "opencode"
+  let selected = opts.theme?.selected ?? "ottili-coder"
   const set =
     opts.theme?.set ??
     ((name: string) => {
@@ -197,7 +197,7 @@ export function createTuiPluginApi(opts: Opts = {}): HostPluginApi {
       soundboard: {
         registerPack: (pack) => opts.attention?.soundboard?.registerPack?.(pack) ?? (() => {}),
         activate: (id, options) => opts.attention?.soundboard?.activate?.(id, options) ?? false,
-        current: () => opts.attention?.soundboard?.current?.() ?? "opencode.default",
+        current: () => opts.attention?.soundboard?.current?.() ?? "ottiliCoder.default",
         list: () => opts.attention?.soundboard?.list?.() ?? [],
       },
     },

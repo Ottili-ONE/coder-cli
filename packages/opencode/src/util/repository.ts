@@ -97,7 +97,7 @@ function withSlash(input: string) {
 }
 
 function githubRemote(pathname: string) {
-  const base = process.env.OPENCODE_REPO_CLONE_GITHUB_BASE_URL
+  const base = process.env.OTTILI_CODER_REPO_CLONE_GITHUB_BASE_URL
   if (!base) return `https://github.com/${pathname}.git`
   return new URL(`${pathname}.git`, withSlash(base)).href
 }
@@ -210,13 +210,18 @@ export function validateRepositoryBranch(branch: string) {
   }
 }
 
+function normalizeGitHubRepoName(repo: string) {
+  if (repo === "ottiliCoder" || repo === "opencode") return "ottili-coder"
+  return repo
+}
+
 export function parseGitHubRemote(input: string) {
   const cleaned = normalizeRepositoryInput(input)
   if (!cleaned.includes("://") && !cleaned.match(/^(?:[^@/\s]+@)?github\.com:/)) return null
 
   const parsed = parseRepositoryReference(cleaned)
   if (!parsed || parsed.host !== "github.com" || !parsed.owner || parsed.segments.length !== 2) return null
-  return { owner: parsed.owner, repo: parsed.repo }
+  return { owner: parsed.owner, repo: normalizeGitHubRepoName(parsed.repo) }
 }
 
 export function repositoryCachePath(input: Reference) {

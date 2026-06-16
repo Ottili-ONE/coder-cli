@@ -51,7 +51,7 @@ import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { useArgs } from "../../context/args"
-import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive, useOpencodeKeymap } from "../../keymap"
+import { OTTILI_CODER_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive, useOttiliCoderKeymap } from "../../keymap"
 import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
@@ -159,7 +159,7 @@ export function Prompt(props: PromptProps) {
   const status = createMemo(() => sync.data.session_status?.[props.sessionID ?? ""] ?? { type: "idle" })
   const history = usePromptHistory()
   const stash = usePromptStash()
-  const keymap = useOpencodeKeymap()
+  const keymap = useOttiliCoderKeymap()
   const agentShortcut = useCommandShortcut("agent.cycle")
   const paletteShortcut = useCommandShortcut("command.palette.show")
   const renderer = useRenderer()
@@ -532,7 +532,7 @@ export function Prompt(props: PromptProps) {
         desc: "Change the workspace for the session",
         name: "workspace.set",
         category: "Session",
-        enabled: Flag.OPENCODE_EXPERIMENTAL_WORKSPACES,
+        enabled: Flag.OTTILI_CODER_EXPERIMENTAL_WORKSPACES,
         slashName: "warp",
         run: () => {
           workspace.open()
@@ -559,7 +559,7 @@ export function Prompt(props: PromptProps) {
   }))
 
   useBindings(() => ({
-    mode: OPENCODE_BASE_MODE,
+    mode: OTTILI_CODER_BASE_MODE,
     bindings: tuiConfig.keybinds.gather("prompt.palette", [
       "prompt.submit",
       "prompt.editor",
@@ -1101,7 +1101,13 @@ export function Prompt(props: PromptProps) {
             ...nonTextParts,
           ],
         })
-        .catch(() => {})
+        .catch((err) => {
+          console.log("Prompt failed:", err)
+          toast.show({
+            message: errorMessage(err) || "Prompt fehlgeschlagen. Details in der Konsole.",
+            variant: "error",
+          })
+        })
       if (editorParts.length > 0) editor.markSelectionSent()
     }
     history.append({
@@ -1437,11 +1443,11 @@ export function Prompt(props: PromptProps) {
                           <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>·</text>
                           <text
                             flexShrink={0}
-                            fg={fadeColor(leader() ? theme.textMuted : theme.text, modelMetaAlpha())}
+                            fg={fadeColor(leader() ? theme.textMuted : theme.primary, modelMetaAlpha())}
                           >
                             {local.model.parsed().model}
                           </text>
-                          <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>{currentProviderLabel()}</text>
+                          <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>· {currentProviderLabel()}</text>
                           <Show when={showVariant()}>
                             <text fg={fadeColor(theme.textMuted, variantMetaAlpha())}>·</text>
                             <text>
@@ -1476,7 +1482,7 @@ export function Prompt(props: PromptProps) {
           <box
             height={1}
             border={["bottom"]}
-            borderColor={theme.backgroundElement}
+            borderColor={theme.borderSubtle}
             customBorderChars={
               theme.backgroundElement.a !== 0
                 ? {

@@ -15,7 +15,7 @@
 // The tick counter prevents stale idle events from resolving the wrong turn.
 // We also re-check live session status before resolving an idle event so a
 // delayed idle from an older turn cannot complete a newer busy turn.
-import type { Event, GlobalEvent, OpencodeClient } from "@opencode-ai/sdk/v2"
+import type { Event, GlobalEvent, OttiliCoderClient } from "@opencode-ai/sdk/v2"
 import { Context, Deferred, Effect, Exit, Layer, Scope, Stream } from "effect"
 import { makeRuntime } from "@/effect/run-service"
 import {
@@ -67,7 +67,7 @@ type Trace = {
 const StreamClosed = undefined as never
 
 type StreamInput = {
-  sdk: OpencodeClient
+  sdk: OttiliCoderClient
   directory?: string
   sessionID: string
   thinking: boolean
@@ -130,7 +130,7 @@ type TransportService = {
   readonly close: () => Effect.Effect<void>
 }
 
-class Service extends Context.Service<Service, TransportService>()("@opencode/RunStreamTransport") {}
+class Service extends Context.Service<Service, TransportService>()("@opencode-ai/RunStreamTransport") {}
 
 function sid(event: Event): string | undefined {
   if (event.type === "message.updated") {

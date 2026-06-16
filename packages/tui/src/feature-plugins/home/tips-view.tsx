@@ -2,6 +2,7 @@ import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 import { createMemo, For, type Accessor } from "solid-js"
 import { DEFAULT_THEMES, useTheme } from "../../context/theme"
 import { useCommandShortcut } from "../../keymap"
+import { SplitBorder } from "../../ui/border"
 
 const themeCount = Object.keys(DEFAULT_THEMES).length
 
@@ -41,6 +42,9 @@ type Shortcuts = {
   statusView: TipShortcut
   terminalSuspend: TipShortcut
   themeList: TipShortcut
+  themeSwitchMode: TipShortcut
+  accountUsage: TipShortcut
+  providerConnect: TipShortcut
 }
 type Tip = string | ((shortcuts: Shortcuts) => string | undefined)
 
@@ -128,9 +132,12 @@ export function Tips(props: { api: TuiPluginApi; connected?: boolean }) {
     sessionQuickSwitch9: useCommandShortcut("session.quick_switch.9"),
     sessionSidebarToggle: configShortcut(props.api, "session.sidebar.toggle"),
     sessionTimeline: configShortcut(props.api, "session.timeline"),
-    statusView: useCommandShortcut("opencode.status"),
+    statusView: useCommandShortcut("ottiliCoder.status"),
     terminalSuspend: useCommandShortcut("terminal.suspend"),
     themeList: useCommandShortcut("theme.switch"),
+    themeSwitchMode: useCommandShortcut("theme.switch_mode"),
+    accountUsage: useCommandShortcut("account.usage"),
+    providerConnect: useCommandShortcut("provider.connect"),
   }
   const tip = createMemo(() => {
     if (props.connected === false) return NO_MODELS_TIP
@@ -148,9 +155,20 @@ export function Tips(props: { api: TuiPluginApi; connected?: boolean }) {
   }, NO_MODELS_PARTS)
 
   return (
-    <box flexDirection="row" maxWidth="100%">
-      <text flexShrink={0} style={{ fg: theme.warning }}>
-        ● Tip{" "}
+    <box
+      border={["left"]}
+      borderColor={theme.borderSubtle}
+      customBorderChars={SplitBorder.customBorderChars}
+      backgroundColor={theme.backgroundPanel}
+      paddingTop={1}
+      paddingBottom={1}
+      paddingLeft={2}
+      paddingRight={2}
+      flexDirection="row"
+      maxWidth="100%"
+    >
+      <text flexShrink={0} style={{ fg: theme.primary }}>
+        Tip{" "}
       </text>
       <text flexShrink={1} wrapMode="word">
         <For each={parts()}>
@@ -164,10 +182,17 @@ export function Tips(props: { api: TuiPluginApi; connected?: boolean }) {
 const TIPS: Tip[] = [
   "Type {highlight}@{/highlight} followed by a filename to fuzzy search and attach files",
   "Start a message with {highlight}!{/highlight} to run shell commands directly (e.g., {highlight}!ls -la{/highlight})",
-  (shortcuts) => press(shortcuts.agentCycle(), "to cycle between Build and Plan agents"),
+  (shortcuts) => press(shortcuts.agentCycle(), "to cycle between Build, Plan, Debug, and Ask agents"),
+  (shortcuts) =>
+    press(shortcuts.themeSwitchMode(), "to switch between light and dark mode") ??
+    "Run {highlight}/light{/highlight} or {highlight}/dark{/highlight} to switch color mode",
+  (shortcuts) =>
+    shortcuts.themeList()
+      ? `Use ${commandText("/themes", shortcuts.themeList())} to change theme and color mode`
+      : "Run {highlight}/themes{/highlight} to change theme and color mode",
   "Use {highlight}/undo{/highlight} to revert the last message and file changes",
   "Use {highlight}/redo{/highlight} to restore previously undone messages and file changes",
-  "Run {highlight}/share{/highlight} to create a public link to your conversation at opencode.ai",
+  "Run {highlight}/share{/highlight} to create a public link to your conversation at ottili.one/coder",
   "Drag and drop images or PDFs into the terminal to add them as context",
   (shortcuts) => press(shortcuts.inputPaste(), "to paste images from your clipboard into the prompt"),
   (shortcuts) => `Use ${commandText("/editor", shortcuts.editorOpen())} to compose messages in your external editor`,
@@ -185,7 +210,15 @@ const TIPS: Tip[] = [
   (shortcuts) => `Use ${commandText("/export", shortcuts.sessionExport())} to save the conversation as Markdown`,
   (shortcuts) => press(shortcuts.messagesCopy(), "to copy the assistant's last message to clipboard"),
   (shortcuts) => press(shortcuts.commandList(), "to see all available actions and commands"),
-  "Run {highlight}/connect{/highlight} to add API keys for 75+ supported LLM providers",
+  "Run {highlight}/login{/highlight} to sign in with your Ottili account via browser",
+  (shortcuts) =>
+    press(shortcuts.providerConnect(), "to connect Claude, GPT, Gemini and 75+ AI providers") ??
+    "Run {highlight}/connect{/highlight} to add an AI provider and start coding",
+  (shortcuts) =>
+    press(shortcuts.accountUsage(), "to view Ottili ONE plan usage limits") ??
+    "Run {highlight}/usage{/highlight} or {highlight}ottili-coder account usage{/highlight} to view plan usage limits",
+  "Run {highlight}/cloud{/highlight} to manage autonomous coding jobs on codehelm.ottili.one",
+  "Use {highlight}/cloud-run{/highlight} to hand off a larger feature to Ottili Cloud",
   (shortcuts) => `The leader key is ${shortcutText(shortcuts.leader())}; combine with other keys for quick actions`,
   (shortcuts) => press(shortcuts.modelCycleRecent(), "to quickly switch between recently used models"),
   (shortcuts) => press(shortcuts.sessionSidebarToggle(), "in a session to show or hide the sidebar panel"),
@@ -199,6 +232,8 @@ const TIPS: Tip[] = [
   (shortcuts) => press(shortcuts.inputClear(), "when typing to clear the input field"),
   (shortcuts) => press(shortcuts.sessionInterrupt(), "to stop the AI mid-response"),
   "Switch to {highlight}Plan{/highlight} agent to get suggestions without making actual changes",
+  "Switch to {highlight}Ask{/highlight} agent to explore the codebase and get answers without writing code",
+  "Switch to {highlight}Debug{/highlight} agent to investigate failures, ask questions, and diagnose issues",
   "Use {highlight}@agent-name{/highlight} in prompts to invoke specialized subagents",
   (shortcuts) => {
     const items = [
@@ -210,17 +245,17 @@ const TIPS: Tip[] = [
     if (!items.length) return undefined
     return `Use ${items.map(shortcutText).join(" / ")} to move between parent and child sessions`
   },
-  "Create {highlight}opencode.json{/highlight} for server settings and {highlight}tui.json{/highlight} for TUI settings",
-  "Place TUI settings in {highlight}~/.config/opencode/tui.json{/highlight} for global config",
+  "Create {highlight}ottiliCoder.json{/highlight} for server settings and {highlight}tui.json{/highlight} for TUI settings",
+  "Place TUI settings in {highlight}~/.config/ottili-coder/tui.json{/highlight} for global config",
   "Add {highlight}$schema{/highlight} to your config for autocomplete in your editor",
   "Configure {highlight}model{/highlight} in config to set your default model",
   "Override any keybind in {highlight}tui.json{/highlight} via the {highlight}keybinds{/highlight} section",
   "Set any keybind to {highlight}none{/highlight} to disable it completely",
   "Configure local or remote MCP servers in the {highlight}mcp{/highlight} config section",
-  "Add {highlight}.md{/highlight} files to {highlight}.opencode/commands/{/highlight} to define reusable custom prompts",
+  "Add {highlight}.md{/highlight} files to {highlight}.ottili-coder/commands/{/highlight} to define reusable custom prompts",
   "Use {highlight}$ARGUMENTS{/highlight}, {highlight}$1{/highlight}, {highlight}$2{/highlight} in custom commands for dynamic input",
   "Use backticks in commands to inject shell output (e.g., {highlight}`git status`{/highlight})",
-  "Add {highlight}.md{/highlight} files to {highlight}.opencode/agents/{/highlight} for specialized AI personas",
+  "Add {highlight}.md{/highlight} files to {highlight}.ottili-coder/agents/{/highlight} for specialized AI personas",
   "Configure per-agent permissions for {highlight}edit{/highlight}, {highlight}bash{/highlight}, and {highlight}webfetch{/highlight} tools",
   'Use patterns like {highlight}"git *": "allow"{/highlight} for granular bash permissions',
   'Set {highlight}"rm -rf *": "deny"{/highlight} to block destructive commands',
@@ -229,26 +264,26 @@ const TIPS: Tip[] = [
   'Set {highlight}"formatter": false{/highlight} in config to disable formatters enabled by another config layer',
   "Define custom formatter commands with file extensions in config",
   'Set {highlight}"lsp": true{/highlight} in config to enable built-in LSP servers for code analysis',
-  "Create {highlight}.ts{/highlight} files in {highlight}.opencode/tools/{/highlight} to define new LLM tools",
+  "Create {highlight}.ts{/highlight} files in {highlight}.ottili-coder/tools/{/highlight} to define new LLM tools",
   "Tool definitions can invoke scripts written in Python, Go, etc",
-  "Add {highlight}.ts{/highlight} files to {highlight}.opencode/plugins/{/highlight} for event hooks",
+  "Add {highlight}.ts{/highlight} files to {highlight}.ottili-coder/plugins/{/highlight} for event hooks",
   "Use plugins to send OS notifications when sessions complete",
-  "Create a plugin to prevent OpenCode from reading sensitive files",
-  "Use {highlight}opencode run{/highlight} for non-interactive scripting",
-  "Use {highlight}opencode --continue{/highlight} to resume the last session",
-  "Use {highlight}opencode run -f file.ts{/highlight} to attach files via CLI",
+  "Create a plugin to prevent Ottili Coder from reading sensitive files",
+  "Use {highlight}ottili-coder run{/highlight} for non-interactive scripting",
+  "Use {highlight}ottili-coder --continue{/highlight} to resume the last session",
+  "Use {highlight}ottili-coder run -f file.ts{/highlight} to attach files via CLI",
   "Use {highlight}--format json{/highlight} for machine-readable output in scripts",
-  "Run {highlight}opencode serve{/highlight} for headless API access to OpenCode",
-  "Use {highlight}opencode run --attach{/highlight} to connect to a running server",
-  "Run {highlight}opencode upgrade{/highlight} to update to the latest version",
-  "Run {highlight}opencode auth list{/highlight} to see all configured providers",
-  "Run {highlight}opencode agent create{/highlight} for guided agent creation",
-  "Use {highlight}/opencode{/highlight} in GitHub issues/PRs to trigger AI actions",
-  "Run {highlight}opencode github install{/highlight} to set up the GitHub workflow",
-  "Comment {highlight}/opencode fix this{/highlight} on issues to auto-create PRs",
+  "Run {highlight}ottili-coder serve{/highlight} for headless API access to Ottili Coder",
+  "Use {highlight}ottili-coder run --attach{/highlight} to connect to a running server",
+  "Run {highlight}ottili-coder upgrade{/highlight} to update to the latest version",
+  "Run {highlight}ottili-coder auth list{/highlight} to see all configured providers",
+  "Run {highlight}ottili-coder agent create{/highlight} for guided agent creation",
+  "Use {highlight}/ottili-coder{/highlight} in GitHub issues/PRs to trigger AI actions",
+  "Run {highlight}ottili-coder github install{/highlight} to set up the GitHub workflow",
+  "Comment {highlight}/ottili-coder fix this{/highlight} on issues to auto-create PRs",
   "Comment {highlight}/oc{/highlight} on PR code lines for targeted code reviews",
   'Use {highlight}"theme": "system"{/highlight} to match your terminal\'s colors',
-  "Create JSON theme files in {highlight}.opencode/themes/{/highlight} directory",
+  "Create JSON theme files in {highlight}.ottili-coder/themes/{/highlight} directory",
   "Themes support dark/light variants for both modes",
   "Use numeric xterm color codes 0-255 in custom theme JSON",
   "Use {highlight}{env:VAR_NAME}{/highlight} syntax to reference environment variables in config",
@@ -264,7 +299,7 @@ const TIPS: Tip[] = [
   "Run {highlight}/unshare{/highlight} to remove a session from public access",
   "Permission {highlight}doom_loop{/highlight} prevents infinite tool call loops",
   "Permission {highlight}external_directory{/highlight} protects files outside project",
-  "Run {highlight}opencode debug config{/highlight} to troubleshoot configuration",
+  "Run {highlight}ottili-coder debug config{/highlight} to troubleshoot configuration",
   "Use {highlight}--print-logs{/highlight} flag to see detailed logs in stderr",
   (shortcuts) => `Use ${commandText("/timeline", shortcuts.sessionTimeline())} to jump to specific messages`,
   (shortcuts) => press(shortcuts.messagesToggleConceal(), "to toggle code block visibility in messages"),
@@ -274,8 +309,8 @@ const TIPS: Tip[] = [
     shortcuts.commandList()
       ? `Toggle username display in chat via the command palette (${shortcutText(shortcuts.commandList())})`
       : "Toggle username display in chat via the command palette",
-  "Run {highlight}docker run -it --rm ghcr.io/anomalyco/opencode{/highlight} for containerized use",
-  "Use {highlight}/connect{/highlight} with OpenCode Zen for curated, tested models",
+  "Run {highlight}docker run -it --rm ghcr.io/Ottili-ONE/coder-cli{/highlight} for containerized use",
+  "Use {highlight}/connect{/highlight} with Ottili Coder Zen for curated, tested models",
   "Commit your project's {highlight}AGENTS.md{/highlight} file to Git for team sharing",
   "Use {highlight}/review{/highlight} to review uncommitted changes, branches, or PRs",
   (shortcuts) => `Use ${commandText("/help", shortcuts.helpShow())} to show the help dialog`,

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Ottili Coder
+Exec=/opt/Ottili Coder/ai.ottili-coder.desktop %U
+Terminal=false
+Type=Application
+Icon=ai.ottili-coder.desktop
+StartupWMClass=ai.ottili-coder.desktop
+NoDisplay=true
+Comment=Open source AI coding agent
+Categories=Development;

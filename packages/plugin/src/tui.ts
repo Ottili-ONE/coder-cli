@@ -1,6 +1,6 @@
 import type {
   AgentPart,
-  OpencodeClient,
+  OttiliCoderClient,
   Event,
   FilePart,
   LspStatus,
@@ -396,6 +396,8 @@ export type TuiState = {
   part: (messageID: string) => ReadonlyArray<Part>
   lsp: () => ReadonlyArray<TuiSidebarLspItem>
   mcp: () => ReadonlyArray<TuiSidebarMcpItem>
+  account: () => { loggedIn: boolean; email?: string; orgName?: string }
+  cloud: () => { configured: boolean; activeJobs?: number }
 }
 
 type TuiBindingLookupView = {
@@ -611,7 +613,7 @@ export type TuiPluginApi = {
   kv: TuiKV
   state: TuiState
   theme: TuiTheme
-  client: OpencodeClient
+  client: OttiliCoderClient
   event: TuiEventBus
   renderer: CliRenderer
   slots: TuiSlots

@@ -1,17 +1,17 @@
 <p align="center">
-  <a href="https://opencode.ai">
+  <a href="https://ottili.one/coder">
     <picture>
       <source srcset="packages/console/app/src/asset/logo-ornate-dark.svg" media="(prefers-color-scheme: dark)">
       <source srcset="packages/console/app/src/asset/logo-ornate-light.svg" media="(prefers-color-scheme: light)">
-      <img src="packages/console/app/src/asset/logo-ornate-light.svg" alt="OpenCode logo">
+      <img src="packages/console/app/src/asset/logo-ornate-light.svg" alt="Ottili Coder logo">
     </picture>
   </a>
 </p>
 <p align="center">El agente de programación con IA de código abierto.</p>
 <p align="center">
-  <a href="https://opencode.ai/discord"><img alt="Discord" src="https://img.shields.io/discord/1391832426048651334?style=flat-square&label=discord" /></a>
-  <a href="https://www.npmjs.com/package/opencode-ai"><img alt="npm" src="https://img.shields.io/npm/v/opencode-ai?style=flat-square" /></a>
-  <a href="https://github.com/anomalyco/opencode/actions/workflows/publish.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/anomalyco/opencode/publish.yml?style=flat-square&branch=dev" /></a>
+  <a href="https://ottili.one/coder/discord"><img alt="Discord" src="https://img.shields.io/discord/1391832426048651334?style=flat-square&label=discord" /></a>
+  <a href="https://www.npmjs.com/package/ottili-coder-ai"><img alt="npm" src="https://img.shields.io/npm/v/ottili-coder-ai?style=flat-square" /></a>
+  <a href="https://github.com/Ottili-ONE/coder-cli/actions/workflows/publish.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/Ottili-ONE/coder-cli/publish.yml?style=flat-square&branch=dev" /></a>
 </p>
 
 <p align="center">
@@ -39,7 +39,7 @@
   <a href="README.vi.md">Tiếng Việt</a>
 </p>
 
-[![OpenCode Terminal UI](packages/web/src/assets/lander/screenshot.png)](https://opencode.ai)
+[![Ottili Coder Terminal UI](packages/web/src/assets/lander/screenshot.png)](https://ottili.one/coder)
 
 ---
 
@@ -47,18 +47,18 @@
 
 ```bash
 # YOLO
-curl -fsSL https://opencode.ai/install | bash
+curl -fsSL https://ottili.one/coder/install | bash
 
 # Gestores de paquetes
-npm i -g opencode-ai@latest        # o bun/pnpm/yarn
-scoop install opencode             # Windows
-choco install opencode             # Windows
-brew install anomalyco/tap/opencode # macOS y Linux (recomendado, siempre al día)
-brew install opencode              # macOS y Linux (fórmula oficial de brew, se actualiza menos)
-sudo pacman -S opencode            # Arch Linux (Stable)
-paru -S opencode-bin               # Arch Linux (Latest from AUR)
-mise use -g opencode               # cualquier sistema
-nix run nixpkgs#opencode           # o github:anomalyco/opencode para la rama dev más reciente
+npm i -g ottili-coder-ai@latest        # o bun/pnpm/yarn
+scoop install ottili-coder             # Windows
+choco install ottili-coder             # Windows
+brew install anomalyco/tap/ottili-coder # macOS y Linux (recomendado, siempre al día)
+brew install ottili-coder              # macOS y Linux (fórmula oficial de brew, se actualiza menos)
+sudo pacman -S ottili-coder            # Arch Linux (Stable)
+paru -S ottili-coder-bin               # Arch Linux (Latest from AUR)
+mise use -g ottili-coder               # cualquier sistema
+nix run nixpkgs#ottili-coder           # o github:Ottili-ONE/coder-cli para la rama dev más reciente
 ```
 
 > [!TIP]
@@ -66,40 +66,40 @@ nix run nixpkgs#opencode           # o github:anomalyco/opencode para la rama de
 
 ### App de escritorio (BETA)
 
-OpenCode también está disponible como aplicación de escritorio. Descárgala directamente desde la [página de releases](https://github.com/anomalyco/opencode/releases) o desde [opencode.ai/download](https://opencode.ai/download).
+Ottili Coder también está disponible como aplicación de escritorio. Descárgala directamente desde la [página de releases](https://github.com/Ottili-ONE/coder-cli/releases) o desde [ottili.one/coder/download](https://ottili.one/coder/download).
 
 | Plataforma            | Descarga                           |
 | --------------------- | ---------------------------------- |
-| macOS (Apple Silicon) | `opencode-desktop-mac-arm64.dmg`   |
-| macOS (Intel)         | `opencode-desktop-mac-x64.dmg`     |
-| Windows               | `opencode-desktop-windows-x64.exe` |
+| macOS (Apple Silicon) | `ottili-coder-desktop-mac-arm64.dmg`   |
+| macOS (Intel)         | `ottili-coder-desktop-mac-x64.dmg`     |
+| Windows               | `ottili-coder-desktop-windows-x64.exe` |
 | Linux                 | `.deb`, `.rpm`, o AppImage         |
 
 ```bash
 # macOS (Homebrew)
-brew install --cask opencode-desktop
+brew install --cask ottili-coder-desktop
 # Windows (Scoop)
-scoop bucket add extras; scoop install extras/opencode-desktop
+scoop bucket add extras; scoop install extras/ottili-coder-desktop
 ```
 
 #### Directorio de instalación
 
 El script de instalación respeta el siguiente orden de prioridad para la ruta de instalación:
 
-1. `$OPENCODE_INSTALL_DIR` - Directorio de instalación personalizado
+1. `$OTTILI_CODER_INSTALL_DIR` - Directorio de instalación personalizado
 2. `$XDG_BIN_DIR` - Ruta compatible con la especificación XDG Base Directory
 3. `$HOME/bin` - Directorio binario estándar del usuario (si existe o se puede crear)
-4. `$HOME/.opencode/bin` - Alternativa por defecto
+4. `$HOME/.ottili-coder/bin` - Alternativa por defecto
 
 ```bash
 # Ejemplos
-OPENCODE_INSTALL_DIR=/usr/local/bin curl -fsSL https://opencode.ai/install | bash
-XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://opencode.ai/install | bash
+OTTILI_CODER_INSTALL_DIR=/usr/local/bin curl -fsSL https://ottili.one/coder/install | bash
+XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://ottili.one/coder/install | bash
 ```
 
 ### Agentes
 
-OpenCode incluye dos agentes integrados que puedes alternar con la tecla `Tab`.
+Ottili Coder incluye dos agentes integrados que puedes alternar con la tecla `Tab`.
 
 - **build** - Por defecto, agente con acceso completo para tareas de desarrollo
 - **plan** - Agente de solo lectura para análisis y exploración de código
@@ -110,20 +110,20 @@ OpenCode incluye dos agentes integrados que puedes alternar con la tecla `Tab`.
 Además, incluye un subagente **general** para búsquedas complejas y tareas de varios pasos.
 Se usa internamente y se puede invocar con `@general` en los mensajes.
 
-Más información sobre [agentes](https://opencode.ai/docs/agents).
+Más información sobre [agentes](https://ottili.one/coder/docs/agents).
 
 ### Documentación
 
-Para más información sobre cómo configurar OpenCode, [**ve a nuestra documentación**](https://opencode.ai/docs).
+Para más información sobre cómo configurar Ottili Coder, [**ve a nuestra documentación**](https://ottili.one/coder/docs).
 
 ### Contribuir
 
-Si te interesa contribuir a OpenCode, lee nuestras [docs de contribución](./CONTRIBUTING.md) antes de enviar un pull request.
+Si te interesa contribuir a Ottili Coder, lee nuestras [docs de contribución](./CONTRIBUTING.md) antes de enviar un pull request.
 
-### Proyectos basados en OpenCode
+### Proyectos basados en Ottili Coder
 
-Si estás trabajando en un proyecto basado en OpenCode y usas "opencode" como parte del nombre, por ejemplo, "opencode-dashboard" u "opencode-mobile", agrega una nota en tu README para aclarar que no está hecho por el equipo de OpenCode y que no está afiliado con nosotros de ninguna manera.
+Si estás trabajando en un proyecto basado en Ottili Coder y usas "ottili-coder" como parte del nombre, por ejemplo, "ottili-coder-dashboard" u "ottili-coder-mobile", agrega una nota en tu README para aclarar que no está hecho por el equipo de Ottili Coder y que no está afiliado con nosotros de ninguna manera.
 
 ---
 
-**Únete a nuestra comunidad** [Discord](https://discord.gg/opencode) | [X.com](https://x.com/opencode)
+**Únete a nuestra comunidad** [Discord](https://discord.gg/ottili-coder) | [X.com](https://x.com/ottili-coder)

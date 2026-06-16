@@ -3,11 +3,20 @@ import { Schema } from "effect"
 import { logo as glyphs } from "./logo"
 
 const wordmark = [
-  `⠀                                ▄     `,
-  `█▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█`,
-  `█  █ █  █ █▀▀▀ █  █ █    █  █ █  █ █▀▀▀`,
-  `▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀  ▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀`,
+  ` █▀▀█ ▀▀█▀▀ ▀▀█▀▀ ▀█▀ █     ▀█▀ `,
+  ` █  █   █     █    █  █      █  `,
+  ` █  █   █     █    █  █      █  `,
+  ` ▀▀▀▀   ▀     ▀   ▀▀▀ ▀▀▀▀  ▀▀▀ `,
+  ``,
+  `    █▀▀▀ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ `,
+  `    █    █  █ █  █ █▀▀  █▀▀▄ `,
+  `    █    █  █ █  █ █    █  █ `,
+  `    ▀▀▀▀ ▀▀▀▀ ▀▀▀  ▀▀▀▀ ▀  ▀ `,
 ]
+
+// Wordmark sign-off. Kept on its own line so the logo reads as a product, not
+// a generic CLI: a local coding agent plus the hosted ottili.one cloud engine.
+const TAGLINE = "the autonomous developer · local agent + ottili.one cloud"
 
 export class CancelledError extends Schema.TaggedErrorClass<CancelledError>()("UICancelledError", {}) {}
 
@@ -53,6 +62,8 @@ export function logo(pad?: string) {
       result.push(row)
       result.push(EOL)
     }
+    if (pad) result.push(pad)
+    result.push("    " + TAGLINE)
     return result.join("").trimEnd()
   }
 
@@ -100,6 +111,8 @@ export function logo(pad?: string) {
     result.push(draw(other, right.fg, right.shadow, right.bg))
     result.push(EOL)
   })
+  if (pad) result.push(pad)
+  result.push("    " + Style.TEXT_DIM + TAGLINE + Style.TEXT_NORMAL)
   return result.join("").trimEnd()
 }
 

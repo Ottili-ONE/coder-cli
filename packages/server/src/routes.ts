@@ -17,7 +17,7 @@ export function createRoutes(password?: string) {
     Layer.provide(schemaErrorLayer),
     Layer.provide(
       password
-        ? ServerAuth.Config.layer({ username: "opencode", password: Option.some(password) })
+        ? ServerAuth.Config.layer({ username: "ottili-coder", password: Option.some(password) })
         : ServerAuth.Config.defaultLayer,
     ),
     Layer.provide(LocationServiceMap.layer),

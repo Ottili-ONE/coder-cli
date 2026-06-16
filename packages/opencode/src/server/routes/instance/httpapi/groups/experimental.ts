@@ -83,10 +83,148 @@ export const SessionListQuery = Schema.Struct({
   archived: Schema.optional(QueryBoolean),
 })
 
+const AccountLoginPayload = Schema.Struct({
+  authUrl: Schema.optionalKey(Schema.String),
+})
+
+const AccountLoginResponse = Schema.Struct({
+  email: Schema.String,
+})
+
+const AccountStatusResponse = Schema.Struct({
+  loggedIn: Schema.Boolean,
+  email: Schema.optionalKey(Schema.String),
+  orgName: Schema.optionalKey(Schema.String),
+})
+
+const AccountLogoutResponse = Schema.Struct({
+  ok: Schema.Boolean,
+})
+
+const UsageLimitItemResponse = Schema.Struct({
+  key: Schema.String,
+  label: Schema.String,
+  used: Schema.Number,
+  limit: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  unlimited: Schema.Boolean,
+  remaining: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  percent: Schema.Number,
+  status: Schema.String,
+})
+
+const AccountUsageLimitsResponse = Schema.Struct({
+  loggedIn: Schema.Boolean,
+  planCode: Schema.optionalKey(Schema.String),
+  planName: Schema.optionalKey(Schema.String),
+  billingStatus: Schema.optionalKey(Schema.String),
+  periodEnd: Schema.optionalKey(Schema.String),
+  items: Schema.optionalKey(Schema.Array(UsageLimitItemResponse)),
+  dashboardUrl: Schema.optionalKey(Schema.String),
+  message: Schema.optionalKey(Schema.String),
+})
+
+const CloudJob = Schema.Struct({
+  id: Schema.Number,
+  title: Schema.String,
+  objective: Schema.optionalKey(Schema.String),
+  mode: Schema.optionalKey(Schema.String),
+  status: Schema.String,
+  target_task_count: Schema.optionalKey(Schema.Number),
+  current_phase: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  completion_pct: Schema.optionalKey(Schema.Number),
+  repository_id: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  execution_backend: Schema.optionalKey(Schema.String),
+  result_summary: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  error_summary: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  created_by: Schema.optionalKey(Schema.String),
+  created_at: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  updated_at: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  started_at: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  completed_at: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  task_counts: Schema.optionalKey(Schema.Record(Schema.String, Schema.Number)),
+  task_total: Schema.optionalKey(Schema.Number),
+  artifacts: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.Number,
+        type: Schema.String,
+        title: Schema.String,
+        payload: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+        created_at: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      }),
+    ),
+  ),
+}).annotate({ identifier: "CloudJob" })
+
+const CloudEvent = Schema.Struct({
+  id: Schema.Number,
+  kind: Schema.String,
+  message: Schema.String,
+  created_at: Schema.NullOr(Schema.String),
+}).annotate({ identifier: "CloudEvent" })
+
+const CloudStatusResponse = Schema.Struct({
+  configured: Schema.Boolean,
+  url: Schema.optionalKey(Schema.String),
+  company: Schema.optionalKey(Schema.String),
+  dashboardUrl: Schema.String,
+  activeJobs: Schema.optionalKey(NonNegativeInt),
+})
+
+const CloudConnectPayload = Schema.Struct({
+  url: Schema.optionalKey(Schema.String),
+  token: Schema.String,
+  company: Schema.optionalKey(Schema.String),
+})
+
+const CloudConnectResponse = Schema.Struct({
+  ok: Schema.Boolean,
+  dashboardUrl: Schema.String,
+})
+
+const CloudDisconnectResponse = Schema.Struct({
+  ok: Schema.Boolean,
+})
+
+const CloudJobList = Schema.Struct({
+  jobs: Schema.Array(CloudJob),
+})
+
+const CloudEventList = Schema.Struct({
+  events: Schema.Array(CloudEvent),
+})
+
+const CloudCreatePayload = Schema.Struct({
+  objective: Schema.String,
+  title: Schema.optionalKey(Schema.String),
+  mode: Schema.optionalKey(Schema.Literals(["autonomous_build", "continuous_coding"])),
+  target_task_count: Schema.optionalKey(Schema.Number),
+  repository_id: Schema.optionalKey(Schema.Number),
+  execution_target: Schema.optionalKey(Schema.Literals(["local", "github_agent"])),
+  default_agent: Schema.optionalKey(Schema.String),
+  auto_create_pr: Schema.optionalKey(Schema.Boolean),
+})
+
+const CloudDashboardUrlResponse = Schema.Struct({
+  url: Schema.String,
+})
+
 export const ExperimentalPaths = {
   console: "/experimental/console",
   consoleOrgs: "/experimental/console/orgs",
   consoleSwitch: "/experimental/console/switch",
+  accountLogin: "/experimental/account/login",
+  accountStatus: "/experimental/account/status",
+  accountLogout: "/experimental/account/logout",
+  accountUsageLimits: "/experimental/account/usage-limits",
+  cloudStatus: "/experimental/cloud/status",
+  cloudConnect: "/experimental/cloud/connect",
+  cloudDisconnect: "/experimental/cloud/disconnect",
+  cloudJobs: "/experimental/cloud/jobs",
+  cloudJob: "/experimental/cloud/jobs/:jobId",
+  cloudJobCancel: "/experimental/cloud/jobs/:jobId/cancel",
+  cloudJobEvents: "/experimental/cloud/jobs/:jobId/events",
+  cloudJobDashboard: "/experimental/cloud/jobs/:jobId/dashboard",
   tool: "/experimental/tool",
   toolIDs: "/experimental/tool/ids",
   worktree: "/experimental/worktree",
@@ -131,7 +269,157 @@ export const ExperimentalApi = HttpApi.make("experimental")
           OpenApi.annotations({
             identifier: "experimental.console.switchOrg",
             summary: "Switch active Console org",
-            description: "Persist a new active Console account/org selection for the current local OpenCode state.",
+            description: "Persist a new active Console account/org selection for the current local Ottili Coder state.",
+          }),
+        ),
+        HttpApiEndpoint.post("accountLogin", ExperimentalPaths.accountLogin, {
+          query: WorkspaceRoutingQuery,
+          payload: AccountLoginPayload,
+          success: described(AccountLoginResponse, "Signed-in account email"),
+          error: HttpApiError.InternalServerError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.account.login",
+            summary: "Sign in with Ottili ONE",
+            description: "Open the browser OAuth flow and persist the Ottili ONE account locally.",
+          }),
+        ),
+        HttpApiEndpoint.get("accountStatus", ExperimentalPaths.accountStatus, {
+          query: WorkspaceRoutingQuery,
+          success: described(AccountStatusResponse, "Active account status"),
+          error: HttpApiError.InternalServerError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.account.status",
+            summary: "Get active account status",
+            description: "Return whether an Ottili ONE account is signed in locally and its display metadata.",
+          }),
+        ),
+        HttpApiEndpoint.post("accountLogout", ExperimentalPaths.accountLogout, {
+          query: WorkspaceRoutingQuery,
+          success: described(AccountLogoutResponse, "Logout success"),
+          error: HttpApiError.InternalServerError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.account.logout",
+            summary: "Sign out of Ottili ONE",
+            description: "Remove the active local Ottili ONE account and clear linked provider credentials.",
+          }),
+        ),
+        HttpApiEndpoint.get("accountUsageLimits", ExperimentalPaths.accountUsageLimits, {
+          query: WorkspaceRoutingQuery,
+          success: described(AccountUsageLimitsResponse, "Ottili ONE plan usage limits"),
+          error: HttpApiError.InternalServerError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.account.usageLimits",
+            summary: "Get Ottili ONE usage limits",
+            description: "Return plan usage limits for the signed-in Ottili ONE account.",
+          }),
+        ),
+        HttpApiEndpoint.get("cloudStatus", ExperimentalPaths.cloudStatus, {
+          query: WorkspaceRoutingQuery,
+          success: described(CloudStatusResponse, "Ottili Cloud connection status"),
+          error: HttpApiError.InternalServerError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.cloud.status",
+            summary: "Get Ottili Cloud status",
+            description: "Return whether Ottili Coder Cloud is configured and how many jobs are active.",
+          }),
+        ),
+        HttpApiEndpoint.post("cloudConnect", ExperimentalPaths.cloudConnect, {
+          query: WorkspaceRoutingQuery,
+          payload: CloudConnectPayload,
+          success: described(CloudConnectResponse, "Cloud connect success"),
+          error: HttpApiError.BadRequest,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.cloud.connect",
+            summary: "Connect Ottili Cloud",
+            description: "Save the developer API key and optional company slug for Ottili Coder Cloud.",
+          }),
+        ),
+        HttpApiEndpoint.post("cloudDisconnect", ExperimentalPaths.cloudDisconnect, {
+          query: WorkspaceRoutingQuery,
+          success: described(CloudDisconnectResponse, "Cloud disconnect success"),
+          error: HttpApiError.InternalServerError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.cloud.disconnect",
+            summary: "Disconnect Ottili Cloud",
+            description: "Remove the saved Ottili Coder Cloud API key from local config.",
+          }),
+        ),
+        HttpApiEndpoint.get("cloudJobs", ExperimentalPaths.cloudJobs, {
+          query: WorkspaceRoutingQuery,
+          success: described(CloudJobList, "Cloud jobs"),
+          error: HttpApiError.BadRequest,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.cloud.listJobs",
+            summary: "List cloud jobs",
+            description: "List recent Ottili Coder Cloud jobs for the connected workspace.",
+          }),
+        ),
+        HttpApiEndpoint.get("cloudJob", ExperimentalPaths.cloudJob, {
+          params: { jobId: Schema.NumberFromString },
+          query: WorkspaceRoutingQuery,
+          success: described(CloudJob, "Cloud job"),
+          error: HttpApiError.BadRequest,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.cloud.getJob",
+            summary: "Get cloud job",
+            description: "Fetch one Ottili Coder Cloud job by id.",
+          }),
+        ),
+        HttpApiEndpoint.post("cloudCreateJob", ExperimentalPaths.cloudJobs, {
+          query: WorkspaceRoutingQuery,
+          payload: CloudCreatePayload,
+          success: described(CloudJob, "Created cloud job"),
+          error: HttpApiError.BadRequest,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.cloud.createJob",
+            summary: "Create cloud job",
+            description: "Start a new autonomous Ottili Coder Cloud job.",
+          }),
+        ),
+        HttpApiEndpoint.post("cloudJobCancel", ExperimentalPaths.cloudJobCancel, {
+          params: { jobId: Schema.NumberFromString },
+          query: WorkspaceRoutingQuery,
+          success: described(CloudJob, "Cancelled cloud job"),
+          error: HttpApiError.BadRequest,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.cloud.cancelJob",
+            summary: "Cancel cloud job",
+            description: "Cancel a running Ottili Coder Cloud job.",
+          }),
+        ),
+        HttpApiEndpoint.get("cloudJobEvents", ExperimentalPaths.cloudJobEvents, {
+          params: { jobId: Schema.NumberFromString },
+          query: WorkspaceRoutingQuery,
+          success: described(CloudEventList, "Cloud job events"),
+          error: HttpApiError.BadRequest,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.cloud.listJobEvents",
+            summary: "List cloud job events",
+            description: "Fetch the event stream for one Ottili Coder Cloud job.",
+          }),
+        ),
+        HttpApiEndpoint.get("cloudJobDashboard", ExperimentalPaths.cloudJobDashboard, {
+          params: { jobId: Schema.NumberFromString },
+          query: WorkspaceRoutingQuery,
+          success: described(CloudDashboardUrlResponse, "Cloud job dashboard URL"),
+          error: HttpApiError.BadRequest,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.cloud.dashboardUrl",
+            summary: "Get cloud job dashboard URL",
+            description: "Return the codehelm.ottili.one dashboard URL for a cloud job.",
           }),
         ),
         HttpApiEndpoint.get("tool", ExperimentalPaths.tool, {
@@ -214,7 +502,7 @@ export const ExperimentalApi = HttpApi.make("experimental")
             identifier: "experimental.session.list",
             summary: "List sessions",
             description:
-              "Get a list of all OpenCode sessions across projects, sorted by most recently updated. Archived sessions are excluded by default.",
+              "Get a list of all Ottili Coder sessions across projects, sorted by most recently updated. Archived sessions are excluded by default.",
           }),
         ),
         HttpApiEndpoint.post("sessionBackground", ExperimentalPaths.sessionBackground, {
@@ -253,7 +541,7 @@ export const ExperimentalApi = HttpApi.make("experimental")
   )
   .annotateMerge(
     OpenApi.annotations({
-      title: "opencode experimental HttpApi",
+      title: "ottili-coder experimental HttpApi",
       version: "0.0.1",
       description: "Experimental HttpApi surface for selected instance routes.",
     }),

@@ -1,4 +1,10 @@
-# opencode database guide
+# ottili-coder database guide
+
+## Tooling
+
+Primary agents receive platform context, tooling overview, browser automation (Playwright MCP), execution doctrine, and a dynamic `<available_tools>` list each session.
+
+**Built-in MCP:** Playwright (`@playwright/mcp`) merges into config by default. Disable with `OTTILI_CODER_DISABLE_PLAYWRIGHT=1` or `"playwright": { "enabled": false }`.
 
 ## Database
 
@@ -7,10 +13,10 @@
 
 ## Development server
 
-- Running `bun dev` from `packages/opencode` starts the live interactive TUI. Do not run it as a blocking foreground command when you need to inspect the result.
-- Start it in `tmux` instead: `tmux new-session -d -s opencode-dev 'bun dev'`.
-- Capture the current TUI output with: `tmux capture-pane -pt opencode-dev`.
-- Stop the session explicitly when done: `tmux kill-session -t opencode-dev`.
+- Running `bun dev` from `packages/ottili-coder` starts the live interactive TUI. Do not run it as a blocking foreground command when you need to inspect the result.
+- Start it in `tmux` instead: `tmux new-session -d -s ottili-coder-dev 'bun dev'`.
+- Capture the current TUI output with: `tmux capture-pane -pt ottili-coder-dev`.
+- Stop the session explicitly when done: `tmux kill-session -t ottili-coder-dev`.
 
 # Module shape
 
@@ -22,7 +28,7 @@ of the file:
 ```ts
 // src/foo/foo.ts
 export interface Interface { ... }
-export class Service extends Context.Service<Service, Interface>()("@opencode/Foo") {}
+export class Service extends Context.Service<Service, Interface>()("@ottili-coder/Foo") {}
 export const layer = Layer.effect(Service, ...)
 export const defaultLayer = layer.pipe(...)
 
@@ -69,7 +75,7 @@ import { SessionStatus } from "@/session/status"
 Barrels in multi-sibling directories force every import through the barrel to
 evaluate every sibling, which defeats tree-shaking and slows module load.
 
-# opencode Effect rules
+# ottili-coder Effect rules
 
 Use these rules when writing or migrating Effect code.
 

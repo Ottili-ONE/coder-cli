@@ -142,7 +142,7 @@ export const headless = {
 } satisfies Connector.OAuthImplementation
 
 function headers(contentType: string) {
-  return { "Content-Type": contentType, "User-Agent": `opencode/${InstallationVersion}` }
+  return { "Content-Type": contentType, "User-Agent": `ottili-coder/${InstallationVersion}` }
 }
 
 function exchange(code: string, redirect: string, pkce: Pkce) {
@@ -223,7 +223,7 @@ function authorizeURL(redirect: string, pkce: Pkce, state: string) {
     id_token_add_organizations: "true",
     codex_cli_simplified_flow: "true",
     state,
-    originator: "opencode",
+    originator: "ottili-coder",
   })}`
 }
 
@@ -247,6 +247,6 @@ function claim(token: string) {
 }
 
 const successPage =
-  "<!doctype html><title>OpenCode</title><h1>Authorization successful</h1><p>You can close this window.</p>"
+  "<!doctype html><title>Ottili Coder</title><h1>Authorization successful</h1><p>You can close this window.</p>"
 const errorPage = (message: string) =>
-  `<!doctype html><title>OpenCode</title><h1>Authorization failed</h1><p>${message.replace(/[&<>"']/g, "")}</p>`
+  `<!doctype html><title>Ottili Coder</title><h1>Authorization failed</h1><p>${message.replace(/[&<>"']/g, "")}</p>`

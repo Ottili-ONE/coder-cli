@@ -22,7 +22,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
     Effect.gen(function* () {
       const catalog = yield* Catalog.Service
       const plugin = yield* PluginV2.Service
-      const providerID = ProviderV2.ID.opencode
+      const providerID = ProviderV2.ID.ottiliCoder
       const modelID = ModelV2.ID.make("alpha-gpt-next")
       const config = Config.Service.of({
         entries: () =>
@@ -31,8 +31,8 @@ describe("ConfigProviderPlugin.Plugin", () => {
               type: "document",
               info: decode({
                 providers: {
-                  opencode: {
-                    api: { type: "aisdk", package: "@ai-sdk/openai", url: "https://opencode.test/v1" },
+                  ottiliCoder: {
+                    api: { type: "aisdk", package: "@ai-sdk/openai", url: "https://ottiliCoder.test/v1" },
                     models: {
                       "alpha-gpt-next": {
                         variants: [
@@ -81,7 +81,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
     Effect.gen(function* () {
       const catalog = yield* Catalog.Service
       const plugin = yield* PluginV2.Service
-      const providerID = ProviderV2.ID.opencode
+      const providerID = ProviderV2.ID.ottiliCoder
       const modelID = ModelV2.ID.make("alpha-gpt-next")
       const config = Config.Service.of({
         entries: () =>
@@ -90,8 +90,8 @@ describe("ConfigProviderPlugin.Plugin", () => {
               type: "document",
               info: decode({
                 providers: {
-                  opencode: {
-                    api: { type: "aisdk", package: "@ai-sdk/openai", url: "https://opencode.test/v1" },
+                  ottiliCoder: {
+                    api: { type: "aisdk", package: "@ai-sdk/openai", url: "https://ottiliCoder.test/v1" },
                   },
                 },
               }),
@@ -100,7 +100,7 @@ describe("ConfigProviderPlugin.Plugin", () => {
               type: "document",
               info: decode({
                 providers: {
-                  opencode: {
+                  ottiliCoder: {
                     models: {
                       "alpha-gpt-next": {
                         variants: [{ id: "high", body: { reasoningEffort: "high" } }],

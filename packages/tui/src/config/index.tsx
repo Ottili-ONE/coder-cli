@@ -31,6 +31,11 @@ export const DiffStyle = Schema.Literals(["auto", "stacked"]).annotate({
   description: "Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column",
 })
 
+export const ThemeMode = Schema.Literals(["dark", "light", "system"]).annotate({
+  description: "Color mode for the TUI: dark, light, or follow the terminal (system)",
+})
+export type ThemeMode = Schema.Schema.Type<typeof ThemeMode>
+
 export const AttentionSounds = Schema.Record(AttentionSoundName, Schema.optionalKey(Schema.String))
 export type AttentionSoundPaths = Schema.Schema.Type<typeof AttentionSounds>
 export const Attention = Schema.Struct({
@@ -53,6 +58,7 @@ export const Prompt = Schema.Struct({
 export const Info = Schema.Struct({
   $schema: Schema.optional(Schema.String),
   theme: Schema.optional(Schema.String),
+  theme_mode: Schema.optional(ThemeMode),
   keybinds: Schema.optional(TuiKeybind.KeybindOverrides),
   plugin: Schema.optional(Schema.Array(PluginSpec)),
   plugin_enabled: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
@@ -66,7 +72,8 @@ export const Info = Schema.Struct({
 })
 export type Info = Schema.Schema.Type<typeof Info>
 
-export type Resolved = Omit<Info, "attention" | "keybinds" | "leader_timeout" | "mouse"> & {
+export type Resolved = Omit<Info, "attention" | "keybinds" | "leader_timeout" | "mouse" | "theme_mode"> & {
+  theme_mode: ThemeMode
   attention: {
     enabled: boolean
     notifications: boolean
@@ -99,12 +106,13 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
 
   return {
     ...input,
+    theme_mode: input.theme_mode ?? "system",
     attention: {
       enabled: input.attention?.enabled ?? false,
       notifications: input.attention?.notifications ?? true,
       sound: input.attention?.sound ?? true,
       volume: input.attention?.volume ?? 0.4,
-      sound_pack: input.attention?.sound_pack ?? "opencode.default",
+      sound_pack: input.attention?.sound_pack ?? "ottiliCoder.default",
       sounds: input.attention?.sounds ?? {},
     },
     keybinds: createBindingLookup(TuiKeybind.toBindingConfig(TuiKeybind.parse(keybinds)), {

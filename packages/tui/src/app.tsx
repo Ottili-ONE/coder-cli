@@ -40,12 +40,18 @@ import { DialogModel } from "./component/dialog-model"
 import { useConnected } from "./component/use-connected"
 import { DialogMcp } from "./component/dialog-mcp"
 import { DialogStatus } from "./component/dialog-status"
+import { DialogUsageLimits } from "./component/dialog-usage-limits"
 import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogAgent } from "./component/dialog-agent"
 import { DialogSessionList } from "./component/dialog-session-list"
 import { DialogWorkspaceList } from "./component/dialog-workspace-list"
 import { DialogConsoleOrg } from "./component/dialog-console-org"
+import { DialogAccountLogin } from "./component/dialog-account-login"
+import { DialogAccountLogout } from "./component/dialog-account-logout"
+import { DialogCloud } from "./component/dialog-cloud"
+import { DialogCloudLogin } from "./component/dialog-cloud-login"
+import { DialogCloudRun } from "./component/dialog-cloud-run"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { Home } from "./routes/home"
 import { Session } from "./routes/session"
@@ -68,11 +74,11 @@ import { createPluginRuntime, PluginRuntimeProvider, usePluginRuntime, type TuiP
 import { CommandPaletteDialog } from "./component/command-palette"
 import {
   COMMAND_PALETTE_COMMAND,
-  OPENCODE_BASE_MODE,
-  OpencodeKeymapProvider,
-  registerOpencodeKeymap,
+  OTTILI_CODER_BASE_MODE,
+  OttiliCoderKeymapProvider,
+  registerOttiliCoderKeymap,
   useBindings,
-  useOpencodeKeymap,
+  useOttiliCoderKeymap,
 } from "./keymap"
 
 import type { EventSource } from "./context/sdk"
@@ -111,8 +117,11 @@ const appBindingCommands = [
   "variant.cycle",
   "variant.list",
   "provider.connect",
+  "account.login",
+  "account.usage",
+  "cloud.open",
   "console.org.switch",
-  "opencode.status",
+  "ottiliCoder.status",
   "theme.switch",
   "theme.switch_mode",
   "theme.mode.lock",
@@ -190,7 +199,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
             useKittyKeyboard: {},
             autoFocus: false,
             openConsoleOnError: false,
-            useMouse: !Flag.OPENCODE_DISABLE_MOUSE && input.config.mouse,
+            useMouse: !Flag.OTTILI_CODER_DISABLE_MOUSE && input.config.mouse,
             consoleOptions: {
               keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
             },
@@ -204,7 +213,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
       win32DisableProcessedInput()
       const keymap = createDefaultOpenTuiKeymap(renderer)
       yield* Effect.acquireRelease(
-        Effect.sync(() => registerOpencodeKeymap(keymap, renderer, input.config)),
+        Effect.sync(() => registerOttiliCoderKeymap(keymap, renderer, input.config)),
         (unregister) => Effect.sync(unregister),
       )
       yield* Effect.addFinalizer(() =>
@@ -229,7 +238,14 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
       yield* Effect.tryPromise(async () => {
         // Prewarm palette before ThemeProvider mounts so `system` theme avoids a first-paint fallback flash.
         void renderer.getPalette({ size: 16 }).catch(() => undefined)
-        const mode = (await renderer.waitForThemeMode(1000)) ?? "dark"
+        const terminalMode = await renderer.waitForThemeMode(1000)
+        const configured = input.config.theme_mode ?? "system"
+        const mode =
+          configured === "light"
+            ? "light"
+            : configured === "dark"
+              ? "dark"
+              : (terminalMode ?? "dark")
         if (renderer.isDestroyed) return
 
         await render(() => {
@@ -264,12 +280,12 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                     >
                       <TuiStartupProvider
                         value={{
-                          initialRoute: process.env.OPENCODE_ROUTE ? JSON.parse(process.env.OPENCODE_ROUTE) : undefined,
-                          skipInitialLoading: Boolean(process.env.OPENCODE_FAST_BOOT),
+                          initialRoute: process.env.OTTILI_CODER_ROUTE ? JSON.parse(process.env.OTTILI_CODER_ROUTE) : undefined,
+                          skipInitialLoading: Boolean(process.env.OTTILI_CODER_FAST_BOOT),
                         }}
                       >
                         <ClipboardProvider>
-                          <OpencodeKeymapProvider keymap={keymap}>
+                          <OttiliCoderKeymapProvider keymap={keymap}>
                             <ArgsProvider {...input.args}>
                               <KVProvider>
                                 <ToastProvider>
@@ -325,7 +341,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                 </ToastProvider>
                               </KVProvider>
                             </ArgsProvider>
-                          </OpencodeKeymapProvider>
+                          </OttiliCoderKeymapProvider>
                         </ClipboardProvider>
                       </TuiStartupProvider>
                     </TuiTerminalEnvironmentProvider>
@@ -357,7 +373,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const dialog = useDialog()
   const local = useLocal()
   const kv = useKV()
-  const keymap = useOpencodeKeymap()
+  const keymap = useOttiliCoderKeymap()
   const event = useEvent()
   const sdk = useSDK()
   const toast = useToast()
@@ -409,7 +425,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const offSelectionKeys = keymap.intercept(
     "key",
     ({ event }) => {
-      if (!Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
+      if (!Flag.OTTILI_CODER_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
       Selection.handleSelectionKey(renderer, toast, event, clipboard)
     },
     { priority: 1 },
@@ -437,27 +453,27 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
 
   // Update terminal window title based on current route and session
   createEffect(() => {
-    if (!terminalTitleEnabled() || Flag.OPENCODE_DISABLE_TERMINAL_TITLE) return
+    if (!terminalTitleEnabled() || Flag.OTTILI_CODER_DISABLE_TERMINAL_TITLE) return
 
     if (route.data.type === "home") {
-      renderer.setTerminalTitle("OpenCode")
+      renderer.setTerminalTitle("Ottili Coder")
       return
     }
 
     if (route.data.type === "session") {
       const session = sync.session.get(route.data.sessionID)
       if (!session || isDefaultTitle(session.title)) {
-        renderer.setTerminalTitle("OpenCode")
+        renderer.setTerminalTitle("Ottili Coder")
         return
       }
 
       const title = session.title.length > 40 ? session.title.slice(0, 37) + "..." : session.title
-      renderer.setTerminalTitle(`OC | ${title}`)
+      renderer.setTerminalTitle(`Ottili Coder | ${title}`)
       return
     }
 
     if (route.data.type === "plugin") {
-      renderer.setTerminalTitle(`OC | ${route.data.id}`)
+      renderer.setTerminalTitle(`Ottili Coder | ${route.data.id}`)
     }
   })
 
@@ -597,7 +613,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         name: "workspace.list",
         title: "Manage workspaces",
         category: "Workspace",
-        hidden: !Flag.OPENCODE_EXPERIMENTAL_WORKSPACES,
+        hidden: !Flag.OTTILI_CODER_EXPERIMENTAL_WORKSPACES,
         slashName: "workspaces",
         run: () => {
           dialog.replace(() => <DialogWorkspaceList />)
@@ -722,6 +738,68 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         },
       },
       {
+        name: "account.login",
+        title: "Sign in with Ottili",
+        suggested: true,
+        slashName: "login",
+        slashAliases: ["signin", "account"],
+        run: () => {
+          dialog.replace(() => <DialogAccountLogin />)
+        },
+        category: "System",
+      },
+      {
+        name: "account.logout",
+        title: "Sign out of Ottili",
+        slashName: "logout",
+        slashAliases: ["signout"],
+        run: () => {
+          dialog.replace(() => <DialogAccountLogout />)
+        },
+        category: "System",
+      },
+      {
+        name: "account.usage",
+        title: "View usage limits",
+        suggested: true,
+        slashName: "usage",
+        slashAliases: ["limits", "plan-usage"],
+        run: () => {
+          dialog.replace(() => <DialogUsageLimits />)
+        },
+        category: "System",
+      },
+      {
+        name: "cloud.open",
+        title: "Ottili Cloud jobs",
+        suggested: true,
+        slashName: "cloud",
+        slashAliases: ["jobs", "cloud-jobs"],
+        run: () => {
+          dialog.replace(() => <DialogCloud />)
+        },
+        category: "System",
+      },
+      {
+        name: "cloud.run",
+        title: "Start cloud job",
+        slashName: "cloud-run",
+        slashAliases: ["cloud-run"],
+        run: () => {
+          dialog.replace(() => <DialogCloudRun />)
+        },
+        category: "System",
+      },
+      {
+        name: "cloud.connect",
+        title: "Connect Ottili Cloud",
+        slashName: "cloud-connect",
+        run: () => {
+          dialog.replace(() => <DialogCloudLogin onConnected={() => dialog.replace(() => <DialogCloud />)} />)
+        },
+        category: "System",
+      },
+      {
         name: "provider.connect",
         title: "Connect provider",
         suggested: !connected(),
@@ -747,7 +825,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           ]
         : []),
       {
-        name: "opencode.status",
+        name: "ottiliCoder.status",
         title: "View status",
         slashName: "status",
         run: () => {
@@ -767,8 +845,29 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       {
         name: "theme.switch_mode",
         title: mode() === "dark" ? "Switch to light mode" : "Switch to dark mode",
+        slashName: "theme",
         run: () => {
           setMode(mode() === "dark" ? "light" : "dark")
+          dialog.clear()
+        },
+        category: "System",
+      },
+      {
+        name: "theme.light",
+        title: "Switch to light mode",
+        slashName: "light",
+        run: () => {
+          setMode("light")
+          dialog.clear()
+        },
+        category: "System",
+      },
+      {
+        name: "theme.dark",
+        title: "Switch to dark mode",
+        slashName: "dark",
+        run: () => {
+          setMode("dark")
           dialog.clear()
         },
         category: "System",
@@ -796,7 +895,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         name: "docs.open",
         title: "Open docs",
         run: () => {
-          open("https://opencode.ai/docs").catch(() => {})
+          open("https://ottili.one/coder/docs").catch(() => {})
           dialog.clear()
         },
         category: "System",
@@ -931,7 +1030,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   }))
 
   useBindings(() => ({
-    mode: OPENCODE_BASE_MODE,
+    mode: OTTILI_CODER_BASE_MODE,
     bindings: tuiConfig.keybinds.gather("app", appBindingCommands),
   }))
 
@@ -940,7 +1039,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   }))
 
   useBindings(() => ({
-    mode: OPENCODE_BASE_MODE,
+    mode: OTTILI_CODER_BASE_MODE,
     enabled: () => {
       const current = promptRef.current
       if (!current?.focused) return true
@@ -1037,7 +1136,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     await DialogAlert.show(
       dialog,
       "Update Complete",
-      `Successfully updated to OpenCode v${result.data.version}. Please restart the application.`,
+      `Successfully updated to Ottili Coder v${result.data.version}. Please restart the application.`,
     )
 
     void exit()
@@ -1058,7 +1157,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       flexDirection="column"
       backgroundColor={theme.background}
       onMouseDown={(evt) => {
-        if (!Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
+        if (!Flag.OTTILI_CODER_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
         if (evt.button !== MouseButton.RIGHT) return
 
         if (!Selection.copy(renderer, toast, clipboard)) return
@@ -1066,12 +1165,12 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         evt.stopPropagation()
       }}
       onMouseUp={
-        !Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT
+        !Flag.OTTILI_CODER_EXPERIMENTAL_DISABLE_COPY_ON_SELECT
           ? () => Selection.copy(renderer, toast, clipboard)
           : undefined
       }
     >
-      <Show when={Flag.OPENCODE_SHOW_TTFD}>
+      <Show when={Flag.OTTILI_CODER_SHOW_TTFD}>
         <TimeToFirstDraw />
       </Show>
       <Show when={ready()}>

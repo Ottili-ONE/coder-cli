@@ -71,7 +71,7 @@ export interface Interface {
   readonly all: () => Effect.Effect<Info[]>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/Agent") {}
+export class Service extends Context.Service<Service, Interface>()("@opencode-ai/v2/Agent") {}
 
 enableMapSet()
 

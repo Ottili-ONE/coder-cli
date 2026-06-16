@@ -87,7 +87,7 @@ export interface Interface {
   ) => Effect.Effect<HookInput<Name> & HookOutput<Name>>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/Plugin") {}
+export class Service extends Context.Service<Service, Interface>()("@opencode-ai/v2/Plugin") {}
 
 export const layer = Layer.effect(
   Service,
@@ -182,5 +182,5 @@ export const layer = Layer.effect(
 
 export const locationLayer = layer
 
-// opencode
+// ottili-coder
 // sdcok

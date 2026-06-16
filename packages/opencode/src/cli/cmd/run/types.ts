@@ -11,7 +11,7 @@
 //     → stream.ts bridges to footer API
 //       → footer.ts queues commits and patches the footer view
 //         → OpenTUI split-footer renderer writes to terminal
-import type { OpencodeClient, PermissionRequest, QuestionRequest, ToolPart } from "@opencode-ai/sdk/v2"
+import type { OttiliCoderClient, PermissionRequest, QuestionRequest, ToolPart } from "@opencode-ai/sdk/v2"
 import type { TuiConfig } from "@opencode-ai/tui/config"
 
 export type RunFilePart = {
@@ -21,14 +21,14 @@ export type RunFilePart = {
   mime: string
 }
 
-type PromptModel = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
-type PromptInput = Parameters<OpencodeClient["session"]["prompt"]>[0]
+type PromptModel = Parameters<OttiliCoderClient["session"]["prompt"]>[0]["model"]
+type PromptInput = Parameters<OttiliCoderClient["session"]["prompt"]>[0]
 
 export type RunPromptPart = NonNullable<PromptInput["parts"]>[number]
 
-export type RunCommand = NonNullable<Awaited<ReturnType<OpencodeClient["command"]["list"]>>["data"]>[number]
+export type RunCommand = NonNullable<Awaited<ReturnType<OttiliCoderClient["command"]["list"]>>["data"]>[number]
 
-export type RunProvider = NonNullable<Awaited<ReturnType<OpencodeClient["provider"]["list"]>>["data"]>["all"][number]
+export type RunProvider = NonNullable<Awaited<ReturnType<OttiliCoderClient["provider"]["list"]>>["data"]>["all"][number]
 
 export type RunPrompt = {
   messageID?: string
@@ -48,14 +48,14 @@ export type FooterQueuedPrompt = {
   prompt: RunPrompt
 }
 
-export type RunAgent = NonNullable<Awaited<ReturnType<OpencodeClient["app"]["agents"]>>["data"]>[number]
+export type RunAgent = NonNullable<Awaited<ReturnType<OttiliCoderClient["app"]["agents"]>>["data"]>[number]
 
-type RunResourceMap = NonNullable<Awaited<ReturnType<OpencodeClient["experimental"]["resource"]["list"]>>["data"]>
+type RunResourceMap = NonNullable<Awaited<ReturnType<OttiliCoderClient["experimental"]["resource"]["list"]>>["data"]>
 
 export type RunResource = RunResourceMap[string]
 
 export type RunInput = {
-  sdk: OpencodeClient
+  sdk: OttiliCoderClient
   directory: string
   sessionID: string
   sessionTitle?: string
@@ -280,11 +280,11 @@ export type FooterEvent =
       state: FooterSubagentState
     }
 
-export type PermissionReply = Parameters<OpencodeClient["permission"]["reply"]>[0]
+export type PermissionReply = Parameters<OttiliCoderClient["permission"]["reply"]>[0]
 
-export type QuestionReply = Parameters<OpencodeClient["question"]["reply"]>[0]
+export type QuestionReply = Parameters<OttiliCoderClient["question"]["reply"]>[0]
 
-export type QuestionReject = Parameters<OpencodeClient["question"]["reject"]>[0]
+export type QuestionReject = Parameters<OttiliCoderClient["question"]["reject"]>[0]
 
 export type RunTuiConfig = Pick<TuiConfig.Resolved, "keybinds" | "leader_timeout" | "diff_style">
 

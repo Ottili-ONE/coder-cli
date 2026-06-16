@@ -1,5 +1,5 @@
-name: "opencode GitHub Action"
-description: "Run opencode in GitHub Actions workflows"
+name: "ottili-coder GitHub Action"
+description: "Run ottili-coder in GitHub Actions workflows"
 branding:
   icon: "code"
   color: "orange"
@@ -14,7 +14,7 @@ inputs:
     required: false
 
   share:
-    description: "Share the opencode session (defaults to true for public repos)"
+    description: "Share the ottili-coder session (defaults to true for public repos)"
     required: false
 
   prompt:
@@ -22,12 +22,12 @@ inputs:
     required: false
 
   use_github_token:
-    description: "Use GITHUB_TOKEN directly instead of OpenCode App token exchange. When true, skips OIDC and uses the GITHUB_TOKEN env var."
+    description: "Use GITHUB_TOKEN directly instead of Ottili Coder App token exchange. When true, skips OIDC and uses the GITHUB_TOKEN env var."
     required: false
     default: "false"
 
   mentions:
-    description: "Comma-separated list of trigger phrases (case-insensitive). Defaults to '/opencode,/oc'"
+    description: "Comma-separated list of trigger phrases (case-insensitive). Defaults to '/ottili-coder,/oc'"
     required: false
 
   variant:
@@ -35,39 +35,135 @@ inputs:
     required: false
 
   oidc_base_url:
-    description: "Base URL for OIDC token exchange API. Only required when running a custom GitHub App install. Defaults to https://api.opencode.ai"
+    description: "Base URL for OIDC token exchange API. Only required when running a custom GitHub App install. Defaults to https://api.ottili.one/coder"
     required: false
+
+  use_platform_broker:
+    description: >
+      Exchange a GitHub OIDC token for platform model credentials (managed/paid plan).
+      When true the action fetches an OIDC JWT (aud=api.ottili.one) and exchanges it
+      for the platform's model key — no provider secret needed in the repo.
+      Requires 'permissions: id-token: write' in the caller workflow.
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
   steps:
-    - name: Get opencode version
+    - name: Get ottili-coder version
       id: version
       shell: bash
       run: |
-        VERSION=$(curl -sf https://api.github.com/repos/anomalyco/opencode/releases/latest | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4)
-        echo "version=${VERSION:-latest}" >> $GITHUB_OUTPUT
+        # The CLI is installed from OTTILI_CODER_INSTALL_URL below; this only seeds
+        # the cache key. Use the hosted binary's published sha256 as the version so
+        # the cache busts whenever the self-hosted binary is updated (a fixed
+        # "latest" key would pin runners to a stale cached binary). Never fail.
+        INSTALL_URL="${OTTILI_CODER_INSTALL_URL:-https://ottili.one/coder/install}"
+        BASE="${INSTALL_URL%/install}"
+        os="$(uname -s | tr '[:upper:]' '[:lower:]')"; arch="$(uname -m)"
+        case "$arch" in x86_64|amd64) arch=x64 ;; aarch64|arm64) arch=arm64 ;; esac
+        VERSION="$(curl -fsSL "${BASE}/bin/ottili-coder-${os}-${arch}.sha256" 2>/dev/null | cut -c1-16 || true)"
+        echo "version=${VERSION:-latest}" >> "$GITHUB_OUTPUT"
 
-    - name: Cache opencode
+    - name: Cache ottili-coder
       id: cache
       uses: actions/cache@v4
       with:
-        path: ~/.opencode/bin
-        key: opencode-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
+        path: ~/.ottili-coder/bin
+        key: ottili-coder-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
 
-    - name: Install opencode
+    - name: Install ottili-coder
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
-      run: curl -fsSL https://opencode.ai/install | bash
+      run: curl -fsSL "${OTTILI_CODER_INSTALL_URL:-https://ottili.one/coder/install}" | bash
 
-    - name: Add opencode to PATH
+    - name: Add ottili-coder to PATH
       shell: bash
-      run: echo "$HOME/.opencode/bin" >> $GITHUB_PATH
+      run: echo "$HOME/.ottili-coder/bin" >> $GITHUB_PATH
 
-    - name: Run opencode
+    - name: Configure git identity
       shell: bash
-      id: run_opencode
-      run: opencode github run
+      run: |
+        # The agent commits on the runner; without an author identity `git commit`
+        # fails with "empty ident name". Default to the bot identity unless the
+        # workflow already configured one.
+        git config --global user.name >/dev/null 2>&1 || git config --global user.name "ottili-coder[bot]"
+        git config --global user.email >/dev/null 2>&1 || git config --global user.email "ottili-coder[bot]@users.noreply.github.com"
+
+        # Keep agent commits clean: a global gitignore so `git add -A` never picks
+        # up build/junk artifacts (e.g. __pycache__/*.pyc) the agent generates
+        # while running tests. Only applied if the repo doesn't ignore them already.
+        IGNORE="$HOME/.config/ottili-coder/gitignore"
+        mkdir -p "$(dirname "$IGNORE")"
+        cat > "$IGNORE" <<'GITIGNORE'
+        __pycache__/
+        *.py[cod]
+        *.egg-info/
+        .pytest_cache/
+        .mypy_cache/
+        .ruff_cache/
+        node_modules/
+        .DS_Store
+        *.log
+        .venv/
+        venv/
+        dist/
+        build/
+        GITIGNORE
+        git config --global core.excludesFile "$IGNORE"
+
+    - name: Exchange OIDC token for platform model credentials
+      if: inputs.use_platform_broker == 'true'
+      shell: bash
+      env:
+        MODEL: ${{ inputs.model }}
+        OTTILI_CODER_BROKER_URL: ${{ inputs.oidc_base_url != '' && format('{0}/token', inputs.oidc_base_url) || 'https://api.ottili.one/coder/token' }}
+      run: |
+        set -euo pipefail
+        UA="ottili-coder-github-action/1.0"
+
+        # Fetch GitHub Actions OIDC token with audience api.ottili.one
+        OIDC_TOKEN="$(curl -sSf -A "$UA" \
+          -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api.ottili.one" \
+          | python3 -c "import sys,json; print(json.load(sys.stdin)['value'])")"
+
+        # Exchange with the Ottili Coder broker (curl: a UA Cloudflare allows; the
+        # default Python-urllib UA trips CF's browser-integrity ban, error 1010).
+        REQ_BODY="$(OIDC_TOKEN="$OIDC_TOKEN" MODEL="${MODEL:-}" python3 -c "import json,os; print(json.dumps({'oidc_token': os.environ['OIDC_TOKEN'], 'requested_model': os.environ.get('MODEL') or None}))")"
+        HTTP_RESP="$(printf '%s' "$REQ_BODY" | curl -sS -A "$UA" \
+          -w $'\n%{http_code}' \
+          -H "Content-Type: application/json" \
+          --data-binary @- \
+          "${OTTILI_CODER_BROKER_URL}")"
+        HTTP_CODE="$(printf '%s' "$HTTP_RESP" | tail -n1)"
+        HTTP_BODY="$(printf '%s' "$HTTP_RESP" | sed '$d')"
+        if [ "$HTTP_CODE" != "200" ]; then
+          echo "Broker error ${HTTP_CODE}: ${HTTP_BODY}" >&2
+          exit 1
+        fi
+
+        # Expose the OIDC token to the run step so the CLI can post live progress
+        # back to CodeHelm (the dashboard then advances tasks one-by-one).
+        echo "OTTILI_CODER_OIDC_TOKEN=${OIDC_TOKEN}" >> "$GITHUB_ENV"
+
+        # Write returned credentials to GITHUB_ENV
+        printf '%s' "$HTTP_BODY" | python3 -c "
+        import json, os, sys
+        data = json.load(sys.stdin)
+        with open(os.environ['GITHUB_ENV'], 'a') as f:
+            for var, val in data.get('credentials', {}).items():
+                f.write(f'{var}={val}\n')
+            chosen = data.get('model', '')
+            if chosen:
+                f.write(f'MODEL={chosen}\n')
+        print(f\"Broker: model={data.get('model')}, provider={data.get('provider')}, workspace={data.get('workspace_slug')}\")
+        "
+
+    - name: Run ottili-coder
+      shell: bash
+      id: run_ottili-coder
+      run: ottili-coder github run
       env:
         MODEL: ${{ inputs.model }}
         AGENT: ${{ inputs.agent }}
@@ -77,3 +173,6 @@ runs:
         MENTIONS: ${{ inputs.mentions }}
         VARIANT: ${{ inputs.variant }}
         OIDC_BASE_URL: ${{ inputs.oidc_base_url }}
+        # Disable the Playwright browser MCP in CI: launching a browser in a
+        # headless runner hangs the run, and coding tasks don't need it.
+        OTTILI_CODER_DISABLE_PLAYWRIGHT: "1"

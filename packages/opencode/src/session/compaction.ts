@@ -4,6 +4,7 @@ import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
 import { Session } from "./session"
 import { SessionID, MessageID, PartID } from "./schema"
 import { Provider } from "@/provider/provider"
+import * as OttiliAuto from "@/provider/ottili-auto"
 import { MessageV2 } from "./message-v2"
 import { Token } from "@/util/token"
 import { SessionProcessor } from "./processor"
@@ -159,7 +160,7 @@ export interface Interface {
   }) => Effect.Effect<void>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/SessionCompaction") {}
+export class Service extends Context.Service<Service, Interface>()("@opencode-ai/SessionCompaction") {}
 
 export const use = serviceUse(Service)
 
@@ -336,9 +337,40 @@ export const layer = Layer.effect(
       }
 
       const agent = yield* agents.get("compaction")
+      let executionProviderID = userMessage.model.providerID
+      let executionModelID = userMessage.model.modelID
+      if (OttiliAuto.isOttiliAutoModel(executionProviderID, executionModelID)) {
+        const autoProvider = yield* provider.getProvider(ProviderV2.ID.make("ottili-auto")).pipe(
+          Effect.catchAll(() => Effect.succeed(undefined)),
+        )
+        const resolved = yield* Effect.tryPromise({
+          try: () =>
+            OttiliAuto.resolveExecutionTarget(
+              {
+                agent: userMessage.agent,
+                userText: OttiliAuto.extractLatestUserText(messages),
+                assistantText: OttiliAuto.extractLatestAssistantText(messages),
+              },
+              { apiKey: autoProvider?.key },
+            ),
+          catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+        }).pipe(
+          Effect.catchAll(() =>
+            Effect.sync(() =>
+              OttiliAuto.resolveExecutionTargetSync({
+                agent: userMessage.agent,
+                userText: OttiliAuto.extractLatestUserText(messages),
+                assistantText: OttiliAuto.extractLatestAssistantText(messages),
+              }),
+            ),
+          ),
+        )
+        executionProviderID = resolved.providerID
+        executionModelID = resolved.modelID
+      }
       const model = agent.model
         ? yield* provider.getModel(agent.model.providerID, agent.model.modelID).pipe(Effect.orDie)
-        : yield* provider.getModel(userMessage.model.providerID, userMessage.model.modelID).pipe(Effect.orDie)
+        : yield* provider.getModel(executionProviderID, executionModelID).pipe(Effect.orDie)
       const cfg = yield* config.get()
       const history = compactionPart && messages.at(-1)?.info.id === input.parentID ? messages.slice(0, -1) : messages
       const prior = completedCompactions(history)
@@ -478,9 +510,7 @@ export const layer = Layer.effect(
               {
                 sessionID: input.sessionID,
                 agent: userMessage.agent,
-                model: yield* provider
-                  .getModel(userMessage.model.providerID, userMessage.model.modelID)
-                  .pipe(Effect.orDie),
+                model: yield* provider.getModel(model.providerID, model.id).pipe(Effect.orDie),
                 provider: {
                   source: info.source,
                   info,

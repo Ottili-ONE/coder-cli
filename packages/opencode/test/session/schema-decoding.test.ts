@@ -53,7 +53,7 @@ describe("Session.Info", () => {
       projectID,
       workspaceID,
       directory: "/tmp/proj",
-      path: "packages/opencode",
+      path: "packages/ottili-coder",
       parentID: sessionIDChild,
       summary: {
         additions: 10,
@@ -236,11 +236,11 @@ describe("SessionStatus.Info", () => {
       message: "transient",
       action: {
         reason: "free_tier_limit",
-        provider: "opencode",
+        provider: "ottili-coder",
         title: "Free limit reached",
-        message: "Subscribe to OpenCode Go.",
+        message: "Subscribe to Ottili Coder Go.",
         label: "subscribe",
-        link: "https://opencode.ai/go",
+        link: "https://ottili.one/coder/go",
       },
       next: 500,
     }

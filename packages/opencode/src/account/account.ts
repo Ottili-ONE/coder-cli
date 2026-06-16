@@ -12,7 +12,26 @@ import {
 
 import { withTransientReadRetry } from "@/util/effect-http-client"
 import { AccountRepo, type AccountRow } from "./repo"
+import { persistOttiliOneLogin } from "./persist-ottili-login"
 import { normalizeServerUrl } from "./url"
+import {
+  fetchOttiliOneUser,
+  isOttiliOneAccountUrl,
+  loginOttiliOneViaBrowser,
+  orgFromAccessToken,
+  ottiliOneServiceUrl,
+  refreshOttiliOneToken,
+  resolveOttiliOneAuthUrlFromAccount,
+  resolveOttiliOnePlatformUrl,
+} from "./ottili-one"
+import {
+  defaultUsageLimitsDashboardUrl,
+  mergeBillingLimitRows,
+  parseCompanyPlanPayload,
+  compactUsageLimitItems,
+  USAGE_LIMIT_API_PATHS,
+  type UsageLimitItem,
+} from "./usage-limits"
 import {
   type AccountError,
   AccessToken,
@@ -134,7 +153,7 @@ class TokenRefreshRequest extends Schema.Class<TokenRefreshRequest>("TokenRefres
   client_id: Schema.String,
 }) {}
 
-const clientId = "opencode-cli"
+const clientId = "ottili-coder-cli"
 const eagerRefreshThreshold = Duration.minutes(5)
 const eagerRefreshThresholdMs = Duration.toMillis(eagerRefreshThreshold)
 
@@ -165,6 +184,17 @@ const accountErrorFromCause = (cause: unknown, message: string): AccountError =>
   return new AccountServiceError({ message, cause })
 }
 
+export type AccountUsageLimits = { loggedIn: false } | {
+  loggedIn: true
+  planCode?: string
+  planName?: string
+  billingStatus?: string
+  periodEnd?: string
+  items: UsageLimitItem[]
+  dashboardUrl: string
+  message?: string
+}
+
 export interface Interface {
   readonly active: () => Effect.Effect<Option.Option<Info>, AccountError>
   readonly activeOrg: () => Effect.Effect<Option.Option<ActiveOrg>, AccountError>
@@ -179,10 +209,17 @@ export interface Interface {
   ) => Effect.Effect<Option.Option<Record<string, unknown>>, AccountError>
   readonly token: (accountID: AccountID) => Effect.Effect<Option.Option<AccessToken>, AccountError>
   readonly login: (url: string) => Effect.Effect<Login, AccountError>
+  readonly loginOttiliOne: (authUrl?: string) => Effect.Effect<PollSuccess, AccountError>
+  readonly logout: () => Effect.Effect<void, AccountError>
+  readonly status: () => Effect.Effect<
+    { loggedIn: false } | { loggedIn: true; email: string; orgName?: string },
+    AccountError
+  >
+  readonly usageLimits: (options?: { includeAll?: boolean }) => Effect.Effect<AccountUsageLimits, AccountError>
   readonly poll: (input: Login) => Effect.Effect<PollResult, AccountError>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/Account") {}
+export class Service extends Context.Service<Service, Interface>()("@opencode-ai/Account") {}
 
 export const use = serviceUse(Service)
 
@@ -215,6 +252,29 @@ export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient
 
     const refreshToken = Effect.fnUntraced(function* (row: AccountRow) {
       const now = yield* Clock.currentTimeMillis
+
+      if (isOttiliOneAccountUrl(row.url)) {
+        const parsed = yield* Effect.tryPromise({
+          try: () =>
+            refreshOttiliOneToken({
+              authUrl: resolveOttiliOneAuthUrlFromAccount(row.url),
+              refreshToken: row.refresh_token,
+            }),
+          catch: (cause) => accountErrorFromCause(cause, "Failed to refresh Ottili ONE token"),
+        })
+
+        const expiry = Option.some(now + parsed.expires_in * 1000)
+        const refreshTokenValue = parsed.refresh_token ?? row.refresh_token
+
+        yield* repo.persistToken({
+          accountID: row.id,
+          accessToken: parsed.access_token,
+          refreshToken: refreshTokenValue,
+          expiry,
+        })
+
+        return parsed.access_token
+      }
 
       const response = yield* executeEffectOk(
         HttpClientRequest.post(`${row.url}/auth/device/token`).pipe(
@@ -283,6 +343,12 @@ export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient
     })
 
     const fetchOrgs = Effect.fnUntraced(function* (url: string, accessToken: AccessToken) {
+      if (isOttiliOneAccountUrl(url)) {
+        const org = orgFromAccessToken(accessToken)
+        if (!org) return [] as readonly Org[]
+        return [new Org({ id: OrgID.make(org.id), name: org.name })]
+      }
+
       const response = yield* executeReadOk(
         HttpClientRequest.get(`${url}/api/orgs`).pipe(
           HttpClientRequest.acceptJson,
@@ -296,6 +362,17 @@ export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient
     })
 
     const fetchUser = Effect.fnUntraced(function* (url: string, accessToken: AccessToken) {
+      if (isOttiliOneAccountUrl(url)) {
+        const user = yield* Effect.tryPromise({
+          try: () => fetchOttiliOneUser(resolveOttiliOneAuthUrlFromAccount(url), accessToken),
+          catch: (cause) => accountErrorFromCause(cause, "Failed to fetch Ottili ONE user"),
+        })
+        return new User({
+          id: AccountID.make(String(user.user_id)),
+          email: user.email ?? user.username,
+        })
+      }
+
       const response = yield* executeReadOk(
         HttpClientRequest.get(`${url}/api/user`).pipe(
           HttpClientRequest.acceptJson,
@@ -370,6 +447,146 @@ export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient
         mapAccountServiceError("Failed to decode response"),
       )
       return Option.some(parsed.config)
+    })
+
+    const loginOttiliOne = Effect.fn("Account.loginOttiliOne")(function* (authUrl?: string) {
+      const result = yield* Effect.tryPromise({
+        try: () => loginOttiliOneViaBrowser(authUrl),
+        catch: (cause) => accountErrorFromCause(cause, "Failed to sign in with Ottili"),
+      })
+
+      const email = yield* persistOttiliOneLogin(result)
+      return new PollSuccess({ email })
+    })
+
+    const logout = Effect.fn("Account.logout")(function* () {
+      const activeAccount = yield* repo.active()
+      if (Option.isNone(activeAccount)) return
+      yield* repo.remove(activeAccount.value.id)
+    })
+
+    const status = Effect.fn("Account.status")(function* () {
+      const activeAccount = yield* repo.active()
+      if (Option.isNone(activeAccount)) return { loggedIn: false as const }
+
+      const active = yield* activeOrg().pipe(
+        Effect.catch(() => Effect.succeed(Option.none<ActiveOrg>())),
+      )
+      return {
+        loggedIn: true as const,
+        email: activeAccount.value.email,
+        ...(Option.isSome(active) ? { orgName: active.value.org.name } : {}),
+      }
+    })
+
+    const usageLimits = Effect.fn("Account.usageLimits")(function* (options?: { includeAll?: boolean }) {
+      const activeAccount = yield* repo.active()
+      if (Option.isNone(activeAccount)) return { loggedIn: false as const }
+
+      const resolved = yield* resolveAccess(activeAccount.value.id)
+      if (Option.isNone(resolved)) return { loggedIn: false as const }
+
+      const { account, accessToken } = resolved.value
+      const baseUrl = isOttiliOneAccountUrl(account.url)
+        ? resolveOttiliOnePlatformUrl(account.url)
+        : account.url
+      const dashboardUrl = isOttiliOneAccountUrl(account.url)
+        ? defaultUsageLimitsDashboardUrl
+        : `${baseUrl}${defaultUsageLimitsDashboardUrl.replace("https://dashboard.ottili.one", "")}`
+
+      const active = yield* activeOrg().pipe(
+        Effect.catch(() => Effect.succeed(Option.none<ActiveOrg>())),
+      )
+      const orgHeader = Option.isSome(active) ? { "x-org-id": active.value.org.id } : {}
+
+      const readAuthed = Effect.fnUntraced(function* (path: string) {
+        return yield* executeRead(
+          HttpClientRequest.get(`${baseUrl}${path}`).pipe(
+            HttpClientRequest.acceptJson,
+            HttpClientRequest.bearerToken(accessToken),
+            HttpClientRequest.setHeaders(orgHeader),
+          ),
+        )
+      })
+
+      let planResponse: Awaited<ReturnType<typeof executeRead>> | undefined
+      for (const path of USAGE_LIMIT_API_PATHS.plan) {
+        const response = yield* readAuthed(path)
+        if (response.status === 404) continue
+        planResponse = response
+        break
+      }
+
+      if (!planResponse) {
+        return {
+          loggedIn: true as const,
+          items: [],
+          dashboardUrl,
+          message: "Usage limits endpoint not found. Check your Ottili ONE API connection.",
+        }
+      }
+
+      if (planResponse.status === 401 || planResponse.status === 403) {
+        return {
+          loggedIn: true as const,
+          items: [],
+          dashboardUrl,
+          message: "Sign in again with /login to view plan usage limits.",
+        }
+      }
+
+      let snapshot: ReturnType<typeof parseCompanyPlanPayload> = {
+        items: [],
+      }
+
+      if (planResponse.status >= 200 && planResponse.status < 300) {
+        const planBody = yield* HttpClientResponse.schemaBodyJson(Schema.Unknown)(planResponse).pipe(
+          mapAccountServiceError("Failed to decode plan usage response"),
+        )
+        snapshot = parseCompanyPlanPayload(planBody)
+      }
+
+      for (const path of USAGE_LIMIT_API_PATHS.billing) {
+        const billingResponse = yield* readAuthed(path)
+        if (billingResponse.status === 404) continue
+        if (billingResponse.status >= 200 && billingResponse.status < 300) {
+          const billingBody = yield* HttpClientResponse.schemaBodyJson(Schema.Unknown)(billingResponse).pipe(
+            Effect.catch(() => Effect.succeed(undefined)),
+          )
+          if (billingBody !== undefined) {
+            snapshot = mergeBillingLimitRows(snapshot, billingBody)
+          }
+        }
+        break
+      }
+
+      if (planResponse.status >= 400 && snapshot.items.length === 0) {
+        return {
+          loggedIn: true as const,
+          items: [],
+          dashboardUrl,
+          message: `Usage limits are temporarily unavailable (${planResponse.status}).`,
+        }
+      }
+
+      const includeAll = options?.includeAll === true || process.env.OTTILI_USAGE_LIMITS_VERBOSE === "1"
+      const visibleItems = compactUsageLimitItems(snapshot.items, { includeAll })
+      const hiddenCount = snapshot.items.length - visibleItems.length
+
+      return {
+        loggedIn: true as const,
+        planCode: snapshot.planCode,
+        planName: snapshot.planName,
+        billingStatus: snapshot.billingStatus,
+        periodEnd: snapshot.periodEnd || undefined,
+        items: visibleItems,
+        dashboardUrl,
+        ...(hiddenCount > 0
+          ? {
+              message: `Showing ${visibleItems.length} of ${snapshot.items.length} limits. Set OTTILI_USAGE_LIMITS_VERBOSE=1 or run ottili-coder account usage --all.`,
+            }
+          : {}),
+      }
     })
 
     const login = Effect.fn("Account.login")(function* (server: string) {
@@ -451,6 +668,10 @@ export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient
       config,
       token,
       login,
+      loginOttiliOne,
+      logout,
+      status,
+      usageLimits,
       poll,
     })
   }),

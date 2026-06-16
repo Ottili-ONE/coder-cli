@@ -551,7 +551,7 @@ describe("tool.shell permissions", () => {
           item,
           Effect.acquireUseRelease(
             Effect.sync(() => {
-              const key = "OPENCODE_TEST_MISSING"
+              const key = "OTTILI_CODER_TEST_MISSING"
               const prev = process.env[key]
               delete process.env[key]
               return { key, prev }
@@ -877,7 +877,7 @@ describe("tool.shell permissions", () => {
               expect(
                 yield* fail(
                   {
-                    command: "cat /tmp/opencode-does-not-exist",
+                    command: "cat /tmp/ottili-coder-does-not-exist",
                     description: "Read Git Bash tmp file",
                   },
                   capture(requests, err),

@@ -1,6 +1,6 @@
 import type {
   Event,
-  createOpencodeClient,
+  createOttiliCoderClient,
   Project,
   Model,
   Provider,
@@ -54,7 +54,7 @@ export type WorkspaceAdapter = {
 }
 
 export type PluginInput = {
-  client: ReturnType<typeof createOpencodeClient>
+  client: ReturnType<typeof createOttiliCoderClient>
   project: Project
   directory: string
   worktree: string

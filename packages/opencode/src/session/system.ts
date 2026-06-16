@@ -12,6 +12,10 @@ import PROMPT_KIMI from "./prompt/kimi.txt"
 
 import PROMPT_CODEX from "./prompt/codex.txt"
 import PROMPT_TRINITY from "./prompt/trinity.txt"
+import PROMPT_EXECUTION_DOCTRINE from "./prompt/execution-doctrine.txt"
+import PROMPT_PRODUCT_CONTEXT from "./prompt/product-context.txt"
+import PROMPT_CAPABILITIES from "./prompt/capabilities.txt"
+import PROMPT_BROWSER_AUTOMATION from "./prompt/browser-automation.txt"
 import type { Provider } from "@/provider/provider"
 import type { Agent } from "@/agent/agent"
 import { Permission } from "@/permission"
@@ -38,12 +42,24 @@ export function provider(model: Provider.Model) {
   return [PROMPT_DEFAULT]
 }
 
+export function executionDoctrine(agent: Agent.Info): string | undefined {
+  if (agent.hidden) return undefined
+  if (agent.mode === "subagent") return undefined
+  return PROMPT_EXECUTION_DOCTRINE
+}
+
+export function corePrompt(agent: Agent.Info): string[] {
+  if (agent.hidden) return []
+  if (agent.mode === "subagent") return []
+  return [PROMPT_PRODUCT_CONTEXT, PROMPT_CAPABILITIES, PROMPT_BROWSER_AUTOMATION, PROMPT_EXECUTION_DOCTRINE]
+}
+
 export interface Interface {
   readonly environment: (model: Provider.Model) => Effect.Effect<string[]>
   readonly skills: (agent: Agent.Info) => Effect.Effect<string | undefined>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/SystemPrompt") {}
+export class Service extends Context.Service<Service, Interface>()("@opencode-ai/SystemPrompt") {}
 
 export const layer = Layer.effect(
   Service,

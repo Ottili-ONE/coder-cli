@@ -7,11 +7,11 @@ import { createStore } from "solid-js/store"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useWslServers } from "./context"
-import { enterWslOpencodeStep } from "./settings-model"
+import { enterWslOttiliCoderStep } from "./settings-model"
 
-type WslServerStep = "wsl" | "distro" | "opencode"
+type WslServerStep = "wsl" | "distro" | "ottili-coder"
 
-const STEPS: WslServerStep[] = ["wsl", "distro", "opencode"]
+const STEPS: WslServerStep[] = ["wsl", "distro", "ottili-coder"]
 
 function isHiddenDistro(name: string) {
   return /^docker-desktop(?:-data)?$/i.test(name)
@@ -66,10 +66,10 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
     if (!distro) return null
     return (current()?.installed ?? []).find((item) => item.name === distro) ?? null
   })
-  const opencodeCheck = createMemo(() => {
+  const ottiliCoderCheck = createMemo(() => {
     const distro = selectedDistro()
     if (!distro) return null
-    return current()?.opencodeChecks[distro] ?? null
+    return current()?.ottiliCoderChecks[distro] ?? null
   })
   const wslReady = createMemo(() => !!current()?.runtime?.available && !current()?.pendingRestart)
   const distroReady = createMemo(() => {
@@ -78,8 +78,8 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
     if (selectedInstalled()?.version === 1) return false
     return probe.canExecute && probe.hasBash && probe.hasCurl
   })
-  const opencodeReady = createMemo(() => {
-    const check = opencodeCheck()
+  const ottiliCoderReady = createMemo(() => {
+    const check = ottiliCoderCheck()
     return !!check?.resolvedPath && !check.error
   })
   const distroWarningProbe = createMemo(() => {
@@ -113,20 +113,20 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
     () => installableDistros().find((item) => item.name === store.installTarget) ?? installableDistros()[0] ?? null,
   )
   const installingDistro = createMemo(() => current()?.job?.kind === "install-distro")
-  const installingOpencode = createMemo(() => {
+  const installingOttiliCoder = createMemo(() => {
     const job = current()?.job
-    return job?.kind === "install-opencode" && job.distro === selectedDistro()
+    return job?.kind === "install-ottili-coder" && job.distro === selectedDistro()
   })
-  const allReady = createMemo(() => wslReady() && distroReady() && opencodeReady())
+  const allReady = createMemo(() => wslReady() && distroReady() && ottiliCoderReady())
   const addDisabled = createMemo(() => {
     const job = current()?.job
     if (!job) return store.adding
-    return store.adding || job.kind !== "probe-opencode"
+    return store.adding || job.kind !== "probe-ottili-coder"
   })
   const recommendedStep = createMemo<WslServerStep>(() => {
     if (!wslReady()) return "wsl"
     if (!distroReady()) return "distro"
-    return "opencode"
+    return "ottili-coder"
   })
   // activeStep falls back to recommendedStep when the user hasn't picked one.
   // Once the user clicks a step tab we respect their choice rather than snapping
@@ -147,8 +147,8 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
       return { key: `probe-distro:${distro}`, run: () => api.probeDistro(distro) }
     }
     if (!distro || !distroReady()) return null
-    if (!state.opencodeChecks[distro]) {
-      return { key: `probe-opencode:${distro}`, run: () => api.probeOpencode(distro) }
+    if (!state.ottiliCoderChecks[distro]) {
+      return { key: `probe-ottiliCoder:${distro}`, run: () => api.probeOttiliCoder(distro) }
     }
     return null
   })
@@ -197,33 +197,33 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
     return language.t("wsl.onboarding.pickDistro")
   })
 
-  const opencodeMessage = createMemo(() => {
+  const ottiliCoderMessage = createMemo(() => {
     const state = current()
-    if (!state) return language.t("wsl.onboarding.checkingOpencode")
+    if (!state) return language.t("wsl.onboarding.checkingOttiliCoder")
     const distro = selectedDistro()
-    if (state.job?.kind === "install-opencode") {
+    if (state.job?.kind === "install-ottili-coder") {
       return distro
-        ? language.t("wsl.onboarding.updatingOpencodeIn", { distro })
-        : language.t("wsl.onboarding.updatingOpencode")
+        ? language.t("wsl.onboarding.updatingOttiliCoderIn", { distro })
+        : language.t("wsl.onboarding.updatingOttiliCoder")
     }
-    if (state.job?.kind === "probe-opencode") {
+    if (state.job?.kind === "probe-ottili-coder") {
       return distro
-        ? language.t("wsl.onboarding.checkingOpencodeIn", { distro })
-        : language.t("wsl.onboarding.checkingOpencode")
+        ? language.t("wsl.onboarding.checkingOttiliCoderIn", { distro })
+        : language.t("wsl.onboarding.checkingOttiliCoder")
     }
-    if (opencodeCheck()?.error) return opencodeCheck()!.error
-    if (opencodeCheck()?.matchesDesktop === false) {
+    if (ottiliCoderCheck()?.error) return ottiliCoderCheck()!.error
+    if (ottiliCoderCheck()?.matchesDesktop === false) {
       return distro
-        ? language.t("wsl.onboarding.updateOpencodeIn", { distro })
-        : language.t("wsl.onboarding.updateOpencode")
+        ? language.t("wsl.onboarding.updateOttiliCoderIn", { distro })
+        : language.t("wsl.onboarding.updateOttiliCoder")
     }
-    if (opencodeReady()) {
+    if (ottiliCoderReady()) {
       return distro
-        ? language.t("wsl.onboarding.opencodeReadyIn", { distro })
-        : language.t("wsl.onboarding.opencodeReady")
+        ? language.t("wsl.onboarding.ottiliCoderReadyIn", { distro })
+        : language.t("wsl.onboarding.ottiliCoderReady")
     }
     return distro
-      ? language.t("wsl.onboarding.installOpencodeIn", { distro })
+      ? language.t("wsl.onboarding.installOttiliCoderIn", { distro })
       : language.t("wsl.onboarding.chooseDistroFirst")
   })
 
@@ -246,10 +246,10 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
     setStore("step", undefined)
   }
 
-  const openOpencodeStep = () => {
+  const openOttiliCoderStep = () => {
     const distro = selectedDistro()
     if (!distro) return
-    void run(() => enterWslOpencodeStep(distro, api.probeOpencode, (step) => setStore("step", step)))
+    void run(() => enterWslOttiliCoderStep(distro, api.probeOttiliCoder, (step) => setStore("step", step)))
   }
 
   const finish = async () => {
@@ -283,7 +283,7 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
             ? language.t("wsl.server.label")
             : step === "distro"
               ? language.t("wsl.onboarding.step.distro")
-              : language.t("wsl.onboarding.step.opencode"),
+              : language.t("wsl.onboarding.step.ottili-coder"),
         state:
           active === step
             ? "current"
@@ -297,9 +297,9 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
                   : index > activeIndex
                     ? "locked"
                     : "warning"
-                : opencodeCheck()?.matchesDesktop === false
+                : ottiliCoderCheck()?.matchesDesktop === false
                   ? "warning"
-                  : opencodeReady()
+                  : ottiliCoderReady()
                     ? "done"
                     : index > activeIndex
                       ? "locked"
@@ -528,7 +528,7 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
                     variant="secondary"
                     size="large"
                     disabled={busy() || !selectedDistro() || !distroReady()}
-                    onClick={openOpencodeStep}
+                    onClick={openOttiliCoderStep}
                   >
                     {language.t("wsl.onboarding.next")}
                   </Button>
@@ -536,40 +536,40 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
               </div>
             </Match>
 
-            <Match when={activeStep() === "opencode"}>
+            <Match when={activeStep() === "ottili-coder"}>
               <div class="rounded-md bg-surface-base p-4 flex flex-col gap-3">
                 <div class="flex items-center justify-between gap-3">
-                  <div class="text-14-medium text-text-strong">{language.t("wsl.onboarding.step.opencode")}</div>
+                  <div class="text-14-medium text-text-strong">{language.t("wsl.onboarding.step.ottili-coder")}</div>
                   <div class="flex items-center gap-2">
                     <Show when={selectedDistro()}>
                       <Button
                         variant="ghost"
                         size="large"
                         disabled={busy()}
-                        onClick={() => runSelectedDistro((distro) => api.probeOpencode(distro))}
+                        onClick={() => runSelectedDistro((distro) => api.probeOttiliCoder(distro))}
                       >
                         {language.t("wsl.onboarding.refresh")}
                       </Button>
                     </Show>
-                    <Show when={!opencodeReady() || opencodeCheck()?.matchesDesktop === false}>
+                    <Show when={!ottiliCoderReady() || ottiliCoderCheck()?.matchesDesktop === false}>
                       <Button
                         variant="secondary"
                         size="large"
                         disabled={busy()}
-                        onClick={() => runSelectedDistro((distro) => api.installOpencode(distro))}
+                        onClick={() => runSelectedDistro((distro) => api.installOttiliCoder(distro))}
                       >
-                        <Show when={installingOpencode()}>
+                        <Show when={installingOttiliCoder()}>
                           <Spinner class="size-4 shrink-0" />
                         </Show>
-                        {opencodeCheck()?.resolvedPath
-                          ? language.t("wsl.onboarding.updateOpencode")
-                          : language.t("wsl.onboarding.installOpencode")}
+                        {ottiliCoderCheck()?.resolvedPath
+                          ? language.t("wsl.onboarding.updateOttiliCoder")
+                          : language.t("wsl.onboarding.installOttiliCoder")}
                       </Button>
                     </Show>
                   </div>
                 </div>
-                <div class="text-12-regular text-text-weak whitespace-pre-wrap break-words">{opencodeMessage()}</div>
-                <Show when={opencodeCheck()?.matchesDesktop === false ? opencodeCheck() : null}>
+                <div class="text-12-regular text-text-weak whitespace-pre-wrap break-words">{ottiliCoderMessage()}</div>
+                <Show when={ottiliCoderCheck()?.matchesDesktop === false ? ottiliCoderCheck() : null}>
                   {(check) => (
                     <div class="rounded-md border border-border-weak-base px-3 py-3 flex flex-col gap-1">
                       <div class="text-12-regular text-text-weak">
@@ -597,7 +597,7 @@ export function DialogAddWslServer(props: DialogWslServerProps = {}) {
             </Match>
           </Switch>
 
-          <Show when={activeStep() === "opencode" && allReady() && selectedDistro()}>
+          <Show when={activeStep() === "ottili-coder" && allReady() && selectedDistro()}>
             <div class="flex items-center justify-end gap-2">
               <Button variant="ghost" size="large" disabled={store.adding} onClick={() => dialog.close()}>
                 {language.t("common.cancel")}

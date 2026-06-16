@@ -16,7 +16,7 @@ import { ServerConnection } from "@/context/server"
 import { showToast } from "@/utils/toast"
 import { DialogAddWslServer } from "./dialog-add-server"
 import { useWslServers } from "./context"
-import { wslOpencodeAction, wslRuntimeRetryable } from "./settings-model"
+import { wslOttiliCoderAction, wslRuntimeRetryable } from "./settings-model"
 
 type Controller = ReturnType<typeof useServerManagementController>
 
@@ -84,9 +84,9 @@ export function WslServerSettings(props: {
       <For each={props.servers()}>
         {(item) => {
           const key = ServerConnection.Key.make(item.config.id)
-          const check = () => wsl.data?.opencodeChecks[item.config.distro]
-          const opencodeAction = () => wslOpencodeAction(check())
-          const busy = () => wsl.data?.job?.kind === "install-opencode" && wsl.data.job.distro === item.config.distro
+          const check = () => wsl.data?.ottiliCoderChecks[item.config.distro]
+          const ottiliCoderAction = () => wslOttiliCoderAction(check())
+          const busy = () => wsl.data?.job?.kind === "install-ottili-coder" && wsl.data.job.distro === item.config.distro
           return (
             <div class="settings-v2-servers-row">
               <div class="settings-v2-servers-lead">
@@ -107,12 +107,12 @@ export function WslServerSettings(props: {
                 <Show when={props.controller.canDefault() && props.controller.defaultKey() === key}>
                   <Tag>{language.t("dialog.server.status.default")}</Tag>
                 </Show>
-                <Show when={opencodeAction()}>
+                <Show when={ottiliCoderAction()}>
                   {(label) => (
                     <ButtonV2
                       size="small"
                       disabled={busy() || request.isPending}
-                      onClick={() => api && request.mutate(() => api.installOpencode(item.config.distro))}
+                      onClick={() => api && request.mutate(() => api.installOttiliCoder(item.config.distro))}
                     >
                       {busy() ? language.t("wsl.server.updating") : label()}
                     </ButtonV2>

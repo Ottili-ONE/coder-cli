@@ -1,4 +1,4 @@
-import { createOpencodeClient } from "@opencode-ai/sdk/v2"
+import { createOttiliCoderClient } from "@opencode-ai/sdk/v2"
 import { SessionID } from "@/session/schema"
 import { Schema } from "effect"
 
@@ -20,7 +20,7 @@ export async function validateSession(input: {
     throw new Error(`Invalid session ID: ${error instanceof Error ? error.message : "unknown error"}`, { cause: error })
   }
 
-  await createOpencodeClient({
+  await createOttiliCoderClient({
     baseUrl: input.url,
     directory: input.directory,
     fetch: input.fetch,

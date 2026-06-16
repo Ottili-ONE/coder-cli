@@ -15,7 +15,7 @@ Bir oturum sırasında agent'lar arasında geçiş yapabilir veya onları `@` if
 
 ## Türler
 
-opencode'da iki tür agent vardır; birincil agent'lar ve alt agent'lar.
+ottili-coder'da iki tür agent vardır; birincil agent'lar ve alt agent'lar.
 
 ---
 
@@ -27,7 +27,7 @@ Birincil agent'lar, doğrudan etkileşim kurduğunuz ana yardımcılardır. **Se
 Bir oturum sırasında birincil agent'lar arasında geçiş yapmak için **Sekme** tuşunu kullanabilirsiniz.
 :::
 
-opencode, **Build** ve **Plan** olmak üzere iki yerleşik birincil agent ile birlikte gelir. Bunlara aşağıda bakacağız.
+ottili-coder, **Build** ve **Plan** olmak üzere iki yerleşik birincil agent ile birlikte gelir. Bunlara aşağıda bakacağız.
 
 ---
 
@@ -35,13 +35,13 @@ opencode, **Build** ve **Plan** olmak üzere iki yerleşik birincil agent ile bi
 
 Alt agent'lar, birincil agent'ların belirli görevler için çağırabileceği uzman yardımcılardır. Ayrıca mesajlarınızda **@ bahsederek** bunları manuel olarak da çağırabilirsiniz.
 
-OpenCode, **General**, **Explore** ve **Scout** olmak üzere üç yerleşik alt agent ile birlikte gelir. Buna aşağıda bakacağız.
+Ottili Coder, **General**, **Explore** ve **Scout** olmak üzere üç yerleşik alt agent ile birlikte gelir. Buna aşağıda bakacağız.
 
 ---
 
 ## Yerleşik
 
-OpenCode iki yerleşik birincil agent ve üç yerleşik alt agent ile birlikte gelir.
+Ottili Coder iki yerleşik birincil agent ve üç yerleşik alt agent ile birlikte gelir.
 
 ---
 
@@ -87,7 +87,7 @@ Kod tabanlarını keşfetmeye yönelik hızlı, salt okunur bir agent. Dosyalar 
 
 _Mod_: `subagent`
 
-Harici dokümanlar ve bağımlılık araştırmaları için salt okunur bir agent. Bir bağımlılık repository'sini OpenCode'un yönetilen cache'ine clone etmeniz, kütüphane kaynak kodunu incelemeniz veya workspace'inizi değiştirmeden yerel kodu upstream implementasyonlarla karşılaştırmanız gerektiğinde bunu kullanın.
+Harici dokümanlar ve bağımlılık araştırmaları için salt okunur bir agent. Bir bağımlılık repository'sini Ottili Coder'un yönetilen cache'ine clone etmeniz, kütüphane kaynak kodunu incelemeniz veya workspace'inizi değiştirmeden yerel kodu upstream implementasyonlarla karşılaştırmanız gerektiğinde bunu kullanın.
 
 ---
 
@@ -143,11 +143,11 @@ Yerleşik agent'ları özelleştirebilir veya yapılandırma yoluyla kendinizink
 
 ### JSON
 
-Agent'ları `opencode.json` yapılandırma dosyanızda yapılandırın:
+Agent'ları `ottili-coder.json` yapılandırma dosyanızda yapılandırın:
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
-  "$schema": "https://opencode.ai/config.json",
+  "$schema": "https://ottili.one/coder/config.json",
   "agent": {
     "build": {
       "mode": "primary",
@@ -188,10 +188,10 @@ Agent'ları `opencode.json` yapılandırma dosyanızda yapılandırın:
 
 Ayrıca agent'ları Markdown dosyalarını kullanarak da tanımlayabilirsiniz. Bunları şuraya yerleştirin:
 
-- Global: `~/.config/opencode/agents/`
-- Proje başına: `.opencode/agents/`
+- Global: `~/.config/ottili-coder/agents/`
+- Proje başına: `.ottili-coder/agents/`
 
-```markdown title="~/.config/opencode/agents/review.md"
+```markdown title="~/.config/ottili-coder/agents/review.md"
 ---
 description: Reviews code for quality and best practices
 mode: subagent
@@ -227,7 +227,7 @@ Bu yapılandırma seçeneklerine ayrıntılı olarak bakalım.
 
 Agent'ın ne yaptığına ve ne zaman kullanılacağına ilişkin kısa bir açıklama sağlamak için `description` seçeneğini kullanın.
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
   "agent": {
     "review": {
@@ -247,7 +247,7 @@ LLM'in yanıtlarının rastgeleliğini ve yaratıcılığını `temperature` yap
 
 Düşük değerler yanıtları daha odaklı ve belirleyici hale getirirken, yüksek değerler yaratıcılığı ve değişkenliği artırır.
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
   "agent": {
     "plan": {
@@ -266,7 +266,7 @@ Sıcaklık değerleri tipik olarak 0,0 ila 1,0 arasındadır:
 - **0,3-0,5**: Biraz yaratıcılık içeren dengeli yanıtlar, genel gelişim görevleri için iyi
 - **0,6-1,0**: Daha yaratıcı ve çeşitli yanıtlar, beyin fırtınası ve keşif için yararlı
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
   "agent": {
     "analyze": {
@@ -284,7 +284,7 @@ Sıcaklık değerleri tipik olarak 0,0 ila 1,0 arasındadır:
 }
 ```
 
-Sıcaklık belirtilmezse opencode modeline özgü varsayılanları kullanır; çoğu model için genellikle 0, Qwen modelleri için 0,55.
+Sıcaklık belirtilmezse ottili-coder modeline özgü varsayılanları kullanır; çoğu model için genellikle 0, Qwen modelleri için 0,55.
 
 ---
 
@@ -294,7 +294,7 @@ Bir agent'ın yalnızca metinle yanıt vermeye zorlanmadan önce gerçekleştire
 
 Bu ayarlanmazsa, model durmayı seçene veya kullanıcı oturumu kesene kadar agent yinelemeye devam edecektir.
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
   "agent": {
     "quick-thinker": {
@@ -318,7 +318,7 @@ Eski `maxSteps` alanı kullanımdan kaldırıldı. Bunun yerine `steps` kullanı
 
 Agent'ı devre dışı bırakmak için `true` olarak ayarlayın.
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
   "agent": {
     "review": {
@@ -334,7 +334,7 @@ Agent'ı devre dışı bırakmak için `true` olarak ayarlayın.
 
 Bu agent için `prompt` yapılandırmasıyla özel bir sistem prompt dosyası belirtin. Prompt dosyası, agent'ın amacına özel talimatlar içermelidir.
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
   "agent": {
     "review": {
@@ -344,7 +344,7 @@ Bu agent için `prompt` yapılandırmasıyla özel bir sistem prompt dosyası be
 }
 ```
 
-Bu yol, yapılandırma dosyasının bulunduğu yere göredir. Yani bu hem global opencode yapılandırması hem de projeye özel yapılandırma için işe yarar.
+Bu yol, yapılandırma dosyasının bulunduğu yere göredir. Yani bu hem global ottili-coder yapılandırması hem de projeye özel yapılandırma için işe yarar.
 
 ---
 
@@ -356,7 +356,7 @@ Bu agent'ın modelini geçersiz kılmak için `model` ayarını kullanın. Farkl
 Bir model belirtmezseniz, birincil agent'lar [küresel olarak yapılandırılmış modeli](/docs/config#models) kullanırken alt agent'lar, alt agent'ı çağıran birincil agent'ın modelini kullanır.
 :::
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
   "agent": {
     "plan": {
@@ -366,7 +366,7 @@ Bir model belirtmezseniz, birincil agent'lar [küresel olarak yapılandırılmı
 }
 ```
 
-opencode yapılandırmanızdaki model kimliği `provider/model-id` biçimini kullanır. Örneğin, [OpenCode Zen](/docs/zen) kullanıyorsanız, GPT 5.1 Codex için `opencode/gpt-5.1-codex` kullanırsınız.
+ottili-coder yapılandırmanızdaki model kimliği `provider/model-id` biçimini kullanır. Örneğin, [Ottili Coder](/docs/zen) kullanıyorsanız, GPT 5.1 Codex için `ottili-coder/gpt-5.1-codex` kullanırsınız.
 
 ---
 
@@ -374,9 +374,9 @@ opencode yapılandırmanızdaki model kimliği `provider/model-id` biçimini kul
 
 `tools` yapılandırmasıyla bu agent'ta hangi araçların mevcut olduğunu kontrol edin. Belirli araçları `true` veya `false` olarak ayarlayarak etkinleştirebilir veya devre dışı bırakabilirsiniz.
 
-```json title="opencode.json" {3-6,9-12}
+```json title="ottili-coder.json" {3-6,9-12}
 {
-  "$schema": "https://opencode.ai/config.json",
+  "$schema": "https://ottili.one/coder/config.json",
   "tools": {
     "write": true,
     "bash": true
@@ -398,9 +398,9 @@ Agent'a özgü yapılandırma, genel yapılandırmayı geçersiz kılar.
 
 Aynı anda birden fazla aracı kontrol etmek için joker karakterleri de kullanabilirsiniz. Örneğin, bir MCP sunucusundaki tüm araçları devre dışı bırakmak için:
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
-  "$schema": "https://opencode.ai/config.json",
+  "$schema": "https://ottili.one/coder/config.json",
   "agent": {
     "readonly": {
       "tools": {
@@ -425,9 +425,9 @@ Bir agent'ın gerçekleştirebileceği eylemleri yönetmek için izinleri yapıl
 - `"allow"` — Onay olmadan tüm işlemlere izin ver
 - `"deny"` — Agent'ı devre dışı bırakır
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
-  "$schema": "https://opencode.ai/config.json",
+  "$schema": "https://ottili.one/coder/config.json",
   "permission": {
     "edit": "deny"
   }
@@ -436,9 +436,9 @@ Bir agent'ın gerçekleştirebileceği eylemleri yönetmek için izinleri yapıl
 
 Bu izinleri agent başına geçersiz kılabilirsiniz.
 
-```json title="opencode.json" {3-5,8-10}
+```json title="ottili-coder.json" {3-5,8-10}
 {
-  "$schema": "https://opencode.ai/config.json",
+  "$schema": "https://ottili.one/coder/config.json",
   "permission": {
     "edit": "deny"
   },
@@ -454,7 +454,7 @@ Bu izinleri agent başına geçersiz kılabilirsiniz.
 
 İzinleri Markdown agent'larında da ayarlayabilirsiniz.
 
-```markdown title="~/.config/opencode/agents/review.md"
+```markdown title="~/.config/ottili-coder/agents/review.md"
 ---
 description: Code review without edits
 mode: subagent
@@ -473,9 +473,9 @@ Only analyze code and suggest changes.
 
 Belirli bash komutları için izinleri ayarlayabilirsiniz.
 
-```json title="opencode.json" {7}
+```json title="ottili-coder.json" {7}
 {
-  "$schema": "https://opencode.ai/config.json",
+  "$schema": "https://ottili.one/coder/config.json",
   "agent": {
     "build": {
       "permission": {
@@ -491,9 +491,9 @@ Belirli bash komutları için izinleri ayarlayabilirsiniz.
 
 Bu küresel bir desen alabilir.
 
-```json title="opencode.json" {7}
+```json title="ottili-coder.json" {7}
 {
-  "$schema": "https://opencode.ai/config.json",
+  "$schema": "https://ottili.one/coder/config.json",
   "agent": {
     "build": {
       "permission": {
@@ -509,9 +509,9 @@ Bu küresel bir desen alabilir.
 Ayrıca tüm komutların izinlerini yönetmek için `*` joker karakterini de kullanabilirsiniz.
 Son eşleşen kural öncelikli olduğundan, `*` joker karakterini ilk sıraya ve belirli kuralları sonraya koyun.
 
-```json title="opencode.json" {8}
+```json title="ottili-coder.json" {8}
 {
-  "$schema": "https://opencode.ai/config.json",
+  "$schema": "https://ottili.one/coder/config.json",
   "agent": {
     "build": {
       "permission": {
@@ -533,7 +533,7 @@ Son eşleşen kural öncelikli olduğundan, `*` joker karakterini ilk sıraya ve
 
 Agent'ın modunu `mode` yapılandırmasıyla kontrol edin. `mode` seçeneği agent'ın nasıl kullanılabileceğini belirlemek için kullanılır.
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
   "agent": {
     "review": {
@@ -551,7 +551,7 @@ Agent'ın modunu `mode` yapılandırmasıyla kontrol edin. `mode` seçeneği age
 
 `@` otomatik tamamlama menüsünden bir alt agent'ı `hidden: true` ile gizleyin. Yalnızca diğer agent'lar tarafından Task aracı aracılığıyla programlı olarak çağrılması gereken dahili alt agent'lar için kullanışlıdır.
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
   "agent": {
     "internal-helper": {
@@ -574,7 +574,7 @@ Yalnızca `mode: subagent` agent'ları için geçerlidir.
 
 `permission.task` ile bir agent'ın Task aracı aracılığıyla hangi alt agent'ları çağırabileceğini kontrol edin. Esnek eşleştirme için küresel desenleri kullanır.
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
   "agent": {
     "orchestrator": {
@@ -609,7 +609,7 @@ Agent'ın kullanıcı arayüzündeki görsel görünümünü `color` seçeneğiy
 
 Geçerli bir onaltılık renk (ör. `#FF5733`) veya tema rengini kullanın: `primary`, `secondary`, `accent`, `success`, `warning`, `error`, `info`.
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
   "agent": {
     "creative": {
@@ -628,7 +628,7 @@ Geçerli bir onaltılık renk (ör. `#FF5733`) veya tema rengini kullanın: `pri
 
 `top_p` seçeneğiyle yanıt çeşitliliğini kontrol edin. Rastgeleliği kontrol etmek için sıcaklığa alternatif.
 
-```json title="opencode.json"
+```json title="ottili-coder.json"
 {
   "agent": {
     "brainstorm": {
@@ -648,7 +648,7 @@ Agent yapılandırmanızdaki diğer seçenekler, model seçenekleri olarak **do�
 
 Örneğin OpenAI'nin akıl yürütme modelleriyle akıl yürütme çabasını kontrol edebilirsiniz:
 
-```json title="opencode.json" {6,7}
+```json title="ottili-coder.json" {6,7}
 {
   "agent": {
     "deep-thinker": {
@@ -664,7 +664,7 @@ Agent yapılandırmanızdaki diğer seçenekler, model seçenekleri olarak **do�
 Bu ek seçenekler modele ve sağlayıcıya özeldir. Kullanılabilir parametreler için sağlayıcınızın belgelerine bakın.
 
 :::tip
-Mevcut modellerin listesini görmek için `opencode models` komutunu çalıştırın.
+Mevcut modellerin listesini görmek için `ottili-coder models` komutunu çalıştırın.
 :::
 
 ---
@@ -674,7 +674,7 @@ Mevcut modellerin listesini görmek için `opencode models` komutunu çalıştı
 Aşağıdaki komutu kullanarak yeni agent'lar oluşturabilirsiniz:
 
 ```bash
-opencode agent create
+ottili-coder agent create
 ```
 
 Bu etkileşimli komut şunları sağlayacaktır:
@@ -711,7 +711,7 @@ Paylaşmak istediğiniz bir agent'ınız var mı? [Submit a PR](https://github.c
 
 ### Dokümantasyon agent'ı
 
-```markdown title="~/.config/opencode/agents/docs-writer.md"
+```markdown title="~/.config/ottili-coder/agents/docs-writer.md"
 ---
 description: Writes and maintains project documentation
 mode: subagent
@@ -733,7 +733,7 @@ Focus on:
 
 ### Güvenlik denetçisi
 
-```markdown title="~/.config/opencode/agents/security-auditor.md"
+```markdown title="~/.config/ottili-coder/agents/security-auditor.md"
 ---
 description: Performs security audits and identifies vulnerabilities
 mode: subagent
