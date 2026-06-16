@@ -11,7 +11,7 @@ import {
   type AcpClient,
 } from "./acp-test-client"
 
-export function createAcpClient(input: Pick<CliFixture, "ottili-coder">, env?: Record<string, string>) {
+export function createAcpClient(input: Pick<CliFixture, "ottiliCoder">, env?: Record<string, string>) {
   return Effect.gen(function* () {
     return createJsonRpcAcpClient(yield* input.ottiliCoder.acp(env ? { env } : undefined))
   })
