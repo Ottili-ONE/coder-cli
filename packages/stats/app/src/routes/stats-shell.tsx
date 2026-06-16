@@ -234,7 +234,7 @@ export function Footer(props: {
       <SectionBridge label="GEO BREAKDOWN" href="#geo-breakdown" />
       <div data-slot="footer-grid">
         <a data-slot="footer-mark" href="https://ottili.one/coder" aria-label="Ottili Coder home">
-          <Ottili CoderMark />
+          <OttiliCoderMark />
         </a>
         <FooterColumn title="Model Data" links={modelStats} />
         <FooterColumn title="Legal" links={legal} />
