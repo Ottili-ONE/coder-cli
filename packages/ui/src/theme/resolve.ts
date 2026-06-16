@@ -318,7 +318,7 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["icon-agent-debug-base"] = error[8]
   tokens["icon-agent-docs-base"] = amber[8]
   tokens["icon-agent-ask-base"] = accent[8]
-  tokens["icon-agent-build-base"] = brandb[8]
+  tokens["icon-agent-build-base"] = brandb
 
   tokens["icon-on-success-base"] = on(succb)
   tokens["icon-on-success-hover"] = on(succs)
