@@ -34,6 +34,7 @@ const version = Object.values(binaries)[0]
 await $`mkdir -p ./dist/${pkg.name}`
 await $`mkdir -p ./dist/${pkg.name}/bin`
 await $`cp ./script/postinstall.mjs ./dist/${pkg.name}/postinstall.mjs`
+await $`cp ./README.npm.md ./dist/${pkg.name}/README.md`
 await Bun.file(`./dist/${pkg.name}/LICENSE`).write(await Bun.file("../../LICENSE").text())
 await Bun.file(`./dist/${pkg.name}/bin/${pkg.name}.exe`).write(
   [
@@ -59,9 +60,13 @@ await Bun.file(`./dist/${pkg.name}/package.json`).write(
         [pkg.name]: `./bin/${pkg.name}.exe`,
       },
       description: "Ottili ONE Coder — autonomous AI coding agent for the terminal",
+      homepage: "https://ottili.one/coder",
       repository: {
         type: "git",
-        url: "https://github.com/Ottili-ONE/coder-cli",
+        url: "git+https://github.com/Ottili-ONE/coder-cli.git",
+      },
+      bugs: {
+        url: "https://github.com/Ottili-ONE/coder-cli/issues",
       },
       keywords: ["ottili", "ottili-one", "coder", "ai", "cli", "agent", "terminal"],
       scripts: {
