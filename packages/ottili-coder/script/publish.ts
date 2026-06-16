@@ -20,13 +20,21 @@ async function publish(dir: string, name: string, version: string) {
     return
   }
   await $`bun pm pack`.cwd(dir)
-  await $`npm publish *.tgz --access public --tag ${Script.channel}`.cwd(dir)
+  const npmrcFlag =
+    process.env.NPM_TOKEN && !process.env.NPM_CONFIG_USERCONFIG
+      ? [`--userconfig`, `${dir}/.npmrc.publish`]
+      : []
+  if (npmrcFlag.length === 2) {
+    await Bun.write(String(npmrcFlag[1]), `//registry.npmjs.org/:_authToken=${process.env.NPM_TOKEN}\n`)
+  }
+  await $`npm publish *.tgz --access public --tag ${Script.channel} ${npmrcFlag}`.cwd(dir)
 }
 
 const binaries: Record<string, string> = {}
 for (const filepath of new Bun.Glob("*/package.json").scanSync({ cwd: "./dist" })) {
-  const pkg = await Bun.file(`./dist/${filepath}`).json()
-  binaries[pkg.name] = pkg.version
+  const distPkg = await Bun.file(`./dist/${filepath}`).json()
+  if (distPkg.name === pkg.name) continue
+  binaries[distPkg.name] = distPkg.version
 }
 console.log("binaries", binaries)
 const version = Object.values(binaries)[0]
