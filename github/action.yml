@@ -160,6 +160,16 @@ runs:
         print(f\"Broker: model={data.get('model')}, provider={data.get('provider')}, workspace={data.get('workspace_slug')}\")
         "
 
+    - name: Write Codex auth from broker
+      if: inputs.use_platform_broker == 'true'
+      shell: bash
+      run: |
+        if [ -n "$CODEX_AUTH_JSON" ]; then
+          mkdir -p ~/.codex
+          printf '%s' "$CODEX_AUTH_JSON" > ~/.codex/auth.json
+          echo "Wrote ChatGPT auth tokens to ~/.codex/auth.json"
+        fi
+
     - name: Run ottili-coder
       shell: bash
       id: run_ottili-coder
