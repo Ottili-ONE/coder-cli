@@ -40,6 +40,7 @@ This repository contains:
 | Component | Description |
 | --- | --- |
 | **CLI / TUI** | Terminal agent (`ottili-coder`) for daily development |
+| **Cairn** | Live-steer execution doctrine with session memory, CIP hints, and checkpoint recovery |
 | **Desktop app** | Electron shell around the shared web UI (beta) |
 | **Server mode** | HTTP API for IDE integrations and automation |
 | **GitHub Action** | Run Ottili Coder from issue and PR comments (`/ottili-coder`) |
@@ -210,3 +211,13 @@ MIT — see [LICENSE](./LICENSE).
 - Ottili ONE: [ottili.one](https://ottili.one)
 - Issues: [github.com/Ottili-ONE/coder-cli/issues](https://github.com/Ottili-ONE/coder-cli/issues)
 - Releases: [github.com/Ottili-ONE/coder-cli/releases](https://github.com/Ottili-ONE/coder-cli/releases)
+
+---
+
+## Changelog
+
+### v1.0.4
+
+- **Cairn live-steer system**: execution doctrine with session memory, CIP hint injection, checkpoint recovery, and worktime budget enforcement
+- **TUI crash fix**: prevent `SIGABRT` when terminal responds to OSC 10/11 color queries (VSCode xterm.js, gnome-terminal). Patched opentui core via `bun patch` to no-op theme auto-detection since ottili-coder forces dark theme
+- **SDK version bump**: JS SDK 1.0.0 → 1.0.4, Python SDK 1.0.3 → 1.0.4
