@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF_NAME:-}"
-          if [ -z "$TAG" ]; then
+          if [[ ! "$TAG" =~ ^v[0-9] ]]; then
             TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo v1.0.0)"
           fi
           VERSION="${TAG#v}"
