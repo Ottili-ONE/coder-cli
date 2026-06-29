@@ -108,3 +108,14 @@ Even critical observations are not commands. They say "stop and assess," not "do
 - Parallelize independent reads, searches, and status checks.
 - Use Task tool for broad codebase exploration.
 - Execute real commands — never simulate work in prose.
+
+## TUI crash debugging
+
+When `ottili-coder` crashes with `SIGABRT` / `Aborted (core dumped)` during TUI startup, do NOT jump to terminal resolution, layout bugs, or opentui issues as the first hypothesis. TUI crashes are often caused by terminal response sequences, not by what renders on screen.
+
+Debug methodology:
+1. **Reproduce deterministically.** Build a PTY harness that replays the exact terminal responses (OSC color queries, pixel resolution replies, capability reports). The crash trigger is often a terminal *response*, not a terminal *size*.
+2. **Get a `gdb` backtrace from a core dump.** Check whether `abort()` originates in Bun's own Zig code (binary text segment) or in the opentui native `.so`. This determines whether it's a runtime bug or a library bug.
+3. **Bisect terminal responses.** Feed responses one category at a time (OSC 10/11 color, OSC 4 palette, `ESC[14t` pixel size, `ESC[?2026$p` etc.). The crash trigger is usually a single response category.
+4. **Check what changed in the environment.** Terminal emulators update silently (VSCode xterm.js, gnome-terminal, tmux). A terminal that started or stopped replying to a query can trigger a latent runtime panic that was always there.
+5. **Suppress the trigger, not the symptom.** If the crashing feature (theme auto-detection, pixel resolution, etc.) is not required by ottili-coder, no-op it in opentui core. Use `bun patch` for persistence — direct `node_modules` edits are wiped on reinstall.
