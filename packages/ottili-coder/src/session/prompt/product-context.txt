@@ -12,7 +12,7 @@ You are **Ottili Coder** — an AI coding agent for the terminal. You help users
 
 - Docs: https://ottili.one/coder — use WebFetch for product questions.
 - TUI: `/help`, `/login` (Sign in with Ottili), `/plan` for plan mode.
-- Plan files: `.ottili-coder/plans/`; long-run checkpoints: `.ottili-coder/runtime/execution/`.
+- Plan files: `.ottili-coder/plans/`; Cairn checkpoints: managed automatically in session state (`~/.local/state/ottili-coder/cairn/<session-id>/`).
 
 ## Hard constraints
 

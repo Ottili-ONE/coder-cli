@@ -63,6 +63,9 @@ import { SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@opencode-ai/llm"
+import { HintReader, formatHintForInjection } from "@/cairn/hint-reader"
+import { Checkpoint as CairnCheckpoint } from "@/cairn/checkpoint"
+import { Cairn } from "@/cairn"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -127,6 +130,8 @@ export const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
+    const hintReader: HintReader.Interface = yield* HintReader.Service
+    const cairnCheckpoint: CairnCheckpoint.Interface = yield* CairnCheckpoint.Service
     const { db } = database
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
@@ -1271,8 +1276,8 @@ export const layer = Layer.effect(
       throw new Error("Impossible")
     })
 
-    const runLoop: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.run")(
-      function* (sessionID: SessionID) {
+    const runLoop: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts> = (sessionID: SessionID) =>
+      Effect.gen(function* () {
         const ctx = yield* InstanceState.context
         let structured: unknown
         let step = 0
@@ -1356,6 +1361,24 @@ export const layer = Layer.effect(
               overflow: task.overflow,
             })
             if (result === "stop") break
+            // Cairn: after compaction, inject checkpoint recovery hint so the agent
+            // can reconstruct its state from the persisted checkpoint files.
+            if (result === "continue") {
+              const recovery = yield* cairnCheckpoint.recoveryHint(sessionID)
+              if (recovery) {
+                const userMessage = msgs.findLast((msg) => msg.info.role === "user")
+                if (userMessage) {
+                  userMessage.parts.push({
+                    id: PartID.ascending(),
+                    messageID: userMessage.info.id,
+                    sessionID: userMessage.info.sessionID,
+                    type: "text" as const,
+                    text: recovery,
+                    synthetic: true,
+                  })
+                }
+              }
+            }
             continue
           }
 
@@ -1383,6 +1406,29 @@ export const layer = Layer.effect(
             Effect.provideService(FSUtil.Service, fsys),
             Effect.provideService(Session.Service, sessions),
           )
+
+          // Cairn CIP: inject new steering hints as synthetic text on the latest user message.
+          // Hints are observations, not commands — the agent retains judgment authority.
+          if (agent.mode !== "subagent") {
+            const newHints = yield* hintReader.readNew(sessionID)
+            if (newHints.length > 0) {
+              const userMessage = msgs.findLast((msg) => msg.info.role === "user")
+              if (userMessage) {
+                const hintBlock = newHints.map(formatHintForInjection).join("\n\n")
+                userMessage.parts.push({
+                  id: PartID.ascending(),
+                  messageID: userMessage.info.id,
+                  sessionID: userMessage.info.sessionID,
+                  type: "text" as const,
+                  text: hintBlock,
+                  synthetic: true,
+                })
+                for (const hint of newHints) {
+                  yield* hintReader.markRead(sessionID, hint.seq)
+                }
+              }
+            }
+          }
 
           const msg: SessionV1.Assistant = {
             id: MessageID.ascending(),
@@ -1553,8 +1599,7 @@ export const layer = Layer.effect(
 
         yield* compaction.prune({ sessionID }).pipe(Effect.ignore, Effect.forkIn(scope))
         return yield* lastAssistant(sessionID)
-      },
-    )
+      }) as Effect.Effect<SessionV1.WithParts>
 
     const loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.loop")(function* (
       input: LoopInput,
@@ -1866,6 +1911,7 @@ export const node = LayerNode.make(layer, [
   EventV2Bridge.node,
   RuntimeFlags.node,
   Database.node,
+  Cairn.node,
 ])
 
 export * as SessionPrompt from "./prompt"

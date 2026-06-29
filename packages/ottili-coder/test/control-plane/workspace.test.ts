@@ -29,6 +29,7 @@ import { InstanceStore } from "@/project/instance-store"
 import { InstanceBootstrap } from "@/project/bootstrap"
 import { Auth } from "@/auth"
 import { SessionPrompt } from "@/session/prompt"
+import { Cairn } from "@/cairn"
 import { Project } from "@/project/project"
 import { Vcs } from "@/project/vcs"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -48,6 +49,7 @@ const workspaceLayer = (experimentalWorkspaces: boolean) =>
     Layer.provide(Auth.defaultLayer),
     Layer.provide(SessionNs.defaultLayer),
     Layer.provide(SessionPrompt.defaultLayer),
+    Layer.provide(Cairn.defaultLayer),
     Layer.provide(Project.defaultLayer),
     Layer.provide(Vcs.defaultLayer),
     Layer.provide(Database.defaultLayer),

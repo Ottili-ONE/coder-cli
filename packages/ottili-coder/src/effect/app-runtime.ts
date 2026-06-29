@@ -29,6 +29,7 @@ import { SessionCompaction } from "@/session/compaction"
 import { SessionRevert } from "@/session/revert"
 import { SessionSummary } from "@/session/summary"
 import { SessionPrompt } from "@/session/prompt"
+import { Cairn } from "@/cairn"
 import { Instruction } from "@/session/instruction"
 import { LLM } from "@/session/llm"
 import { LSP } from "@/lsp/lsp"
@@ -82,7 +83,7 @@ export const AppLayer = Layer.mergeAll(
   SessionCompaction.defaultLayer,
   SessionRevert.defaultLayer,
   SessionSummary.defaultLayer,
-  SessionPrompt.defaultLayer,
+  SessionPrompt.defaultLayer.pipe(Layer.provide(Cairn.defaultLayer)),
   Instruction.defaultLayer,
   LLM.defaultLayer,
   LSP.defaultLayer,
