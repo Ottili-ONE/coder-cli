@@ -23,6 +23,7 @@ import { type Target, type WorkspaceInfo, WorkspaceInfo as WorkspaceInfoSchema }
 import { WorkspaceV2 } from "@opencode-ai/core/workspace"
 import { Session } from "@/session/session"
 import { SessionPrompt } from "@/session/prompt"
+import { Cairn } from "@/cairn"
 import { SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionID } from "@/session/schema"
 import { NotFoundError } from "@/storage/storage"
@@ -905,6 +906,7 @@ export const defaultLayer = layer.pipe(
   Layer.provide(Auth.defaultLayer),
   Layer.provide(Session.defaultLayer),
   Layer.provide(SessionPrompt.defaultLayer),
+  Layer.provide(Cairn.defaultLayer),
   Layer.provide(Project.defaultLayer),
   Layer.provide(Vcs.defaultLayer),
   Layer.provide(FSUtil.defaultLayer),
@@ -978,6 +980,7 @@ export const node = LayerNode.make(layer, [
   Auth.node,
   Session.node,
   SessionPrompt.node,
+  Cairn.node,
   httpClient,
   EventV2Bridge.node,
   Vcs.node,

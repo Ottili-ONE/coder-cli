@@ -4,13 +4,14 @@ import { Ripgrep } from "@opencode-ai/core/ripgrep"
 import { Effect, Layer } from "effect"
 import { Session } from "@/session/session"
 import { SessionPrompt } from "../../src/session/prompt"
+import { Cairn } from "../../src/cairn"
 import { MessageV2 } from "../../src/session/message-v2"
 import { testEffect } from "../lib/effect"
 
 // Skip tests if no API key is available
 const hasApiKey = !!process.env.ANTHROPIC_API_KEY
 const it = testEffect(
-  Layer.mergeAll(SessionPrompt.defaultLayer, Session.defaultLayer).pipe(Layer.provide(Ripgrep.defaultLayer)),
+  Layer.mergeAll(SessionPrompt.defaultLayer.pipe(Layer.provide(Cairn.defaultLayer)), Session.defaultLayer).pipe(Layer.provide(Ripgrep.defaultLayer)),
 )
 const live = hasApiKey ? it.instance : it.instance.skip
 

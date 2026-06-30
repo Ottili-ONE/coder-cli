@@ -12,7 +12,7 @@ import PROMPT_KIMI from "./prompt/kimi.txt"
 
 import PROMPT_CODEX from "./prompt/codex.txt"
 import PROMPT_TRINITY from "./prompt/trinity.txt"
-import PROMPT_EXECUTION_DOCTRINE from "./prompt/execution-doctrine.txt"
+import PROMPT_CAIRN_DOCTRINE from "@/cairn/doctrine.txt"
 import PROMPT_PRODUCT_CONTEXT from "./prompt/product-context.txt"
 import PROMPT_CAPABILITIES from "./prompt/capabilities.txt"
 import PROMPT_BROWSER_AUTOMATION from "./prompt/browser-automation.txt"
@@ -45,13 +45,13 @@ export function provider(model: Provider.Model) {
 export function executionDoctrine(agent: Agent.Info): string | undefined {
   if (agent.hidden) return undefined
   if (agent.mode === "subagent") return undefined
-  return PROMPT_EXECUTION_DOCTRINE
+  return PROMPT_CAIRN_DOCTRINE
 }
 
 export function corePrompt(agent: Agent.Info): string[] {
   if (agent.hidden) return []
-  if (agent.mode === "subagent") return []
-  return [PROMPT_PRODUCT_CONTEXT, PROMPT_CAPABILITIES, PROMPT_BROWSER_AUTOMATION, PROMPT_EXECUTION_DOCTRINE]
+  if (agent.mode === "subagent") return [PROMPT_CAPABILITIES, PROMPT_CAIRN_DOCTRINE]
+  return [PROMPT_PRODUCT_CONTEXT, PROMPT_CAPABILITIES, PROMPT_BROWSER_AUTOMATION, PROMPT_CAIRN_DOCTRINE]
 }
 
 export interface Interface {

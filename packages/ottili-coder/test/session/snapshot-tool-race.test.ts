@@ -18,6 +18,7 @@ import fs from "fs/promises"
 import path from "path"
 import { Session } from "@/session/session"
 import { SessionPrompt } from "../../src/session/prompt"
+import { Cairn } from "../../src/cairn"
 import { SessionSummary } from "../../src/session/summary"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
@@ -77,6 +78,7 @@ const lsp = Layer.succeed(
 
 const root = LayerNode.group([
   SessionPrompt.node,
+  Cairn.node,
   Session.node,
   SessionProjector.node,
   SessionSummary.node,

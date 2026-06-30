@@ -19,14 +19,21 @@ async function publish(dir: string, name: string, version: string) {
     console.log(`already published ${name}@${version}`)
     return
   }
+  await $`rm -f *.tgz .npmrc.publish`.cwd(dir).nothrow()
   await $`bun pm pack`.cwd(dir)
+  const npmrcPath = "/tmp/ottili-coder-npmrc.publish"
+  if (process.env.NPM_TOKEN && !process.env.NPM_CONFIG_USERCONFIG) {
+    await Bun.write(npmrcPath, `//registry.npmjs.org/:_authToken=${process.env.NPM_TOKEN}\n`)
+    process.env.NPM_CONFIG_USERCONFIG = npmrcPath
+  }
   await $`npm publish *.tgz --access public --tag ${Script.channel}`.cwd(dir)
 }
 
 const binaries: Record<string, string> = {}
 for (const filepath of new Bun.Glob("*/package.json").scanSync({ cwd: "./dist" })) {
-  const pkg = await Bun.file(`./dist/${filepath}`).json()
-  binaries[pkg.name] = pkg.version
+  const distPkg = await Bun.file(`./dist/${filepath}`).json()
+  if (distPkg.name === pkg.name) continue
+  binaries[distPkg.name] = distPkg.version
 }
 console.log("binaries", binaries)
 const version = Object.values(binaries)[0]
@@ -34,9 +41,11 @@ const version = Object.values(binaries)[0]
 await $`mkdir -p ./dist/${pkg.name}`
 await $`mkdir -p ./dist/${pkg.name}/bin`
 await $`cp ./script/postinstall.mjs ./dist/${pkg.name}/postinstall.mjs`
+await $`cp ./README.npm.md ./dist/${pkg.name}/README.md`
 await Bun.file(`./dist/${pkg.name}/LICENSE`).write(await Bun.file("../../LICENSE").text())
 await Bun.file(`./dist/${pkg.name}/bin/${pkg.name}.exe`).write(
   [
+    "#!/usr/bin/env sh",
     `echo "Error: ${pkg.name}'s postinstall script was not run." >&2`,
     'echo "" >&2',
     'echo "This occurs when using --ignore-scripts during installation, or when using a" >&2',
@@ -50,6 +59,9 @@ await Bun.file(`./dist/${pkg.name}/bin/${pkg.name}.exe`).write(
     "",
   ].join("\n"),
 )
+if (process.platform !== "win32") {
+  await $`chmod 755 ./dist/${pkg.name}/bin/${pkg.name}.exe`.cwd(dir)
+}
 
 await Bun.file(`./dist/${pkg.name}/package.json`).write(
   JSON.stringify(
@@ -59,9 +71,13 @@ await Bun.file(`./dist/${pkg.name}/package.json`).write(
         [pkg.name]: `./bin/${pkg.name}.exe`,
       },
       description: "Ottili ONE Coder — autonomous AI coding agent for the terminal",
+      homepage: "https://ottili.one/coder",
       repository: {
         type: "git",
-        url: "https://github.com/Ottili-ONE/coder-cli",
+        url: "git+https://github.com/Ottili-ONE/coder-cli.git",
+      },
+      bugs: {
+        url: "https://github.com/Ottili-ONE/coder-cli/issues",
       },
       keywords: ["ottili", "ottili-one", "coder", "ai", "cli", "agent", "terminal"],
       scripts: {

@@ -220,7 +220,7 @@ print_message() {
 
 check_version() {
     if command -v ottili-coder >/dev/null 2>&1; then
-        ottili-coder_path=$(which ottili-coder)
+        ottili_coder_path=$(command -v ottili-coder)
 
         ## Check the installed version
         installed_version=$(ottili-coder --version 2>/dev/null || echo "")

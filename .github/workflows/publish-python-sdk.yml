@@ -14,6 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -26,19 +29,22 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF_NAME:-}"
-          if [ -z "$TAG" ]; then
+          if [[ ! "$TAG" =~ ^v[0-9] ]]; then
             TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo v1.0.0)"
           fi
           VERSION="${TAG#v}"
-          python - <<PY
+          export VERSION
+          python - <<'PY'
+          import os
           from pathlib import Path
           import re
+          version = os.environ["VERSION"]
           path = Path("packages/sdk/python/pyproject.toml")
           text = path.read_text()
-          text = re.sub(r'(?m)^version = "[^"]+"', f'version = "{VERSION}"', text)
+          text = re.sub(r'(?m)^version = "[^"]+"', f'version = "{version}"', text)
           path.write_text(text)
           init = Path("packages/sdk/python/src/ottili_coder/__init__.py")
-          init.write_text(re.sub(r'__version__ = "[^"]+"', f'__version__ = "{VERSION}"', init.read_text()))
+          init.write_text(re.sub(r'__version__ = "[^"]+"', f'__version__ = "{version}"', init.read_text()))
           PY
 
       - name: Build and publish to PyPI
