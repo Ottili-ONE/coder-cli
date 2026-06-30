@@ -1429,10 +1429,15 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
         return pr.data.number
       } catch (e: unknown) {
         // Handle "No commits between X and Y" validation error from GitHub.
-        // This can happen when the branch was pushed but has no new commits
-        // relative to the base (e.g. shallow clone edge cases).
         if (e instanceof Error && e.message.includes("No commits between")) {
           console.log(`GitHub rejected PR: ${e.message}`)
+          return null
+        }
+        // PR creation 403 (org blocks GITHUB_TOKEN PRs) is non-fatal —
+        // the branch is already pushed, user can create the PR manually.
+        if (e instanceof Error && (e.message.includes("not permitted to create") || e.message.includes("403"))) {
+          console.log(`PR creation blocked by GitHub: ${e.message}`)
+          console.log(`Branch ${branch} was pushed — create PR manually at https://github.com/${owner}/${repo}/compare/${base}...${branch}`)
           return null
         }
         throw e
