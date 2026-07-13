@@ -238,6 +238,28 @@ describe("Instruction.system", () => {
       )
     }),
   )
+
+  it.live("prefers OTTILI.md over AGENTS.md and CLAUDE.md in the project", () =>
+    Effect.gen(function* () {
+      const projectTmp = yield* tmpWithFiles({
+        "OTTILI.md": "# Ottili Instructions",
+        "AGENTS.md": "# Agents Instructions",
+        "CLAUDE.md": "# Claude Instructions",
+      })
+
+      yield* Effect.gen(function* () {
+        const svc = yield* Instruction.Service
+        const paths = yield* svc.systemPaths()
+        expect(paths.has(path.join(projectTmp, "OTTILI.md"))).toBe(true)
+        expect(paths.has(path.join(projectTmp, "AGENTS.md"))).toBe(false)
+        expect(paths.has(path.join(projectTmp, "CLAUDE.md"))).toBe(false)
+
+        const rules = yield* svc.system()
+        expect(rules).toHaveLength(1)
+        expect(rules[0]).toBe(`Instructions from: ${path.join(projectTmp, "OTTILI.md")}\n# Ottili Instructions`)
+      }).pipe(provideInstance(projectTmp), provideInstruction({ home: projectTmp, config: projectTmp }))
+    }),
+  )
 })
 
 describe("Instruction.systemPaths global config", () => {
@@ -250,6 +272,23 @@ describe("Instruction.systemPaths global config", () => {
         const svc = yield* Instruction.Service
         const paths = yield* svc.systemPaths()
         expect(paths.has(path.join(globalTmp, "AGENTS.md"))).toBe(true)
+      }).pipe(provideInstance(projectTmp), provideInstruction({ home: globalTmp, config: globalTmp }))
+    }),
+  )
+
+  it.live("prefers OTTILI.md over AGENTS.md in Global.Service config", () =>
+    Effect.gen(function* () {
+      const globalTmp = yield* tmpWithFiles({
+        "OTTILI.md": "# Global Ottili",
+        "AGENTS.md": "# Global Agents",
+      })
+      const projectTmp = yield* tmpdirScoped()
+
+      yield* Effect.gen(function* () {
+        const svc = yield* Instruction.Service
+        const paths = yield* svc.systemPaths()
+        expect(paths.has(path.join(globalTmp, "OTTILI.md"))).toBe(true)
+        expect(paths.has(path.join(globalTmp, "AGENTS.md"))).toBe(false)
       }).pipe(provideInstance(projectTmp), provideInstruction({ home: globalTmp, config: globalTmp }))
     }),
   )

@@ -96,6 +96,57 @@ describe("InstructionContext", () => {
     ),
   )
 
+  it.live("prefers OTTILI.md over AGENTS.md per directory", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          const global = path.join(tmp.path, "global")
+          const project = path.join(tmp.path, "project")
+          const directory = path.join(project, "packages", "core")
+          const globalOttili = path.join(global, "OTTILI.md")
+          const globalAgents = path.join(global, "AGENTS.md")
+          const projectOttili = path.join(project, "OTTILI.md")
+          const projectAgents = path.join(project, "AGENTS.md")
+          yield* Effect.promise(async () => {
+            await fs.mkdir(global, { recursive: true })
+            await fs.mkdir(directory, { recursive: true })
+            await fs.writeFile(globalOttili, "global-ottili")
+            await fs.writeFile(globalAgents, "global-agents")
+            await fs.writeFile(projectOttili, "project-ottili")
+            await fs.writeFile(projectAgents, "project-agents")
+          })
+
+          const load = SystemContextRegistry.Service.pipe(
+            Effect.flatMap((service) => service.load()),
+            Effect.provide(InstructionContext.layer.pipe(Layer.provideMerge(SystemContextRegistry.layer))),
+            Effect.provide(FSUtil.defaultLayer),
+            Effect.provide(Global.layerWith({ config: global })),
+            Effect.provide(
+              Layer.succeed(
+                Location.Service,
+                Location.Service.of(
+                  location(
+                    { directory: AbsolutePath.make(directory) },
+                    { projectDirectory: AbsolutePath.make(project) },
+                  ),
+                ),
+              ),
+            ),
+          )
+
+          const initialized = yield* SystemContext.initialize(yield* load)
+          expect(initialized.baseline).toContain(`Instructions from: ${globalOttili}\nglobal-ottili`)
+          expect(initialized.baseline).toContain(`Instructions from: ${projectOttili}\nproject-ottili`)
+          expect(initialized.baseline).not.toContain("global-agents")
+          expect(initialized.baseline).not.toContain("project-agents")
+        }),
+      ),
+    ),
+  )
+
   it.live("keeps an empty AGENTS.md as available context", () =>
     Effect.acquireRelease(
       Effect.promise(() => tmpdir()),
@@ -226,7 +277,7 @@ describe("InstructionContext", () => {
       )
 
       expect(observed).toEqual({
-        targets: ["AGENTS.md"],
+        targets: ["OTTILI.md", "AGENTS.md", "CLAUDE.md"],
         start: FSUtil.resolve("/repo"),
         stop: FSUtil.resolve("/repo"),
       })

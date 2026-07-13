@@ -1,7 +1,7 @@
 export * as InstructionContext from "./instruction-context"
 
 import { Array, Effect, Layer, Schema } from "effect"
-import { isAbsolute, join, relative, sep } from "path"
+import { dirname, isAbsolute, join, relative, sep } from "path"
 import { FSUtil } from "./fs-util"
 import { Flag } from "./flag/flag"
 import { Global } from "./global"
@@ -42,17 +42,37 @@ export const layer = Layer.effectDiscard(
       const fromProject = relative(stop, start)
       const insideProject =
         fromProject === "" || (fromProject !== ".." && !fromProject.startsWith(`..${sep}`) && !isAbsolute(fromProject))
-      const discovered = new Set(
-        (Flag.OTTILI_CODER_DISABLE_PROJECT_CONFIG || !insideProject
+      const INSTRUCTIONS = ["OTTILI.md", "AGENTS.md", "CLAUDE.md"]
+      const allDiscovered =
+        Flag.OTTILI_CODER_DISABLE_PROJECT_CONFIG || !insideProject
           ? []
           : yield* fs.up({
-              targets: ["AGENTS.md"],
+              targets: INSTRUCTIONS,
               start,
               stop,
             })
-        ).map(FSUtil.resolve),
-      )
-      const paths = Array.dedupe([FSUtil.resolve(join(global.config, "AGENTS.md")), ...discovered])
+      // fs.up lists every existing target per directory, so keep only the highest-priority
+      // match within each directory (OTTILI.md > AGENTS.md > CLAUDE.md).
+      const seenDirs = new Set<string>()
+      const discovered = new Set<string>()
+      for (const file of allDiscovered) {
+        const dir = dirname(file)
+        if (seenDirs.has(dir)) continue
+        seenDirs.add(dir)
+        discovered.add(FSUtil.resolve(file))
+      }
+      // Global config instruction: OTTILI.md > AGENTS.md > CLAUDE.md.
+      let globalCandidate: string | undefined
+      if (!Flag.OTTILI_CODER_DISABLE_PROJECT_CONFIG) {
+        for (const name of INSTRUCTIONS) {
+          const candidate = FSUtil.resolve(join(global.config, name))
+          if (yield* fs.existsSafe(candidate)) {
+            globalCandidate = candidate
+            break
+          }
+        }
+      }
+      const paths = Array.dedupe([...(globalCandidate ? [globalCandidate] : []), ...discovered])
       const files = yield* Effect.forEach(
         paths,
         (path) =>
