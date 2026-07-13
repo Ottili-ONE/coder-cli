@@ -1,0 +1,75 @@
+diff --git a/index-d5xqskty.js b/index-d5xqskty.js
+index b3c986b0ded01ca864ae9547f7b7b85b23934273..5959b7a3fafa69c41875955237b897dd9b3d850a 100644
+--- a/index-d5xqskty.js
++++ b/index-d5xqskty.js
+@@ -10030,6 +10030,11 @@ class TerminalPalette {
+     };
+   }
+   async detectOSCSupport(timeoutMs = 300) {
++    // ottili-coder patch: do NOT send the OSC 4 palette-color query.
++    // The native query round-trip aborts (SIGABRT) in Bun 1.3.x when the
++    // terminal does not answer the palette-color query. Skipping it makes
++    // TerminalPalette.detect() fall back to the built-in ANSI palette.
++    return false;
+     const out = this.stdout;
+     if (!out.isTTY || !this.stdin.isTTY)
+       return false;
+diff --git a/index-xt9f071j.js b/index-xt9f071j.js
+index 179a27f7b9efcf0a56196e6044993919ae183c9c..2a57f4a12321f815a1eb55c418d30b5633c735da 100644
+--- a/index-xt9f071j.js
++++ b/index-xt9f071j.js
+@@ -6554,9 +6554,15 @@ class RendererThemeMode {
+       return { handled: true, changedMode: null };
+     }
+     const nextMode = inferThemeModeFromBackgroundColor(this.themeOscBackground);
+-    const changedMode = this.applyThemeMode(nextMode);
++    this.applyThemeMode(nextMode);
+     this.completeThemeQuery();
+-    return { handled: true, changedMode };
++    // ottili-coder patch: do NOT flip the renderer theme mode from an OSC
++    // 10/11 color-query response. Applying it (clearPaletteCache + downstream)
++    // trips a latent Bun 1.3.x native-runtime crash (SIGABRT) the moment the
++    // terminal replies to the fg/bg query — surfaced once VSCode's terminal
++    // began answering it. The response is still consumed so it is not echoed;
++    // theme mode falls back to palette-based detection in resolveRunTheme.
++    return { handled: true, changedMode: null };
+   }
+   clearThemeRefreshTimeout() {
+     if (this.themeRefreshTimeoutId === null) {
+@@ -6570,17 +6576,11 @@ class RendererThemeMode {
+     this.themeQueryPending = false;
+   }
+   requestThemeOscColors() {
+-    if (this.themeRefreshTimeoutId !== null) {
+-      return;
+-    }
+-    this.themeQueryPending = true;
+-    this.themeOscForeground = null;
+-    this.themeOscBackground = null;
+-    this.host.queryThemeColors();
+-    this.clearThemeRefreshTimeout();
+-    this.themeRefreshTimeoutId = this.clock.setTimeout(() => {
+-      this.completeThemeQuery();
+-    }, RendererThemeMode.QUERY_TIMEOUT_MS);
++    // ottili-coder patch: never send the OSC 10/11/4 theme-color query.
++    // The native queryThemeColors round-trip aborts (SIGABRT) when the
++    // terminal answers the fg/bg query — a latent Bun 1.3.x native crash.
++    // Theme mode falls back to palette-based detection instead.
++    this.completeThemeQuery();
+   }
+   applyThemeMode(mode) {
+     const changed = this._themeMode !== mode;
+@@ -7173,8 +7173,12 @@ Captured external output:
+     }
+     if (config.useThread === undefined)
+       config.useThread = true;
++    // ottili-coder patch: keep the native renderer on its own thread on Linux.
++    // Running it on the main thread (the upstream default) makes its TTY
++    // query/response FFI reads race with Bun's event loop and abort (SIGABRT)
++    // during TUI startup. A dedicated thread avoids that collision.
+     if (process.platform === "linux")
+-      config.useThread = false;
++      config.useThread = true;
+     lib.setUseThread(rendererPtr, config.useThread);
+     const kittyConfig = config.useKittyKeyboard ?? {};
+     const kittyFlags = buildKittyKeyboardFlags(kittyConfig);

@@ -39,9 +39,9 @@
       "@octokit/rest": "22.0.0",
       "@hono/standard-validator": "0.2.0",
       "@hono/zod-validator": "0.4.2",
-      "@opentui/core": "0.3.4",
-      "@opentui/keymap": "0.3.4",
-      "@opentui/solid": "0.3.4",
+      "@opentui/core": "0.4.3",
+      "@opentui/keymap": "0.4.3",
+      "@opentui/solid": "0.4.3",
       "ulid": "3.0.1",
       "@kobalte/core": "0.13.11",
       "@types/luxon": "3.7.1",
@@ -150,6 +150,6 @@
     "gcp-metadata@8.1.2": "patches/gcp-metadata@8.1.2.patch",
     "pacote@21.5.0": "patches/pacote@21.5.0.patch",
     "@ai-sdk/google@3.0.73": "patches/@ai-sdk%2Fgoogle@3.0.73.patch",
-    "@opentui/core@0.3.4": "patches/@opentui%2Fcore@0.3.4.patch"
+    "@opentui/core@0.4.3": "patches/@opentui%2Fcore@0.4.3.patch"
   }
 }
