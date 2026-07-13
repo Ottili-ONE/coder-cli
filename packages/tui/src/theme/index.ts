@@ -1,5 +1,6 @@
 import { SyntaxStyle, RGBA, type TerminalColors } from "@opentui/core"
 import aura from "./assets/aura.json" with { type: "json" }
+import claude from "./assets/claude.json" with { type: "json" }
 import ayu from "./assets/ayu.json" with { type: "json" }
 import carbonfox from "./assets/carbonfox.json" with { type: "json" }
 import catppuccinFrappe from "./assets/catppuccin-frappe.json" with { type: "json" }
@@ -133,6 +134,7 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   catppuccin,
   ["catppuccin-frappe"]: catppuccinFrappe,
   ["catppuccin-macchiato"]: catppuccinMacchiato,
+  claude,
   cobalt2,
   cursor,
   dracula,
