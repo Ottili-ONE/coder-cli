@@ -1,5 +1,7 @@
 # Contributing to Ottili Coder
 
+(1:1 contributing file as OpenCode)
+
 We want to make it easy for you to contribute to Ottili Coder. Here are the most common type of changes that get merged:
 
 - Bug fixes
