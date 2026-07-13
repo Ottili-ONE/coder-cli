@@ -223,9 +223,23 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
 
     const cloudJobEvents = Effect.fn("ExperimentalHttpApi.cloudJobEvents")(function* (ctx: {
       params: { jobId: number }
+      query: { after_id?: number; limit?: number }
     }) {
-      const events = yield* cloudTry(() => OttiliCloud.listJobEvents(ctx.params.jobId))
+      const events = yield* cloudTry(() =>
+        OttiliCloud.listJobEvents(ctx.params.jobId, { afterId: ctx.query.after_id, limit: ctx.query.limit }),
+      )
       return { events }
+    })
+
+    const cloudJobTasks = Effect.fn("ExperimentalHttpApi.cloudJobTasks")(function* (ctx: {
+      params: { jobId: number }
+    }) {
+      const tasks = yield* cloudTry(() => OttiliCloud.listJobTasks(ctx.params.jobId))
+      return { tasks }
+    })
+
+    const cloudTask = Effect.fn("ExperimentalHttpApi.cloudTask")(function* (ctx: { params: { taskId: number } }) {
+      return yield* cloudTry(() => OttiliCloud.getTask(ctx.params.taskId))
     })
 
     const cloudJobDashboard = Effect.fn("ExperimentalHttpApi.cloudJobDashboard")(function* (ctx: {
@@ -333,6 +347,8 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       .handle("cloudCreateJob", cloudCreateJob)
       .handle("cloudJobCancel", cloudJobCancel)
       .handle("cloudJobEvents", cloudJobEvents)
+      .handle("cloudJobTasks", cloudJobTasks)
+      .handle("cloudTask", cloudTask)
       .handle("cloudJobDashboard", cloudJobDashboard)
       .handle("tool", tool)
       .handle("toolIDs", toolIDs)

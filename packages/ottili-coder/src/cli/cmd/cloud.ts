@@ -2,7 +2,7 @@ import { Effect } from "effect"
 import { UI } from "../ui"
 import { cmd } from "./cmd"
 import { effectCmd, fail, CliError } from "../effect-cmd"
-import { OttiliCloud, type CloudJob, type CloudJobStatus, type CloudMode } from "@/cloud/cloud"
+import { OttiliCloud, type CloudJob, type CloudJobStatus, type CloudMode, type CloudTask } from "@/cloud/cloud"
 
 /** Wrap a cloud call so any failure becomes a clean, user-visible CLI error. */
 function guard<T>(run: () => Promise<T>) {
@@ -57,6 +57,18 @@ function printJobDetail(job: CloudJob) {
   UI.println(dim("title    ") + job.title)
   UI.println(dim("mode     ") + job.mode + dim("   backend ") + job.execution_backend)
   UI.println(dim("progress ") + `${Math.round(job.completion_pct ?? 0)}%` + (job.current_phase ? dim("   phase ") + job.current_phase : ""))
+  const budget = Number(job.settings?.["credit_budget_credits"])
+  const estimate = job.settings?.["credit_estimate"]
+  const recommended =
+    estimate &&
+    typeof estimate === "object" &&
+    "recommended_budget" in estimate &&
+    typeof estimate.recommended_budget === "number"
+      ? estimate.recommended_budget
+      : undefined
+  if (Number.isFinite(budget)) {
+    UI.println(dim("credits  ") + `${budget}` + (typeof recommended === "number" ? dim("   estimate ") + `${recommended}` : ""))
+  }
   if (job.task_counts && Object.keys(job.task_counts).length) {
     const counts = Object.entries(job.task_counts)
       .map(([k, v]) => `${k}:${v}`)
@@ -122,6 +134,8 @@ const CloudRunCommand = effectCmd({
         describe: "build a feature vs. continuous small fixes",
       })
       .option("tasks", { type: "number", describe: "target number of tasks (autonomous_build)" })
+      .option("budget", { type: "number", describe: "reserve a specific AI credit budget for this run" })
+      .option("model", { type: "string", describe: "requested model, e.g. ottili-auto or openai/gpt-5.4-mini" })
       .option("repo", { type: "number", describe: "connected repository id (enables GitHub sandbox)" })
       .option("target", { type: "string", choices: ["local", "github_agent"], describe: "execution target" })
       .option("agent", { type: "string", describe: "preferred coding agent" })
@@ -142,10 +156,12 @@ const CloudRunCommand = effectCmd({
           title: args.title as string | undefined,
           mode: args.mode as CloudMode,
           target_task_count: args.tasks as number | undefined,
+          model: args.model as string | undefined,
           repository_id: args.repo as number | undefined,
           execution_target: target,
           default_agent: args.agent as string | undefined,
           auto_create_pr: args.pr as boolean | undefined,
+          run_budget_credits: args.budget as number | undefined,
         }),
       )
 
@@ -189,6 +205,110 @@ const CloudListCommand = effectCmd({
     }),
 })
 
+// ── cloud balance ───────────────────────────────────────────────────────────
+
+const CloudBalanceCommand = effectCmd({
+  command: "balance",
+  describe: "show the shared Ottili ONE AI credit balance for this company",
+  instance: false,
+  builder: (yargs) => yargs.option("json", { type: "boolean", describe: "print the balance as JSON" }),
+  handler: (args) =>
+    Effect.gen(function* () {
+      const balance = yield* guard(() => OttiliCloud.getCreditBalance())
+      if (args.json) {
+        UI.println(JSON.stringify(balance, null, 2))
+        return
+      }
+      const available =
+        typeof balance.current_balance === "number"
+          ? balance.current_balance
+          : typeof balance.available_credits === "number"
+            ? balance.available_credits
+            : 0
+      UI.println(bold("Ottili ONE AI credits"))
+      UI.println(dim("available ") + `${available}`)
+      if (typeof balance.included_remaining === "number") UI.println(dim("included  ") + `${balance.included_remaining}`)
+      if (typeof balance.recharge_remaining === "number") UI.println(dim("recharge  ") + `${balance.recharge_remaining}`)
+      if (balance.plan_code) UI.println(dim("plan      ") + balance.plan_code)
+      if (balance.credit_mode) UI.println(dim("mode      ") + balance.credit_mode)
+      if (balance.hard_cap_status) UI.println(dim("cap       ") + balance.hard_cap_status)
+      if (balance.current_period_end) UI.println(dim("period    ") + balance.current_period_end)
+    }),
+})
+
+// ── cloud estimate ──────────────────────────────────────────────────────────
+
+const CloudEstimateCommand = effectCmd({
+  command: "estimate",
+  describe: "estimate the AI credits a cloud Ottili Coder run will reserve",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .option("mode", {
+        type: "string",
+        choices: ["autonomous_build", "continuous_coding"],
+        default: "autonomous_build",
+        describe: "build a feature vs. continuous small fixes",
+      })
+      .option("tasks", { type: "number", describe: "target number of tasks" })
+      .option("model", { type: "string", describe: "requested model, e.g. ottili-auto or openai/gpt-5.4-mini" })
+      .option("json", { type: "boolean", describe: "print the estimate as JSON" }),
+  handler: (args) =>
+    Effect.gen(function* () {
+      const estimate = yield* guard(() =>
+        OttiliCloud.estimateCredits({
+          mode: args.mode as CloudMode,
+          target_task_count: args.tasks as number | undefined,
+          model: args.model as string | undefined,
+        }),
+      )
+      if (args.json) {
+        UI.println(JSON.stringify(estimate, null, 2))
+        return
+      }
+      UI.println(bold("Ottili Coder credit estimate"))
+      UI.println(dim("workspace ") + estimate.workspace_slug)
+      UI.println(dim("surface   ") + estimate.surface)
+      UI.println(dim("model     ") + estimate.resolved_model)
+      UI.println(dim("tier      ") + estimate.tier + dim("   metered ") + `${estimate.metered}`)
+      UI.println(dim("budget    ") + `${estimate.estimate.recommended_budget ?? 0}`)
+      UI.println(
+        dim("range     ") +
+          `${estimate.estimate.estimated_min_credits ?? 0} - ${estimate.estimate.estimated_max_credits ?? 0}`,
+      )
+      if (typeof estimate.estimate.current_balance === "number") {
+        UI.println(dim("balance   ") + `${estimate.estimate.current_balance}`)
+      }
+      for (const warning of estimate.estimate.warnings ?? []) UI.println(dim("note      ") + warning)
+    }),
+})
+
+// ── cloud models ────────────────────────────────────────────────────────────
+
+const CloudModelsCommand = effectCmd({
+  command: "models",
+  describe: "list the managed AI models available for Ottili Coder cloud runs",
+  instance: false,
+  builder: (yargs) => yargs.option("json", { type: "boolean", describe: "print models as JSON" }),
+  handler: (args) =>
+    Effect.gen(function* () {
+      const models = yield* guard(() => OttiliCloud.listCreditModels())
+      if (args.json) {
+        UI.println(JSON.stringify(models, null, 2))
+        return
+      }
+      if (!models.length) {
+        UI.println(dim("No managed models were returned."))
+        return
+      }
+      for (const model of models) {
+        const provider = model.provider_name ? `${model.provider_name}/` : ""
+        const tier = model.model_class ? dim(`  (${model.model_class})`) : ""
+        UI.println(`${provider}${model.public_model_name}${tier}`)
+      }
+    }),
+})
+
 // ── cloud status ─────────────────────────────────────────────────────────────
 
 const CloudStatusCommand = effectCmd({
@@ -210,20 +330,93 @@ const CloudStatusCommand = effectCmd({
     }),
 })
 
+// ── cloud tasks ──────────────────────────────────────────────────────────────
+
+function taskLine(task: CloudTask): string {
+  const id = `#${task.id}`.padEnd(6)
+  const status = paintStatus(task.status).padEnd(status_pad(task.status))
+  const agent = task.assigned_agent ? "  " + dim(`[${task.assigned_agent}]`) : ""
+  return `${dim(id)} ${status} ${dim(task.kind.padEnd(9))} ${task.title}${agent}`
+}
+
+const CloudTasksCommand = effectCmd({
+  command: "tasks <jobId>",
+  describe: "list tasks for a cloud Ottili Coder job",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("jobId", { type: "number", demandOption: true, describe: "job id" })
+      .option("json", { type: "boolean", describe: "print tasks as JSON" }),
+  handler: (args) =>
+    Effect.gen(function* () {
+      const tasks = yield* guard(() => OttiliCloud.listJobTasks(args.jobId as number))
+      if (args.json) {
+        UI.println(JSON.stringify(tasks, null, 2))
+        return
+      }
+      if (!tasks.length) {
+        UI.println(dim("No tasks yet."))
+        return
+      }
+      for (const task of tasks) UI.println(taskLine(task))
+    }),
+})
+
+// ── cloud task ───────────────────────────────────────────────────────────────
+
+const CloudTaskCommand = effectCmd({
+  command: "task <id>",
+  describe: "show one cloud Ottili Coder task, including its run history",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("id", { type: "number", demandOption: true, describe: "task id" })
+      .option("json", { type: "boolean", describe: "print the task as JSON" }),
+  handler: (args) =>
+    Effect.gen(function* () {
+      const task = yield* guard(() => OttiliCloud.getTask(args.id as number))
+      if (args.json) {
+        UI.println(JSON.stringify(task, null, 2))
+        return
+      }
+      UI.println(bold(`Task #${task.id}`) + "  " + paintStatus(task.status))
+      UI.println(dim("title    ") + task.title)
+      UI.println(
+        dim("kind     ") + task.kind + (task.assigned_agent ? dim("   agent ") + task.assigned_agent : ""),
+      )
+      if (task.depends_on.length) {
+        UI.println(dim("depends  ") + task.depends_on.map((id) => `#${id}`).join(", "))
+      }
+      if (task.files_changed.length) UI.println(dim("files    ") + task.files_changed.join(", "))
+      if (task.result_summary) UI.println(dim("result   ") + task.result_summary)
+      if (task.error_summary) {
+        UI.println(UI.Style.TEXT_DANGER + "error    " + UI.Style.TEXT_NORMAL + task.error_summary)
+      }
+      for (const run of task.runs ?? []) {
+        const outcome = run.success
+          ? UI.Style.TEXT_SUCCESS + "ok" + UI.Style.TEXT_NORMAL
+          : UI.Style.TEXT_DANGER + "failed" + UI.Style.TEXT_NORMAL
+        const cost = typeof run.cost_dollars === "number" ? `  $${run.cost_dollars.toFixed(4)}` : ""
+        const tokens = typeof run.tokens_used === "number" ? `  ${run.tokens_used} tok` : ""
+        UI.println(dim(`attempt ${run.attempt} `) + outcome + dim(`  ${run.agent_type ?? ""}`) + cost + tokens)
+      }
+    }),
+})
+
 // ── cloud watch ──────────────────────────────────────────────────────────────
 
 function watchJob(jobId: number) {
   return Effect.gen(function* () {
-    let seenEvents = 0
+    let lastEventId = 0
     let lastStatus: CloudJobStatus | "" = ""
     UI.println(dim(`Watching job #${jobId} — Ctrl+C to stop`))
     for (;;) {
       const job = yield* guard(() => OttiliCloud.getJob(jobId))
-      const events = yield* guard(() => OttiliCloud.listJobEvents(jobId).catch(() => []))
-      for (const event of events.slice(seenEvents)) {
+      const events = yield* guard(() => OttiliCloud.listJobEvents(jobId, { afterId: lastEventId }).catch(() => []))
+      for (const event of events) {
         UI.println(dim(new Date(event.created_at ?? Date.now()).toLocaleTimeString()) + "  " + event.message)
+        lastEventId = Math.max(lastEventId, event.id)
       }
-      seenEvents = events.length
       if (job.status !== lastStatus) {
         UI.println(dim("status → ") + paintStatus(job.status) + dim(`   ${Math.round(job.completion_pct ?? 0)}%`))
         lastStatus = job.status
@@ -286,8 +479,13 @@ export const CloudCommand = cmd({
   builder: (yargs) =>
     yargs
       .command(CloudRunCommand)
+      .command(CloudBalanceCommand)
+      .command(CloudEstimateCommand)
+      .command(CloudModelsCommand)
       .command(CloudListCommand)
       .command(CloudStatusCommand)
+      .command(CloudTasksCommand)
+      .command(CloudTaskCommand)
       .command(CloudWatchCommand)
       .command(CloudCancelCommand)
       .command(CloudOpenCommand)
