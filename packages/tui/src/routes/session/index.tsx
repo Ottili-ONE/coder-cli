@@ -16,7 +16,7 @@ import {
 } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import path from "node:path"
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir, writeFile, readFile, readdir } from "node:fs/promises"
 import { useRoute, useRouteData } from "../../context/route"
 import { useProject } from "../../context/project"
 import { useSync } from "../../context/sync"
@@ -44,8 +44,10 @@ import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useSDK } from "../../context/sdk"
 import { useEditorContext } from "../../context/editor"
 import { openEditor } from "../../editor"
-import { useDialog } from "../../ui/dialog"
+import { useDialog, Dialog } from "../../ui/dialog"
 import { DialogAlert } from "../../ui/dialog-alert"
+import { DialogModel } from "../../component/dialog-model"
+import { DialogThemeList } from "../../component/dialog-theme-list"
 import { TodoItem } from "../../component/todo-item"
 import { DialogMessage } from "./dialog-message"
 import type { PromptInfo } from "../../component/prompt/history"
@@ -454,6 +456,23 @@ export function Session() {
       if (!session()?.parentID || dialog.stack.length > 0) return
       func()
     }
+  }
+
+  async function readReleaseNotes(cwd: string): Promise<string> {
+    let dir = cwd
+    for (let i = 0; i < 6; i++) {
+      try {
+        const match = (await readdir(dir))
+          .filter((f) => f.startsWith("RELEASE_NOTES_") && f.endsWith(".md"))
+          .sort()
+          .reverse()[0]
+        if (match) return await readFile(path.join(dir, match), "utf8")
+      } catch {}
+      const parent = path.dirname(dir)
+      if (parent === dir) break
+      dir = parent
+    }
+    return "No release notes found for this installation."
   }
 
   const sessionCommandList = createMemo(() => [
@@ -1079,6 +1098,238 @@ export function Session() {
         moveChild(-1)
       }),
     },
+    {
+      title: "Clear the screen",
+      value: "session.clear",
+      category: "Session",
+      slash: { name: "/clear" },
+      enabled: true,
+      run: () => {
+        dialog.clear()
+        renderer.currentRenderBuffer.clear()
+        renderer.requestRender()
+        toast.show({ message: "Screen cleared", variant: "info" })
+      },
+    },
+    {
+      title: "Show cost and token usage",
+      value: "session.cost",
+      category: "Session",
+      slash: { name: "/cost" },
+      enabled: true,
+      run: async () => {
+        dialog.clear()
+        try {
+          const s = (await sdk.client.session.get({ sessionID: route.sessionID }, { throwOnError: true })).data!
+          const cost = s.cost ?? 0
+          const t = s.tokens
+          const lines = [
+            `Session: ${s.title}`,
+            "",
+            `Cost: $${cost.toFixed(4)}`,
+            t ? `Tokens — input: ${t.input}  output: ${t.output}  reasoning: ${t.reasoning}` : "Tokens: n/a",
+            t ? `Cache — read: ${t.cache.read}  write: ${t.cache.write}` : "",
+          ].filter(Boolean)
+          dialog.replace(() => (
+            <Dialog onClose={dialog.clear} size="large">
+              <box padding={1} flexDirection="column">
+                <text>/cost</text>
+                <For each={lines}>{(line) => <text>{line}</text>}</For>
+              </box>
+            </Dialog>
+          ))
+        } catch {
+          toast.show({ message: "Failed to load cost", variant: "error" })
+        }
+      },
+    },
+    {
+      title: "Show session status",
+      value: "session.status",
+      category: "Session",
+      slash: { name: "/status" },
+      enabled: true,
+      run: async () => {
+        dialog.clear()
+        try {
+          const s = (await sdk.client.session.get({ sessionID: route.sessionID }, { throwOnError: true })).data!
+          const lines = [
+            `Session: ${s.title}`,
+            `ID: ${s.id}`,
+            `Directory: ${s.directory}`,
+            `Agent: ${s.agent ?? "default"}`,
+            s.model ? `Model: ${s.model.id} (${s.model.providerID})` : "Model: n/a",
+            `Version: ${s.version}`,
+            `Created: ${new Date(s.time.created).toLocaleString()}`,
+            `Updated: ${new Date(s.time.updated).toLocaleString()}`,
+          ]
+          dialog.replace(() => (
+            <Dialog onClose={dialog.clear} size="large">
+              <box padding={1} flexDirection="column">
+                <text>/status</text>
+                <For each={lines}>{(line) => <text>{line}</text>}</For>
+              </box>
+            </Dialog>
+          ))
+        } catch {
+          toast.show({ message: "Failed to load status", variant: "error" })
+        }
+      },
+    },
+    {
+      title: "Show release notes",
+      value: "session.release-notes",
+      category: "Session",
+      slash: { name: "/release-notes" },
+      enabled: true,
+      run: async () => {
+        dialog.clear()
+        const notes = await readReleaseNotes(paths.cwd)
+          dialog.replace(() => (
+            <Dialog onClose={dialog.clear} size="xlarge">
+              <box padding={1} flexDirection="column">
+                <text>/release-notes</text>
+                <scrollbox flexGrow={1}>
+                  <box padding={1}>
+                    <text>{notes}</text>
+                  </box>
+                </scrollbox>
+              </box>
+            </Dialog>
+          ))
+      },
+    },
+    {
+      title: "Show permission rules",
+      value: "session.permissions",
+      category: "Settings",
+      slash: { name: "/permissions" },
+      enabled: true,
+      run: async () => {
+        dialog.clear()
+        try {
+          const s = (await sdk.client.session.get({ sessionID: route.sessionID }, { throwOnError: true })).data!
+          const rules = s.permission ?? []
+          const lines = rules.length
+            ? rules.map((r) => `${r.action.toUpperCase().padEnd(8)} ${r.permission}  ${r.pattern}`)
+            : ["No custom permission rules for this session."]
+          dialog.replace(() => (
+            <Dialog onClose={dialog.clear} size="large">
+              <box padding={1} flexDirection="column">
+                <text>/permissions</text>
+                <For each={lines}>{(line) => <text>{line}</text>}</For>
+              </box>
+            </Dialog>
+          ))
+        } catch {
+          toast.show({ message: "Failed to load permissions", variant: "error" })
+        }
+      },
+    },
+    {
+      title: "Show todo list",
+      value: "session.todo",
+      category: "Session",
+      slash: { name: "/todo" },
+      enabled: true,
+      run: () => {
+        dialog.clear()
+        const todos = (() => {
+          const parts = messages().flatMap((m) => sync.data.part[m.id] ?? [])
+          for (let i = parts.length - 1; i >= 0; i--) {
+            const part = parts[i]
+            if (part.type === "tool" && part.tool === "todowrite") {
+              const parsed = parseTodos((part as unknown as { input?: { todos?: unknown } }).input?.todos)
+              if (parsed.length) return parsed
+            }
+          }
+          return []
+        })()
+        const lines = todos.length
+          ? todos.map((t) => `[${t.status}] ${t.content}`)
+          : ["No todos yet. Use the TodoWrite tool to create a list."]
+        dialog.replace(() => (
+          <Dialog onClose={dialog.clear} size="large">
+            <box padding={1} flexDirection="column">
+              <text>/todo</text>
+              <For each={lines}>{(line) => <text>{line}</text>}</For>
+            </box>
+          </Dialog>
+        ))
+      },
+    },
+    {
+      title: "Edit configuration",
+      value: "session.config",
+      category: "Settings",
+      slash: { name: "/config" },
+      enabled: true,
+      run: async () => {
+        dialog.clear()
+        const configPath = path.join(paths.cwd, "ottiliCoder.json")
+        let value = "{}\n"
+        try {
+          value = await readFile(configPath, "utf8")
+        } catch {}
+        const result = await openEditor({
+          renderer,
+          value,
+          cwd: paths.cwd,
+        })
+        if (result !== undefined) {
+          await writeFile(configPath, result)
+          toast.show({ message: `Saved ${configPath}`, variant: "success" })
+        }
+      },
+    },
+    {
+      title: "Edit memory",
+      value: "session.memory",
+      category: "Settings",
+      slash: { name: "/memory" },
+      enabled: true,
+      run: async () => {
+        dialog.clear()
+        const memoryPath = path.join(paths.cwd, "AGENTS.md")
+        let value = ""
+        try {
+          value = await readFile(memoryPath, "utf8")
+        } catch {
+          value = "# AGENTS.md\n\nAdd project instructions here.\n"
+        }
+        const result = await openEditor({
+          renderer,
+          value,
+          cwd: paths.cwd,
+        })
+        if (result !== undefined) {
+          await writeFile(memoryPath, result)
+          toast.show({ message: `Saved ${memoryPath}`, variant: "success" })
+        }
+      },
+    },
+    {
+      title: "Change theme",
+      value: "session.theme",
+      category: "Settings",
+      slash: { name: "/theme" },
+      enabled: true,
+      run: () => {
+        dialog.clear()
+        dialog.replace(() => <DialogThemeList />)
+      },
+    },
+    {
+      title: "Change model",
+      value: "session.model",
+      category: "Settings",
+      slash: { name: "/model" },
+      enabled: true,
+      run: () => {
+        dialog.clear()
+        dialog.replace(() => <DialogModel />)
+      },
+    },
   ])
 
   const sessionCommands = createMemo(() =>
@@ -1320,7 +1571,14 @@ export function Session() {
                         toBottom()
                       }}
                       sessionID={route.sessionID}
-                      right={<pluginRuntime.Slot name="session_prompt_right" session_id={route.sessionID} />}
+                      right={
+                        <box flexDirection="row">
+                          <Show when={pending() !== undefined}>
+                            <text fg={theme.textMuted}>↵ queues → sent on idle </text>
+                          </Show>
+                          <pluginRuntime.Slot name="session_prompt_right" session_id={route.sessionID} />
+                        </box>
+                      }
                     />
                   </pluginRuntime.Slot>
                 </Show>
@@ -1557,7 +1815,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
                       : local.agent.color(props.message.agent),
                 }}
               >
-                ▣{" "}
+                ✻{" "}
               </span>{" "}
               <span style={{ fg: theme.text }}>{Locale.titlecase(props.message.mode)}</span>
               <span style={{ fg: theme.textMuted }}> · {model()}</span>

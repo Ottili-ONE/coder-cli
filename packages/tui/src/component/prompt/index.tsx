@@ -157,6 +157,12 @@ export function Prompt(props: PromptProps) {
   const dialog = useDialog()
   const toast = useToast()
   const status = createMemo(() => sync.data.session_status?.[props.sessionID ?? ""] ?? { type: "idle" })
+
+  // Queue of prompts submitted while the agent is busy. They are flushed (sent) on the
+  // busy -> idle transition so they are dispatched when the agent finishes its work.
+  type QueuedPrompt = Parameters<typeof sdk.client.session.prompt>[0]
+  const [queue, setQueue] = createSignal<QueuedPrompt[]>([])
+  let prevIdle = true
   const history = usePromptHistory()
   const stash = usePromptStash()
   const keymap = useOttiliCoderKeymap()
@@ -572,6 +578,27 @@ export function Prompt(props: PromptProps) {
       "session.move",
     ]),
   }))
+
+  // Flush queued prompts when the agent becomes idle, so each queued message is sent
+  // once the agent finishes its current work and the queue drains in submission order.
+  createEffect(() => {
+    const idle = status().type === "idle"
+    const q = queue()
+    if (idle && !prevIdle && q.length > 0) {
+      const [first, ...rest] = q
+      setQueue(rest)
+      void sdk.client.session
+        .prompt(first)
+        .catch((err) => {
+          console.log("Queued prompt failed:", err)
+          toast.show({
+            message: errorMessage(err) || "Queued prompt failed.",
+            variant: "error",
+          })
+        })
+    }
+    prevIdle = idle
+  })
 
   const ref: PromptRef = {
     get focused() {
@@ -1085,30 +1112,39 @@ export function Prompt(props: PromptProps) {
       })
     } else {
       move.startSubmit()
-      sdk.client.session
-        .prompt({
-          sessionID,
-          ...selectedModel,
-          agent: agent.name,
-          model: selectedModel,
-          variant,
-          parts: [
-            ...editorParts,
-            {
-              type: "text",
-              text: inputText,
-            },
-            ...nonTextParts,
-          ],
+      const parts: NonNullable<QueuedPrompt["parts"]> = [
+        ...editorParts,
+        {
+          type: "text",
+          text: inputText,
+        },
+        ...nonTextParts,
+      ]
+      if (status().type !== "idle") {
+        setQueue([...queue(), { sessionID, ...selectedModel, agent: agent.name, model: selectedModel, variant, parts }])
+        toast.show({
+          message: `Queued (${queue().length + 1}) — sent when the agent is idle`,
+          variant: "info",
         })
-        .catch((err) => {
-          console.log("Prompt failed:", err)
-          toast.show({
-            message: errorMessage(err) || "Prompt fehlgeschlagen. Details in der Konsole.",
-            variant: "error",
+      } else {
+        sdk.client.session
+          .prompt({
+            sessionID,
+            ...selectedModel,
+            agent: agent.name,
+            model: selectedModel,
+            variant,
+            parts,
           })
-        })
-      if (editorParts.length > 0) editor.markSelectionSent()
+          .catch((err) => {
+            console.log("Prompt failed:", err)
+            toast.show({
+              message: errorMessage(err) || "Prompt fehlgeschlagen. Details in der Konsole.",
+              variant: "error",
+            })
+          })
+        if (editorParts.length > 0) editor.markSelectionSent()
+      }
     }
     history.append({
       ...store.prompt,
