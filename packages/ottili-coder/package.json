@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.0.4",
+  "version": "1.0.5-beta",
   "name": "ottili-coder",
   "type": "module",
   "license": "MIT",
@@ -16,7 +16,8 @@
     "dev:temporary": "bun run --conditions=browser ./src/temporary.ts"
   },
   "bin": {
-    "ottili-coder": "./bin/ottili-coder"
+    "ottili-coder": "./bin/ottili-coder",
+    "coder": "./bin/ottili-coder"
   },
   "exports": {
     "./*": "./src/*.ts"

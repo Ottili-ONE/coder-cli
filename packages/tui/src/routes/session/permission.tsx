@@ -16,6 +16,8 @@ import { getScrollAcceleration } from "../../util/scroll"
 import { useTuiConfig } from "../../config"
 import { OTTILI_CODER_BASE_MODE, useBindings, useCommandShortcut } from "../../keymap"
 import { usePathFormatter } from "../../context/path-format"
+import { useArgs } from "../../context/args"
+import { onMount } from "solid-js"
 
 type PermissionStage = "permission" | "always" | "reject"
 
@@ -112,10 +114,24 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
   const sdk = useSDK()
   const project = useProject()
   const sync = useSync()
+  const args = useArgs()
   const [store, setStore] = createStore({
     stage: "permission" as PermissionStage,
   })
   const pathFormatter = usePathFormatter()
+
+  // YOLO mode: auto-approve every permission request without prompting.
+  onMount(() => {
+    if (!args.yolo) return
+    void sdk.client.permission.reply({
+      reply: "always",
+      requestID: props.request.id,
+      directory: props.directory,
+      workspace: project.workspace.current(),
+    })
+  })
+
+  if (args.yolo) return null
 
   const session = createMemo(() => sync.data.session.find((s) => s.id === props.request.sessionID))
 

@@ -16,6 +16,7 @@ import type { Argv } from "yargs"
 import path from "path"
 import { pathToFileURL } from "url"
 import { Effect } from "effect"
+import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { effectCmd } from "../effect-cmd"
 import { EOL } from "os"
@@ -64,6 +65,20 @@ type SessionInfo = {
   id: string
   title?: string
   directory?: string
+}
+
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return "just now"
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo ago`
+  return new Date(ts).toLocaleDateString()
 }
 
 function inline(info: Inline) {
@@ -154,6 +169,11 @@ export const RunCommand = effectCmd({
         describe: "fork the session before continuing (requires --continue or --session)",
         type: "boolean",
       })
+      .option("resume", {
+        alias: ["r"],
+        describe: "list past conversations and resume the selected one",
+        type: "boolean",
+      })
       .option("share", {
         type: "boolean",
         describe: "share the session",
@@ -230,6 +250,7 @@ export const RunCommand = effectCmd({
       })
       .option("dangerously-skip-permissions", {
         type: "boolean",
+        alias: ["yolo", "y"],
         describe: "auto-approve permissions that are not explicitly denied (dangerous!)",
         default: false,
       })
@@ -326,6 +347,49 @@ export const RunCommand = effectCmd({
         })
       }
 
+      const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const { Server } = await import("@/server/server")
+        const request = new Request(input, init)
+        return Server.Default().app.fetch(request)
+      }) as typeof globalThis.fetch
+      const localSdk = createOttiliCoderClient({
+        baseUrl: "http://ottiliCoder.internal",
+        fetch: fetchFn,
+        directory,
+      })
+
+      if (args.resume) {
+        if (args.continue || args.session || args.fork) {
+          die("--resume cannot be combined with --continue, --session, or --fork")
+        }
+        if (!process.stdout.isTTY) {
+          die("--resume requires a TTY")
+        }
+
+        const listSdk = args.attach ? attachSDK(directory) : localSdk
+        const sessions = (await listSdk.session.list()).data ?? []
+        if (sessions.length === 0) {
+          UI.error("No past conversations found")
+          process.exit(1)
+        }
+        sessions.sort((a, b) => b.time.updated - a.time.updated)
+
+        const selected = await prompts.select({
+          message: "Resume which conversation?",
+          options: sessions.map((session) => ({
+            value: session.id,
+            label: session.title || session.id,
+            hint: `${relativeTime(session.time.updated)} · ${session.directory}`,
+          })),
+        })
+        if (prompts.isCancel(selected)) {
+          process.exit(1)
+        }
+
+        args.session = selected as string
+        args.interactive = true
+      }
+
       const files: FilePart[] = []
       if (args.file) {
         const list = Array.isArray(args.file) ? args.file : [args.file]
@@ -362,25 +426,34 @@ export const RunCommand = effectCmd({
         process.exit(1)
       }
 
+      const skipPermissions = Boolean(args["dangerously-skip-permissions"])
       const rules: PermissionV1.Ruleset = args.interactive
         ? []
-        : [
-            {
-              permission: "question",
-              action: "deny",
-              pattern: "*",
-            },
-            {
-              permission: "plan_enter",
-              action: "deny",
-              pattern: "*",
-            },
-            {
-              permission: "plan_exit",
-              action: "deny",
-              pattern: "*",
-            },
-          ]
+        : skipPermissions
+          ? [
+              {
+                permission: "question",
+                action: "deny",
+                pattern: "*",
+              },
+            ]
+          : [
+              {
+                permission: "question",
+                action: "deny",
+                pattern: "*",
+              },
+              {
+                permission: "plan_enter",
+                action: "deny",
+                pattern: "*",
+              },
+              {
+                permission: "plan_exit",
+                action: "deny",
+                pattern: "*",
+              },
+            ]
 
       function title() {
         if (args.title === undefined) return
@@ -868,21 +941,10 @@ export const RunCommand = effectCmd({
       }
 
       if (args.attach) {
-        const sdk = attachSDK(directory)
-        return await execute(sdk)
+        return await execute(attachSDK(directory))
       }
 
-      const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
-        const { Server } = await import("@/server/server")
-        const request = new Request(input, init)
-        return Server.Default().app.fetch(request)
-      }) as typeof globalThis.fetch
-      const sdk = createOttiliCoderClient({
-        baseUrl: "http://ottiliCoder.internal",
-        fetch: fetchFn,
-        directory,
-      })
-      await execute(sdk)
+      await execute(localSdk)
     })
   }),
 })

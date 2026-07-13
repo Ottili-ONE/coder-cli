@@ -188,7 +188,7 @@ for (const item of targets) {
     entrypoints: ["./src/index.ts", parserWorker, workerPath, ...(embeddedFileMap ? ["ottili-coder-web-ui.gen.ts"] : [])],
     define: {
       FFF_LIBC: JSON.stringify(item.abi === "musl" ? "musl" : "gnu"),
-      OTTILI_CODER_VERSION: `'${Script.version}'`,
+      OTTILI_CODER_VERSION: `'${process.env.OTTILI_CODER_VERSION || (Script.release ? Script.version : pkg.version)}'`,
       OTTILI_CODER_MODELS_DEV: generated.modelsData,
       OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
       OTTILI_CODER_WORKER_PATH: workerPath,
