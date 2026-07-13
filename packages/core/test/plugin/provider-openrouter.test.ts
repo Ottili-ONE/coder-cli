@@ -38,8 +38,10 @@ describe("OpenRouterPlugin", () => {
 
       expect((yield* catalog.provider.get(ProviderV2.ID.make("openrouter"))).request.headers).toEqual({
         Existing: "value",
-        "HTTP-Referer": "https://ottili.one/coder/",
-        "X-Title": "ottili-coder",
+        "HTTP-Referer": "https://ottili.one/coder",
+        "X-Title": "Ottili Coder",
+        "X-OpenRouter-Title": "Ottili Coder",
+        "X-OpenRouter-Categories": "cli-agent,cloud-agent,programming-app",
       })
       expect((yield* catalog.provider.get(ProviderV2.ID.make("nvidia"))).request.headers).toEqual({})
     }),

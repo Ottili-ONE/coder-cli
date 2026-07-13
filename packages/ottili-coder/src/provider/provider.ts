@@ -28,6 +28,7 @@ import { optionalOmitUndefined } from "@opencode-ai/core/schema"
 import { ProviderTransform } from "./transform"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
+import { openRouterAttributionHeaders } from "@opencode-ai/llm/providers"
 import { ModelStatus } from "./model-status"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderError } from "./error"
@@ -456,8 +457,7 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": "https://ottili.one/coder/",
-            "X-Title": "ottili-coder",
+            ...openRouterAttributionHeaders(),
           },
         },
       }),

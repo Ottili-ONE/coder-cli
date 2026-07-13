@@ -10,7 +10,7 @@ import {
   resolveExecutionTargetSync,
   ruleBasedRoute,
 } from "../../src/provider/ottili-auto"
-import { targetToDecision } from "../../src/provider/ottili-auto/router"
+import { targetToDecision, routeWithLlama } from "../../src/provider/ottili-auto/router"
 
 describe("ottili-auto router", () => {
   it("detects auto model selection", () => {
@@ -120,5 +120,41 @@ describe("ottili-auto router", () => {
     expect(OTTILI_AUTO_TARGETS["claude-opus-4-8"].modelID).toBe("claude-opus-4-8")
     expect(OTTILI_AUTO_TARGETS["deepseek-v4-pro"].modelID).toBe("deepseek-v4-pro")
     expect(OTTILI_AUTO_DEFAULT_TARGET.modelID).toBe("gpt-5.4-mini")
+  })
+
+  it("sends OpenRouter attribution headers on router requests", async () => {
+    const calls: Array<{ headers: Record<string, string> }> = []
+    const original = globalThis.fetch
+    globalThis.fetch = (async (_url: string, init: any) => {
+      calls.push({ headers: init.headers })
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content:
+                  '{"model":"gpt-5.4-mini","providerID":"openai","confidence":0.9,"reason":"x"}',
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      )
+    }) as any
+    try {
+      const decision = await routeWithLlama(
+        { agent: "build", userText: "Add a button", assistantText: "" },
+        "test-key",
+      )
+      expect(decision.model).toBe("gpt-5.4-mini")
+    } finally {
+      globalThis.fetch = original
+    }
+    expect(calls).toHaveLength(1)
+    const headers = calls[0].headers
+    expect(headers["HTTP-Referer"]).toBe("https://ottili.one/coder")
+    expect(headers["X-Title"]).toBe("Ottili Coder")
+    expect(headers["X-OpenRouter-Title"]).toBe("Ottili Coder")
+    expect(headers["X-OpenRouter-Categories"]).toBe("cli-agent,cloud-agent,programming-app")
   })
 })

@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 import { ModelV2 } from "../../model"
 import { PluginV2 } from "../../plugin"
+import { openRouterAttributionHeaders } from "@opencode-ai/llm/providers"
 
 export const OpenRouterPlugin = PluginV2.define({
   id: PluginV2.ID.make("openrouter"),
@@ -11,8 +12,7 @@ export const OpenRouterPlugin = PluginV2.define({
           if (item.provider.api.type !== "aisdk") continue
           if (item.provider.api.package !== "@openrouter/ai-sdk-provider") continue
           evt.provider.update(item.provider.id, (provider) => {
-            provider.request.headers["HTTP-Referer"] = "https://ottili.one/coder/"
-            provider.request.headers["X-Title"] = "ottili-coder"
+            Object.assign(provider.request.headers, openRouterAttributionHeaders())
           })
           for (const modelID of [ModelV2.ID.make("gpt-5-chat-latest"), ModelV2.ID.make("openai/gpt-5-chat")]) {
             if (!item.models.has(modelID)) continue

@@ -8,6 +8,7 @@ import { ProviderID, type ModelID, type ProviderOptions } from "../schema"
 import * as OpenAICompatibleProfiles from "./openai-compatible-profile"
 import * as OpenAIChat from "../protocols/openai-chat"
 import { isRecord } from "../protocols/shared"
+import { openRouterAttributionHeaders } from "./openrouter-attribution"
 
 export const profile = OpenAICompatibleProfiles.profiles.openrouter
 export const id = ProviderID.make(profile.provider)
@@ -72,6 +73,9 @@ export const route = Route.make({
   protocol,
   endpoint: Endpoint.path("/chat/completions", { baseURL: profile.baseURL }),
   framing: Framing.sse,
+  // Attached to every request (normal, streaming, retries, fallbacks) before
+  // auth runs so usage stays attributed to the Ottili Coder OpenRouter app.
+  headers: () => openRouterAttributionHeaders(),
 })
 
 export const routes = [route]
