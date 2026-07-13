@@ -123,8 +123,6 @@ const appBindingCommands = [
   "console.org.switch",
   "ottiliCoder.status",
   "theme.switch",
-  "theme.switch_mode",
-  "theme.mode.lock",
   "help.show",
   "docs.open",
   "workspace.list",
@@ -238,14 +236,8 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
       yield* Effect.tryPromise(async () => {
         // Prewarm palette before ThemeProvider mounts so `system` theme avoids a first-paint fallback flash.
         void renderer.getPalette({ size: 16 }).catch(() => undefined)
-        const terminalMode = await renderer.waitForThemeMode(1000)
-        const configured = input.config.theme_mode ?? "system"
-        const mode =
-          configured === "light"
-            ? "light"
-            : configured === "dark"
-              ? "dark"
-              : (terminalMode ?? "dark")
+        // Ottili Coder is dark-only; no terminal mode detection.
+        const mode = "dark" as const
         if (renderer.isDestroyed) return
 
         await render(() => {
@@ -311,7 +303,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                           <ProjectProvider>
                                             <SyncProvider>
                                               <DataProvider>
-                                                <ThemeProvider mode={mode}>
+                                                <ThemeProvider>
                                                   <LocalProvider>
                                                     <PromptStashProvider>
                                                       <DialogProvider>
@@ -378,7 +370,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const sdk = useSDK()
   const toast = useToast()
   const themeState = useTheme()
-  const { theme, mode, setMode, locked, lock, unlock } = themeState
+  const { theme } = themeState
   const sync = useSync()
   const project = useProject()
   const exit = useExit()
@@ -839,46 +831,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         slashName: "themes",
         run: () => {
           dialog.replace(() => <DialogThemeList />)
-        },
-        category: "System",
-      },
-      {
-        name: "theme.switch_mode",
-        title: mode() === "dark" ? "Switch to light mode" : "Switch to dark mode",
-        slashName: "theme",
-        run: () => {
-          setMode(mode() === "dark" ? "light" : "dark")
-          dialog.clear()
-        },
-        category: "System",
-      },
-      {
-        name: "theme.light",
-        title: "Switch to light mode",
-        slashName: "light",
-        run: () => {
-          setMode("light")
-          dialog.clear()
-        },
-        category: "System",
-      },
-      {
-        name: "theme.dark",
-        title: "Switch to dark mode",
-        slashName: "dark",
-        run: () => {
-          setMode("dark")
-          dialog.clear()
-        },
-        category: "System",
-      },
-      {
-        name: "theme.mode.lock",
-        title: locked() ? "Unlock theme mode" : "Lock theme mode",
-        run: () => {
-          if (locked()) unlock()
-          else lock()
-          dialog.clear()
         },
         category: "System",
       },
