@@ -156,7 +156,7 @@ async function renderDiffViewer(vcsDiff: unknown[], height = 20) {
         <OttiliCoderKeymapProvider keymap={keymap}>
           <TuiConfigProvider config={config}>
             <KVProvider>
-              <ThemeProvider mode="dark">
+              <ThemeProvider>
                 {renderDiff?.({ params: "params" in current ? current.params : undefined })}
               </ThemeProvider>
             </KVProvider>

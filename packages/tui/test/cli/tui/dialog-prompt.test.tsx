@@ -68,7 +68,7 @@ async function mountPrompt(input: {
         <OttiliCoderKeymapProvider keymap={keymap}>
           <TuiConfigProvider config={resolvedConfig}>
             <KVProvider>
-              <ThemeProvider mode="dark">
+              <ThemeProvider>
                 <ToastProvider>
                   <DialogProvider>
                     <DialogPrompt title="Rename Session" value="draft" onConfirm={input.onConfirm} />
