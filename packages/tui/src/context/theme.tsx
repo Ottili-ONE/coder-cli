@@ -1,4 +1,4 @@
-import { CliRenderEvents, SyntaxStyle, type TerminalColors } from "@opentui/core"
+import { SyntaxStyle, type TerminalColors } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import {
   DEFAULT_THEMES,
@@ -15,7 +15,6 @@ import {
   setCustomThemes,
   setSystemTheme,
   subscribeThemes,
-  terminalMode,
   tint,
   upsertTheme,
   type ThemeJson,
@@ -29,6 +28,10 @@ import { Global } from "@opencode-ai/core/global"
 import { Glob } from "@opencode-ai/core/util/glob"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
+
+// Ottili Coder is dark-only. Light mode has been removed entirely so the TUI
+// renders consistently on every terminal regardless of reported background.
+const THEME_MODE = "dark" as const
 
 export type ThemeSource = Readonly<{
   discover(): Promise<Record<string, unknown>>
@@ -73,7 +76,6 @@ export {
   resolveTheme,
   resolveThemeName,
   selectedForeground,
-  terminalMode,
   tint,
   upsertTheme,
   type Theme,
@@ -85,16 +87,12 @@ const THEME_REFRESH_DELAYS = [250, 1000] as const
 
 type State = {
   themes: Record<string, ThemeJson>
-  mode: "dark" | "light"
-  lock: "dark" | "light" | undefined
   active: string
   ready: boolean
 }
 
 const [store, setStore] = createStore<State>({
   themes: allThemes(),
-  mode: "dark",
-  lock: undefined,
   active: "ottili-coder",
   ready: false,
 })
@@ -103,34 +101,14 @@ subscribeThemes((themes) => setStore("themes", themes))
 
 export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
   name: "Theme",
-  init: (props: { mode: "dark" | "light"; source?: ThemeSource }) => {
+  init: (props: { source?: ThemeSource }) => {
     const renderer = useRenderer()
     const config = useTuiConfig()
     const kv = useKV()
     const themes = props.source ?? themeSource
-    const pick = (value: unknown) => {
-      if (value === "dark" || value === "light") return value
-      return
-    }
-    const pickConfigured = (value: unknown) => {
-      if (value === "dark" || value === "light" || value === "system") return value
-      return "system" as const
-    }
 
     setStore(
       produce((draft) => {
-        const lock = pick(kv.get("theme_mode_lock"))
-        const configured = pickConfigured(config.theme_mode)
-        const terminal = pick(renderer.themeMode)
-        const fallback = props.mode
-        const mode =
-          lock ??
-          (configured === "light" ? "light" : configured === "dark" ? "dark" : undefined) ??
-          terminal ??
-          fallback
-        if (!lock && pick(kv.get("theme_mode")) !== undefined) kv.set("theme_mode", undefined)
-        draft.mode = mode
-        draft.lock = lock
         const active = config.theme ?? kv.get("theme", "ottili-coder")
         draft.active = typeof active === "string" ? active : "ottili-coder"
         draft.ready = false
@@ -157,15 +135,14 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     }
 
     onMount(() => {
-      void Promise.allSettled([resolveSystemTheme(store.mode), syncCustomThemes()]).finally(() => {
+      void Promise.allSettled([resolveSystemTheme(), syncCustomThemes()]).finally(() => {
         setStore("ready", true)
       })
     })
 
     let systemThemeSignature: string | undefined
-    let systemThemeMode: "dark" | "light" | undefined
     let hasResolvedSystemTheme = false
-    function resolveSystemTheme(mode: "dark" | "light" = store.mode) {
+    function resolveSystemTheme() {
       return renderer
         .getPalette({ size: 16 })
         .then((colors: TerminalColors) => {
@@ -175,14 +152,11 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
             if (store.active === "system") setStore("active", "ottili-coder")
             return
           }
-          const next = store.lock ?? terminalMode(colors) ?? mode
-          if (store.mode !== next) setStore("mode", next)
           const signature = JSON.stringify(colors)
           hasResolvedSystemTheme = true
-          if (store.themes.system && systemThemeSignature === signature && systemThemeMode === next) return
+          if (store.themes.system && systemThemeSignature === signature) return
           systemThemeSignature = signature
-          systemThemeMode = next
-          setSystemTheme(generateSystem(colors, next))
+          setSystemTheme(generateSystem(colors, THEME_MODE))
         })
         .catch(() => {
           if (hasResolvedSystemTheme) return
@@ -193,9 +167,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
 
     let systemRefreshRunning = false
     let systemRefreshQueued = false
-    let systemRefreshMode = store.mode
-    function refreshSystemTheme(mode: "dark" | "light" = store.mode) {
-      systemRefreshMode = mode
+    function refreshSystemTheme() {
       if (systemRefreshRunning) {
         systemRefreshQueued = true
         return
@@ -204,39 +176,13 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       systemRefreshRunning = true
       const retry = renderer.paletteDetectionStatus === "detecting"
       renderer.clearPaletteCache()
-      void resolveSystemTheme(mode).finally(() => {
+      void resolveSystemTheme().finally(() => {
         systemRefreshRunning = false
         if (!retry && !systemRefreshQueued) return
         systemRefreshQueued = false
-        refreshSystemTheme(systemRefreshMode)
+        refreshSystemTheme()
       })
     }
-
-    function apply(mode: "dark" | "light") {
-      if (store.lock !== undefined) kv.set("theme_mode", mode)
-      if (store.mode === mode) return
-      setStore("mode", mode)
-      refreshSystemTheme(mode)
-    }
-
-    function pin(mode: "dark" | "light" = store.mode) {
-      setStore("lock", mode)
-      kv.set("theme_mode_lock", mode)
-      apply(mode)
-    }
-
-    function free() {
-      setStore("lock", undefined)
-      kv.set("theme_mode_lock", undefined)
-      kv.set("theme_mode", undefined)
-      refreshSystemTheme(renderer.themeMode ?? store.mode)
-    }
-
-    const handle = (mode: "dark" | "light") => {
-      if (store.lock) return
-      apply(mode)
-    }
-    renderer.on(CliRenderEvents.THEME_MODE, handle)
 
     const handleThemeNotification = (sequence: string) => {
       if (sequence !== "\x1b[?997;1n" && sequence !== "\x1b[?997;2n") return false
@@ -259,7 +205,6 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     unsubscribeRefresh = themes.subscribeRefresh?.(refresh)
 
     onCleanup(() => {
-      renderer.off(CliRenderEvents.THEME_MODE, handle)
       renderer.removeInputHandler(handleThemeNotification)
       unsubscribeRefresh?.()
       for (const timeout of themeRefreshTimeouts) clearTimeout(timeout)
@@ -269,15 +214,15 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     const values = createMemo(() => {
       const activeName = resolveThemeName(store.active)
       const active = store.themes[activeName]
-      if (active) return resolveTheme(active, store.mode)
+      if (active) return resolveTheme(active, THEME_MODE)
 
       const saved = kv.get("theme")
       if (typeof saved === "string") {
         const theme = store.themes[resolveThemeName(saved)]
-        if (theme) return resolveTheme(theme, store.mode)
+        if (theme) return resolveTheme(theme, THEME_MODE)
       }
 
-      return resolveTheme(store.themes.ottiliCoder, store.mode)
+      return resolveTheme(store.themes.ottiliCoder, THEME_MODE)
     })
 
     createEffect(() => renderer.setBackgroundColor(values().background))
@@ -299,11 +244,11 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       has: hasTheme,
       syntax,
       subtleSyntax,
-      mode: () => store.mode,
-      locked: () => store.lock !== undefined,
-      lock: () => pin(store.mode),
-      unlock: free,
-      setMode: pin,
+      mode: () => THEME_MODE,
+      locked: () => true,
+      lock: () => {},
+      unlock: () => {},
+      setMode: () => {},
       set(theme: string) {
         if (!hasTheme(theme)) return false
         setStore("active", theme)
