@@ -38,6 +38,7 @@ import { Tool } from "@/tool/tool"
 import { Permission } from "@/permission"
 import { SessionStatus } from "./status"
 import { LLM } from "./llm"
+import { Hooks } from "@/hooks"
 import { Shell } from "@/shell/shell"
 import { ShellID } from "@/tool/shell/id"
 import { FSUtil } from "@opencode-ai/core/fs-util"
@@ -1726,6 +1727,12 @@ export const layer = Layer.effect(
         parts,
         variant: input.variant,
       })
+      const stopHook = yield* Effect.promise(() =>
+        Hooks.stop({ sessionID: input.sessionID, cwd: process.cwd() }),
+      )
+      if (stopHook.blocked) {
+        yield* Effect.logWarning("Stop hook blocked turn end", { reason: stopHook.blockReason })
+      }
       yield* events.publish(Command.Event.Executed, {
         name: input.command,
         sessionID: input.sessionID,

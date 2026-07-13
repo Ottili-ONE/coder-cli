@@ -7,6 +7,8 @@ import { Effect, Layer, Context, Schema } from "effect"
 import { Config } from "@/config/config"
 import { MCP } from "../mcp"
 import { Skill } from "../skill"
+import { Hooks } from "@/hooks"
+import { report as doctorReport } from "@/doctor"
 import { EventV2 } from "@opencode-ai/core/event"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
@@ -93,6 +95,56 @@ export const layer = Layer.effect(
         },
         subtask: true,
         hints: hints(PROMPT_REVIEW),
+      }
+
+      commands["hooks"] = {
+        name: "hooks",
+        description: "list configured user-facing hooks",
+        source: "command",
+        get template() {
+          const cfg = Hooks.list(process.cwd())
+          const events = [
+            "PreToolUse",
+            "PostToolUse",
+            "Stop",
+            "SessionStart",
+            "SessionEnd",
+            "Notification",
+            "UserPromptSubmit",
+            "PreCompact",
+            "PostCompact",
+            "SubagentStart",
+            "SubagentStop",
+          ] as const
+          const lines = ["# Configured hooks", ""]
+          let any = false
+          for (const event of events) {
+            const matchers = (cfg as Record<string, unknown>)[event] as
+              | Array<{ matcher?: string; hooks: Array<{ command: string }> }>
+              | undefined
+            if (matchers?.length) {
+              any = true
+              lines.push(`## ${event}`)
+              for (const m of matchers) {
+                lines.push(`- matcher: ${m.matcher ?? "*"}`)
+                for (const h of m.hooks) lines.push(`  - ${h.command}`)
+              }
+            }
+          }
+          if (!any) lines.push("_No hooks configured._")
+          return lines.join("\n")
+        },
+        hints: [],
+      }
+
+      commands["doctor"] = {
+        name: "doctor",
+        description: "environment diagnostics and health check",
+        source: "command",
+        get template() {
+          return doctorReport(process.cwd())
+        },
+        hints: [],
       }
 
       for (const [name, command] of Object.entries(cfg.command ?? {})) {

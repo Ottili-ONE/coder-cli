@@ -12,7 +12,7 @@ const decodeInfo = Schema.decodeUnknownExit(ConfigCommandV1.Info)
 
 export async function load(dir: string) {
   const result: Record<string, ConfigCommandV1.Info> = {}
-  for (const item of await Glob.scan("{command,commands}/**/*.md", {
+  for (const item of await Glob.scan("{command,commands,claude/command,claude/commands}/**/*.md", {
     cwd: dir,
     absolute: true,
     dot: true,

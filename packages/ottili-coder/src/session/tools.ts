@@ -10,6 +10,8 @@ import { ToolRegistry } from "@/tool/registry"
 import { Truncate } from "@/tool/truncate"
 
 import { Plugin } from "@/plugin"
+import { Hooks } from "@/hooks"
+import { type ExecuteResult } from "@/tool/tool"
 import type { TaskPromptOps } from "@/tool/task"
 import { type Tool as AITool, tool, jsonSchema, type ToolExecutionOptions, asSchema } from "ai"
 import { Effect } from "effect"
@@ -83,31 +85,59 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       execute(args, options) {
         return run.promise(
           Effect.gen(function* () {
-            const ctx = context(args, options)
-            yield* plugin.trigger(
-              "tool.execute.before",
-              { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
-              { args },
-            )
-            const result = yield* item.execute(args, ctx)
-            const output = {
-              ...result,
-              attachments: result.attachments?.map((attachment) => ({
-                ...attachment,
-                id: PartID.ascending(),
-                sessionID: ctx.sessionID,
-                messageID: input.processor.message.id,
-              })),
-            }
-            yield* plugin.trigger(
-              "tool.execute.after",
-              { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID, args },
-              output,
-            )
-            if (options.abortSignal?.aborted) {
-              yield* input.processor.completeToolCall(options.toolCallId, output)
-            }
-            return output
+    const ctx = context(args, options)
+    const cwd = input.session.directory
+    const pre = yield* Effect.promise(() =>
+      Hooks.preToolUse({ tool: item.id, toolInput: args, sessionID: ctx.sessionID, callID: ctx.callID ?? "", cwd }),
+    )
+    if (pre.blocked) {
+      return {
+        title: "(blocked)",
+        metadata: {},
+        output: `<system>Tool call to ${item.id} was blocked by a PreToolUse hook${
+          pre.blockReason ? `: ${pre.blockReason}` : "."
+        }</system>`,
+      } satisfies ExecuteResult
+    }
+    const finalArgs = (pre.updatedInput as Record<string, unknown>) ?? args
+    yield* plugin.trigger(
+      "tool.execute.before",
+      { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
+      { args: finalArgs },
+    )
+    const result = yield* item.execute(finalArgs, ctx)
+    const output = {
+      ...result,
+      attachments: result.attachments?.map((attachment) => ({
+        ...attachment,
+        id: PartID.ascending(),
+        sessionID: ctx.sessionID,
+        messageID: input.processor.message.id,
+      })),
+    }
+    yield* plugin.trigger(
+      "tool.execute.after",
+      { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID, args: finalArgs },
+      output,
+    )
+    const post = yield* Effect.promise(() =>
+      Hooks.postToolUse({
+        tool: item.id,
+        toolInput: finalArgs,
+        output,
+        sessionID: ctx.sessionID,
+        callID: ctx.callID ?? "",
+        cwd,
+      }),
+    )
+    const hookContext = [pre.additionalContext, post.additionalContext].filter(Boolean).join("\n\n")
+    if (hookContext) {
+      output.output = `${output.output ?? ""}\n\n<hook-context>\n${hookContext}\n</hook-context>`
+    }
+    if (options.abortSignal?.aborted) {
+      yield* input.processor.completeToolCall(options.toolCallId, output)
+    }
+    return output
           }),
         )
       },
@@ -125,6 +155,24 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       run.promise(
         Effect.gen(function* () {
           const ctx = context(args, opts)
+          const mcpPre = yield* Effect.promise(() =>
+            Hooks.preToolUse({
+              tool: key,
+              toolInput: args,
+              sessionID: ctx.sessionID,
+              callID: opts.toolCallId ?? "",
+              cwd: input.session.directory,
+            }),
+          )
+          if (mcpPre.blocked) {
+            return {
+              title: "(blocked)",
+              metadata: {},
+              output: `<system>Tool call to ${key} was blocked by a PreToolUse hook${
+                mcpPre.blockReason ? `: ${mcpPre.blockReason}` : "."
+              }</system>`,
+            } satisfies ExecuteResult
+          }
           yield* plugin.trigger(
             "tool.execute.before",
             { tool: key, sessionID: ctx.sessionID, callID: opts.toolCallId },
@@ -145,7 +193,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
           )
           yield* plugin.trigger(
             "tool.execute.after",
-            { tool: key, sessionID: ctx.sessionID, callID: opts.toolCallId, args },
+            { tool: key, sessionID: ctx.sessionID, callID: opts.toolCallId ?? "", args },
             result,
           )
 
@@ -191,6 +239,20 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               messageID: input.processor.message.id,
             })),
             content: result.content,
+          }
+          const mcpPost = yield* Effect.promise(() =>
+            Hooks.postToolUse({
+              tool: key,
+              toolInput: args,
+              output,
+              sessionID: ctx.sessionID,
+              callID: opts.toolCallId ?? "",
+              cwd: input.session.directory,
+            }),
+          )
+          const mcpHookContext = [mcpPre.additionalContext, mcpPost.additionalContext].filter(Boolean).join("\n\n")
+          if (mcpHookContext) {
+            output.output = `${output.output ?? ""}\n\n<hook-context>\n${mcpHookContext}\n</hook-context>`
           }
           if (opts.abortSignal?.aborted) {
             yield* input.processor.completeToolCall(opts.toolCallId, output)
