@@ -296,6 +296,10 @@ export const layer = Layer.effect(
           const provider = project(record.provider, yield* active())
 
           if (providerID === ProviderV2.ID.ottiliCoder) {
+            // Prefer Ottili Auto — the adaptive router that picks Helix or Cairn
+            // per request — as the small/default model for the Ottili provider.
+            const otiliAuto = record.models.get(ModelV2.ID.make("auto"))
+            if (otiliAuto?.enabled && otiliAuto.status === "active") return Option.some(resolve(otiliAuto, provider))
             const gpt5Nano = record.models.get(ModelV2.ID.make("gpt-5-nano"))
             if (gpt5Nano?.enabled && gpt5Nano.status === "active") return Option.some(resolve(gpt5Nano, provider))
           }

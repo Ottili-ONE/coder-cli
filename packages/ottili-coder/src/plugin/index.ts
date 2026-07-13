@@ -20,6 +20,7 @@ import { AzureAuthPlugin } from "./azure"
 import { DigitalOceanAuthPlugin } from "./digitalocean"
 import { OttiliAutoPlugin } from "./ottili-auto"
 import { OttiliCoderAuthPlugin } from "./ottili-coder-auth"
+import { OttiliCoderModelsPlugin } from "./ottili-coder-models"
 import { XaiAuthPlugin } from "./xai"
 import { Effect, Layer, Context } from "effect"
 import { EffectBridge } from "@/effect/bridge"
@@ -79,6 +80,7 @@ function internalPlugins(flags: RuntimeFlags.Info): PluginInstance[] {
     DigitalOceanAuthPlugin,
     OttiliAutoPlugin,
     OttiliCoderAuthPlugin,
+    OttiliCoderModelsPlugin,
     XaiAuthPlugin,
   ]
 }
