@@ -13,8 +13,8 @@
  * lifecycle status that the panel header renders. It mirrors the conventions of
  * the `git-status` and `task-queue` components: a `contextMeterState` entry
  * point, a derived `status`, visible/filtered selection, and a context object
- * that lifts harness concerns (loading / error) above the raw token data so the
- * same model serves live, streaming and failure states.
+ * that lifts harness concerns (loading / error / offline / denied) above the
+ * raw token data so the same model serves live, streaming and failure states.
  */
 
 import stripAnsi from "strip-ansi"
@@ -92,19 +92,17 @@ export const ERROR_MAX = 240
 export const LONG_CONTENT_TOKENS = 100_000
 /** Maximum cadence (ms) at which a live, streaming meter re-samples its source. */
 export const RENDER_BUDGET_MS = 400
+/** Maximum number of context-source rows before the tail is merged into "more". */
+export const CONTEXT_METER_MAX_SOURCES = 8
 
 // --- input normalization ----------------------------------------------------
 
 function redactSecrets(text: string): string {
   if (!text) return text
-  return text
-    .replace(/\bsk-[A-Za-z0-9]{8,}/gi, "sk-••••")
-    .replace(/\bgh[pousr]_[A-Za-z0-9]{20,}/gi, "ghp_••••")
-    .replace(/\bAKIA[0-9A-Z]{16}/g, "AKIA••••")
-    .replace(/\bxox[baprs]-[0-9a-z-]+/gi, "xox-••••")
-    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "eyJ••••")
-    .replace(/\bBearer\s+[A-Za-z0-9._-]+/gi, "Bearer ••••")
-    .replace(/\b(token|secret|api[_-]?key|password)[=:]\S+/gi, "$1=••••")
+  return text.replace(
+    /(sk|AKIA|ghp_|Bearer|pk|api|token|secret|key|password)([-_]?)[A-Za-z0-9_-]{6,}/gi,
+    (match, scheme: string, sep: string) => `${scheme}${sep}••••`,
+  )
 }
 
 function truncateError(text: string): string {
@@ -120,7 +118,7 @@ export function redactError(text: string): string {
 
 /**
  * Map a raw error string to a friendly, redacted message. Unknown errors fall
- * through to the redacted original so the meter never throws.
+ * through to the redacted original so the meter never throws or leaks a secret.
  */
 export function parseContextError(raw: string | undefined): string | undefined {
   if (!raw) return undefined
@@ -135,28 +133,57 @@ export function parseContextError(raw: string | undefined): string | undefined {
 // --- formatting & terminal fallbacks ---------------------------------------
 
 /** Compact token counts so very large contexts stay within the render budget. */
-export function formatTokens(value: number): string {
+export function compactTokens(value: number): string {
   if (!Number.isFinite(value)) return "0"
   if (value === 0) return "0"
-  if (value >= 1_000_000) return `${Math.round(value / 100_000) / 10}M`
-  if (value >= 1_000) return `${Math.round(value / 1000)}K`
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
   return value.toLocaleString()
 }
 
-/** ASCII progress bar — the color-independent fallback for no-color terminals. */
-export function buildMeterBar(percent: number, width = 10): string {
+/**
+ * Render a context-usage bar. In color terminals it uses block glyphs
+ * (█ filled, ░ empty); with `noColor` it falls back to ASCII (# filled, _
+ * empty) so limited-color terminals still read the proportion. A null percent
+ * (unknown limit) renders a neutral placeholder.
+ */
+export function renderUsageBar(
+  percent: number | null,
+  opts: { width?: number; noColor?: boolean } = {},
+): string {
+  const width = opts.width ?? 12
+  if (percent === null) {
+    if (opts.noColor) return "[?]"
+    return "░".repeat(width)
+  }
   const clamped = Math.max(0, Math.min(100, percent))
-  const filled = Math.max(0, Math.min(width, Math.round((clamped / 100) * width)))
-  return "[" + "=".repeat(filled) + "-".repeat(width - filled) + "]"
+  const filled = Math.round((clamped / 100) * width)
+  if (opts.noColor) return "#".repeat(filled) + "_".repeat(width - filled)
+  return "█".repeat(filled) + "░".repeat(width - filled)
 }
 
-/** True when the content is large enough to need compacted rendering. */
-export function isLongContent(data: ContextMeterData): boolean {
-  return (
-    data.tokens.total > LONG_CONTENT_TOKENS ||
-    data.providerLabel.length > 24 ||
-    data.modelLabel.length > 24
-  )
+/** True when the environment cannot render color (NO_COLOR or a dumb terminal). */
+export function detectNoColor(): boolean {
+  if (typeof process !== "undefined" && process.env.NO_COLOR) return true
+  if (typeof process !== "undefined" && process.env.TERM === "dumb") return true
+  return false
+}
+
+/** Merge an over-long source list into a single trailing "more" segment. */
+export function capSources(sources: ContextSource[]): ContextSource[] {
+  if (sources.length <= CONTEXT_METER_MAX_SOURCES) return sources
+  const head = sources.slice(0, CONTEXT_METER_MAX_SOURCES)
+  const rest = sources.slice(CONTEXT_METER_MAX_SOURCES)
+  const other: ContextSource = {
+    key: "other",
+    label: `${rest.length} more`,
+    glyph: "▤",
+    tokens: rest.reduce((sum, s) => sum + s.tokens, 0),
+    percent: rest.reduce((sum, s) => sum + s.percent, 0),
+    focusable: true,
+    wideOnly: false,
+  }
+  return [...head, other]
 }
 
 // --- token math -------------------------------------------------------------
@@ -251,7 +278,7 @@ export function buildContextMeter(input: BuildContextMeterInput): ContextMeterDa
   const compactionThreshold = input.compactionThreshold ?? model?.compaction ?? COMPACTION_DEFAULT_THRESHOLD
   const memoryBudget = model?.memory ?? null
   const memoryPercent = memoryBudget ? Math.round((total / memoryBudget) * 100) : null
-  const sources = input.sources ?? (message ? buildDefaultSources(message) : [])
+  const sources = capSources(input.sources ?? (message ? buildDefaultSources(message) : []))
 
   return {
     providerLabel: provider?.name ?? message?.providerID ?? "",
@@ -301,8 +328,8 @@ function buildSegments(data: ContextMeterData, narrow: boolean, expanded: boolea
     label: "usage",
     detail:
       data.usagePercent != null
-        ? `${formatTokens(data.tokens.total)} tokens · ${data.usagePercent}% of ${formatTokens(data.limit!)}`
-        : `${formatTokens(data.tokens.total)} tokens · limit unknown`,
+        ? `${compactTokens(data.tokens.total)} tokens · ${data.usagePercent}% of ${compactTokens(data.limit!)}`
+        : `${compactTokens(data.tokens.total)} tokens · limit unknown`,
     focusable: true,
     wideOnly: false,
   })
@@ -310,7 +337,7 @@ function buildSegments(data: ContextMeterData, narrow: boolean, expanded: boolea
   segments.push({
     kind: "cache",
     label: "cache",
-    detail: `read ${formatTokens(data.cacheRead)} · write ${formatTokens(data.cacheWrite)}${
+    detail: `read ${compactTokens(data.cacheRead)} · write ${compactTokens(data.cacheWrite)}${
       data.cacheSavedPercent != null ? ` · ${data.cacheSavedPercent}% saved` : ""
     }`,
     focusable: true,
@@ -323,7 +350,7 @@ function buildSegments(data: ContextMeterData, narrow: boolean, expanded: boolea
       label: "memory",
       detail:
         data.memory.budget != null
-          ? `${formatTokens(data.memory.used)}/${formatTokens(data.memory.budget)} (${data.memory.percent}%)`
+          ? `${compactTokens(data.memory.used)}/${compactTokens(data.memory.budget)} (${data.memory.percent}%)`
           : "budget unknown",
       focusable: true,
       wideOnly: true,
@@ -340,9 +367,7 @@ function buildSegments(data: ContextMeterData, narrow: boolean, expanded: boolea
   segments.push({
     kind: "sources",
     label: "sources",
-    detail: capSources(data.sources)
-      .map((s) => `${s.label} ${s.percent}%`)
-      .join(" · "),
+    detail: data.sources.map((s) => `${s.label} ${s.percent}%`).join(" · "),
     focusable: true,
     wideOnly: false,
   })
@@ -382,6 +407,14 @@ export function isNarrowTerminal(width: number, narrowWidth: number = NARROW_WID
   return width < narrowWidth
 }
 
+function isLongContent(data: ContextMeterData): boolean {
+  return (
+    data.tokens.total > LONG_CONTENT_TOKENS ||
+    data.providerLabel.length > 24 ||
+    data.modelLabel.length > 24
+  )
+}
+
 function summarize(status: ContextMeterStatus, ctx: ContextMeterContext, data: ContextMeterData | null): string {
   switch (status) {
     case "loading":
@@ -396,7 +429,7 @@ function summarize(status: ContextMeterStatus, ctx: ContextMeterContext, data: C
       return "Context usage — offline"
     case "degraded":
       return data
-        ? `Context usage — ${data.modelLabel || data.modelID || "model"} · ${formatTokens(data.tokens.total)} tokens · limit unknown`
+        ? `Context usage — ${data.modelLabel || data.modelID || "model"} · ${compactTokens(data.tokens.total)} tokens · limit unknown`
         : "Context usage — limit unknown"
     case "long-content":
     case "populated":
@@ -409,14 +442,14 @@ function summarize(status: ContextMeterStatus, ctx: ContextMeterContext, data: C
 function meterLine(data: ContextMeterData, status: ContextMeterStatus): string {
   const model = data.modelLabel || data.modelID || "model"
   const usage = data.usagePercent != null ? `${data.usagePercent}% used` : "limit unknown"
-  return `Context — ${model} · ${formatTokens(data.tokens.total)} tokens · ${usage}`
+  return `Context — ${model} · ${compactTokens(data.tokens.total)} tokens · ${usage}`
 }
 
 function accessibleSummary(status: ContextMeterStatus, ctx: ContextMeterContext, data: ContextMeterData | null): string {
   const base = summarize(status, ctx, data)
-  if ((status === "populated" || status === "long-content" || status === "degraded") && data) {
+  if ((status === "populated" || status === "long-content" || status === "degraded" || status === "offline") && data) {
     const parts = [
-      `${formatTokens(data.tokens.total)} tokens`,
+      `${compactTokens(data.tokens.total)} tokens`,
       data.usagePercent != null ? `${data.usagePercent} percent of context used` : "context limit unknown",
       data.cacheSavedPercent != null ? `${data.cacheSavedPercent} percent served from cache` : undefined,
       `cost ${data.cost.toFixed(4)} dollars`,
@@ -528,7 +561,7 @@ export function moveFocus(state: ContextMeterState, direction: 1 | -1): number {
   return Math.min(count - 1, Math.max(0, state.focusIndex + direction))
 }
 
-/** Index of a segment kind, or -1 when not present/focusable. */
+/** Index of a focusable segment kind, or -1 when not present/focusable. */
 export function focusIndexForKind(state: ContextMeterState, kind: ContextMeterSegmentKind): number {
   return state.segments.filter((s) => s.focusable).findIndex((s) => s.kind === kind)
 }
@@ -557,85 +590,4 @@ export function actionFor(kind: ContextMeterSegmentKind | null): ContextMeterAct
     default:
       return null
   }
-}
-
-// --- performance + terminal hardening --------------------------------------
-
-/**
- * Maximum number of context-source rows rendered before they are collapsed into
- * a single "other" segment. Cap avoids layout thrash when a response streams
- * many source fragments at once.
- */
-export const CONTEXT_METER_MAX_SOURCES = 12
-
-/** Minimum time between two meter rebuilds driven by a rapid update stream. */
-export const CONTEXT_METER_RENDER_BUDGET_MS = 250
-
-/** Block-meter glyphs used when the terminal advertises color support. */
-export const BLOCK_FULL = "█"
-export const BLOCK_EMPTY = "░"
-
-/**
- * Render a single-line usage bar. When `noColor` is set (no-color / limited
- * palette terminals) it falls back to ASCII `#`/`_` so the meter stays legible
- * without any color or Unicode block glyphs. An unknown limit renders a neutral
- * placeholder that still carries "no data" meaning without color.
- */
-export function renderUsageBar(
-  percent: number | null,
-  opts: { width?: number; narrow?: boolean; noColor?: boolean } = {},
-): string {
-  const width = opts.width ?? (opts.narrow ? 6 : 12)
-  if (percent == null) return opts.noColor ? "[?]" : `${BLOCK_EMPTY.repeat(width)}`
-  const clamped = Math.max(0, Math.min(100, percent))
-  const filled = Math.round((clamped / 100) * width)
-  const empty = Math.max(0, width - filled)
-  if (opts.noColor) return "#".repeat(filled) + "_".repeat(empty)
-  return BLOCK_FULL.repeat(filled) + BLOCK_EMPTY.repeat(empty)
-}
-
-/**
- * Collapse an oversized source list so the meter stays within its render budget
- * during large/rapid streams. The tail is merged into a single "other" segment
- * whose tokens/percent reflect the remainder, preserving the total.
- */
-export function capSources(sources: ContextSource[], max: number = CONTEXT_METER_MAX_SOURCES): ContextSource[] {
-  if (sources.length <= max) return sources
-  const head = sources.slice(0, max)
-  const rest = sources.slice(max)
-  const total = sources.reduce((sum, s) => sum + s.tokens, 0)
-  const otherTokens = rest.reduce((sum, s) => sum + s.tokens, 0)
-  return [
-    ...head,
-    {
-      key: "other",
-      label: `+${rest.length} more`,
-      glyph: "…",
-      tokens: otherTokens,
-      percent: total > 0 ? Math.round((otherTokens / total) * 100) : 0,
-      focusable: true,
-      wideOnly: false,
-    },
-  ]
-}
-
-/**
- * Detect a no-color / limited-palette terminal so the meter can swap block
- * glyphs for ASCII. Honors `NO_COLOR` (https://no-color.org) and the common
- * `TERM` fallbacks; defaults to color when the environment is undefined.
- */
-export function detectNoColor(): boolean {
-  if (typeof process === "undefined" || !process.env) return false
-  if (process.env.NO_COLOR) return true
-  const term = process.env.TERM ?? ""
-  if (/^(dumb|unknown)$/i.test(term)) return true
-  return false
-}
-
-/** Compact token counts for narrow terminals (e.g. 1234 -> 1.2k). */
-export function compactTokens(value: number): string {
-  if (!Number.isFinite(value)) return "0"
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
-  return `${value}`
 }

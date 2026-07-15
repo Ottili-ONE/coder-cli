@@ -18,7 +18,15 @@ import stripAnsi from "strip-ansi"
 import type { UsageLimitsResponse, UsageLimitItem } from "../../util/usage-limits-api"
 
 /** Whole-meter lifecycle derived from harness context + data. */
-export type CostUsageStatus = "empty" | "ready" | "unknown" | "error"
+export type CostUsageStatus =
+  | "loading"
+  | "empty"
+  | "populated"
+  | "long-content"
+  | "failure"
+  | "denied"
+  | "offline"
+  | "degraded"
 
 export type CostUsageTone = "success" | "warning" | "error" | "info"
 
@@ -100,6 +108,10 @@ export interface CostUsageContext {
   isReady: boolean
   loading?: boolean
   error?: string
+  /** The session/provider backend is unreachable. */
+  offline?: boolean
+  /** The caller is not permitted to read these metrics. */
+  denied?: boolean
 }
 
 export const NARROW_WIDTH_DEFAULT = 60

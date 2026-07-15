@@ -4,7 +4,8 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { TextAttributes, type RGBA } from "@opentui/core"
 import {
   RENDER_BUDGET_MS,
-  buildMeterBar,
+  renderUsageBar,
+  detectNoColor,
   contextMeterState,
   moveFocus,
   actionFor,
