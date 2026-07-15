@@ -3,7 +3,7 @@ import { Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { TextAttributes } from "@opentui/core"
 import { DialogGitStatus } from "./dialog-git-status"
 
-type GitInfo = NonNullable<ReturnType<TuiPluginApi["state"]["vcs"]>>
+type GitInfo = NonNullable<TuiPluginApi["state"]["vcs"]>
 
 const REFRESH_MS = 5000
 

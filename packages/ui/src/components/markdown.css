@@ -131,6 +131,43 @@
     position: relative;
   }
 
+  [data-component="markdown-code-header"] {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    padding-right: 44px;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-small);
+    color: var(--text-weak);
+    border-bottom: 0.5px solid var(--border-weak-base);
+  }
+
+  [data-component="markdown-code-header"] [data-slot="markdown-code-lang"] {
+    font-weight: var(--font-weight-medium);
+    color: var(--markdown-code);
+  }
+
+  [data-component="markdown-code-header"] [data-slot="markdown-code-count"] {
+    color: var(--text-weak);
+  }
+
+  [data-component="markdown-code-header"] [data-slot="markdown-wrap-button"] {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--border-weak-base);
+    border-radius: var(--radius-sm);
+    color: var(--text-weak);
+    font-size: var(--font-size-small);
+    padding: 0 6px;
+    cursor: pointer;
+  }
+
+  [data-component="markdown-code-header"] [data-slot="markdown-wrap-button"][data-active="true"] {
+    color: var(--markdown-code);
+    border-color: var(--markdown-code);
+  }
+
   [data-slot="markdown-copy-button"] {
     position: absolute;
     top: 4px;

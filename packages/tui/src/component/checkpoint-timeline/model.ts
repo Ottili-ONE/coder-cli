@@ -183,7 +183,7 @@ export const STATUS_GLYPH: Record<CheckpointTimelineStatus, string> = {
   degraded: "≈",
   failure: "⚠",
   denied: "⊘",
-  offlline: "≈",
+  offline: "≈",
   "long-content": "▤",
 }
 

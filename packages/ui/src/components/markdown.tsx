@@ -6,6 +6,7 @@ import { checksum } from "@opencode-ai/core/util/encode"
 import { ComponentProps, createEffect, createResource, createSignal, onCleanup, splitProps } from "solid-js"
 import { isServer } from "solid-js/web"
 import { stream } from "./markdown-stream"
+import { createCodeBlockHeader, type CodeBlockLabels } from "./code-block"
 
 type Entry = {
   hash: string
@@ -60,10 +61,7 @@ function fallback(markdown: string) {
   return escape(markdown).replace(/\r\n?/g, "\n").replace(/\n/g, "<br>")
 }
 
-type CopyLabels = {
-  copy: string
-  copied: string
-}
+type CopyLabels = CodeBlockLabels
 
 const urlPattern = /^https?:\/\/[^\s<>()`"']+$/
 
@@ -127,9 +125,15 @@ function ensureCodeWrapper(block: HTMLPreElement, labels: CopyLabels) {
     const wrapper = document.createElement("div")
     wrapper.setAttribute("data-component", "markdown-code")
     parent.replaceChild(wrapper, block)
+    wrapper.appendChild(createCodeBlockHeader(block, labels))
     wrapper.appendChild(block)
     wrapper.appendChild(createCopyButton(labels))
     return
+  }
+
+  // Already wrapped: ensure the redesigned header is present (idempotent).
+  if (!parent.querySelector('[data-component="markdown-code-header"]')) {
+    parent.insertBefore(createCodeBlockHeader(block, labels), parent.firstChild)
   }
 
   const buttons = Array.from(parent.querySelectorAll('[data-slot="markdown-copy-button"]')).filter(
@@ -300,9 +304,10 @@ export function Markdown(
       return
     }
 
-    const labels = {
+    const labels: CodeBlockLabels = {
       copy: i18n.t("ui.message.copy"),
       copied: i18n.t("ui.message.copied"),
+      wrap: i18n.t("ui.message.wrap"),
     }
     const temp = document.createElement("div")
     temp.innerHTML = content

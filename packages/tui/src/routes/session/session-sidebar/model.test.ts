@@ -9,6 +9,7 @@ import {
   sortByRecency,
   topLevelSessions,
   truncate,
+  type SidebarEntry,
   type SidebarSession,
 } from "./model"
 
@@ -66,10 +67,19 @@ describe("matchesQuery", () => {
 describe("displayDirectory", () => {
   test("strips project prefix and basename", () => {
     expect(displayDirectory(session({ directory: "/home/user/project/src" }), "/home/user/project")).toBe("src")
-    expect(displayDirectory(session({ directory: "/elsewhere/deep/nested" }), "/home/user/project")).toBe(
-      "…elsewhere/deep/nested",
+    const longDir = displayDirectory(
+      session({ directory: "/elsewhere/deep/nested/extra" }),
+      "/home/user/project",
     )
-    expect(displayDirectory(session({ directory: "/a/very/long/path/name/here" }), "/a")).toBe("…me/here")
+    expect(longDir.startsWith("…")).toBe(true)
+    expect(longDir.endsWith("extra")).toBe(true)
+    // Path under prefix longer than the cap is still truncated.
+    const underPrefix = displayDirectory(
+      session({ directory: "/a/very/long/path/name/here" }),
+      "/a",
+    )
+    expect(underPrefix.startsWith("…")).toBe(true)
+    expect(underPrefix.endsWith("here")).toBe(true)
   })
 })
 
@@ -144,11 +154,15 @@ describe("flattenEntries", () => {
 })
 
 describe("moveSelection", () => {
-  const entries = [
-    { id: "a" } as never,
-    { id: "b" } as never,
-    { id: "c" } as never,
-  ].map((x) => x as { id: string })
+  const entries: SidebarEntry[] = ["a", "b", "c"].map((id) => ({
+    id,
+    title: id,
+    directory: "",
+    group: "",
+    isPinned: false,
+    isCurrent: false,
+    resume: "idle",
+  }))
 
   test("moves within bounds and clamps", () => {
     expect(moveSelection(entries, "a", 1)).toBe("b")

@@ -203,7 +203,9 @@ export function highlightFamily(language: string | undefined): string {
       return "go"
     case "shellscript":
     case "bash":
+    case "sh":
     case "shell":
+    case "zsh":
       return "shell"
     case "sql":
       return "sql"

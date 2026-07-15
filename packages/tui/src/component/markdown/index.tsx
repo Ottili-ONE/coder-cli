@@ -2,8 +2,10 @@
 import { createEffect, createMemo, createSignal, For, Show, type Accessor, type JSX } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
 import { RGBA, TextAttributes } from "@opentui/core"
+import { Flag } from "@opencode-ai/core/flag/flag"
 import { useTheme } from "../../context/theme"
 import { colorSupport, redactSensitive } from "../agent-roster/model"
+import { CodeBlockView } from "../code-block"
 import { Spinner } from "../spinner"
 import {
   parseMarkdown,
@@ -37,6 +39,8 @@ export interface MarkdownViewProps {
   conceal?: boolean
   /** Left indentation reserved by the parent box (used for table fit math). */
   indent?: number
+  /** Called when a code block's run affordance is activated (shell-eligible). */
+  onExecuteCode?: (code: string, language: string | null) => void
 }
 
 function concealText(value: string, conceal?: boolean): string {
@@ -111,7 +115,13 @@ function headingPrefix(level: number): string {
   return "  ".repeat(Math.min(level - 1, 5))
 }
 
-function renderBlock(block: Block, theme: ReturnType<typeof useTheme>["theme"], conceal?: boolean, indent = 0): JSX.Element {
+function renderBlock(
+  block: Block,
+  theme: ReturnType<typeof useTheme>["theme"],
+  conceal?: boolean,
+  indent = 0,
+  onExecuteCode?: (code: string, language: string | null) => void,
+): JSX.Element {
   switch (block.type) {
     case "heading": {
       const prefix = headingPrefix(block.level)
@@ -153,7 +163,20 @@ function renderBlock(block: Block, theme: ReturnType<typeof useTheme>["theme"], 
       )
     case "callout":
       return <CalloutView kind={block.kind} children={block.children} theme={theme} conceal={conceal} indent={indent} />
-    case "code":
+    case "code": {
+      // Redesigned surface (T-CLI-0193): Ottili palette-controlled code block
+      // with header, gutter, copy/select/wrap/run. Gated so the legacy bordered
+      // text remains when the flag is off (zero regression).
+      if (Flag.EVOLUTION_T_CLI_0193_TUI_REDESIGN_CODE_BLOCK_RENDERER__C_ENABLED) {
+        return (
+          <CodeBlockView
+            code={block.value}
+            language={block.lang}
+            conceal={conceal}
+            onExecute={onExecuteCode}
+          />
+        )
+      }
       return (
         <box
           flexDirection="column"
@@ -171,6 +194,7 @@ function renderBlock(block: Block, theme: ReturnType<typeof useTheme>["theme"], 
           </text>
         </box>
       )
+    }
     case "hr":
       return (
         <text fg={theme.markdownHorizontalRule} wrapMode="none">
@@ -301,7 +325,7 @@ export function MarkdownView(props: MarkdownViewProps) {
 
   return (
     <box flexDirection="column" gap={1} flexShrink={0}>
-      <For each={blocks()}>{(block) => renderBlock(block, theme, props.conceal, indent())}</For>
+      <For each={blocks()}>{(block) => renderBlock(block, theme, props.conceal, indent(), props.onExecuteCode)}</For>
     </box>
   )
 }
@@ -331,6 +355,8 @@ export interface MarkdownStateViewProps {
   renderBudget?: number
   /** Terminal width at or below which the compact layout is used. */
   narrowWidth?: number
+  /** Called when a code block's run affordance is activated (shell-eligible). */
+  onExecuteCode?: (code: string, language: string | null) => void
   /** Explicit color level (0 disables color). */
   colorLevel?: number | Accessor<number>
   /** Throttle rapid content updates to the render budget window (default true). */
@@ -503,7 +529,12 @@ export function MarkdownStateView(props: MarkdownStateViewProps) {
       </Show>
 
       <Show when={showContent()}>
-        <MarkdownView content={state().content} conceal={props.conceal} indent={narrow() ? 0 : props.indent} />
+        <MarkdownView
+          content={state().content}
+          conceal={props.conceal}
+          indent={narrow() ? 0 : props.indent}
+          onExecuteCode={props.onExecuteCode}
+        />
         <Show when={status() === "long-content"}>
           <text fg={theme.textMuted} wrapMode="word">
             {state().droppedChars > 0

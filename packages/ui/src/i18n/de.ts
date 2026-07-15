@@ -143,6 +143,7 @@ export const dict = {
   "ui.message.revertMessage": "Auf diesen Punkt zurücksetzen",
   "ui.message.copyResponse": "Antwort kopieren",
   "ui.message.copied": "Kopiert!",
+  "ui.message.wrap": "Umbruch",
   "ui.message.interrupted": "Unterbrochen",
   "ui.message.queued": "In Warteschlange",
   "ui.message.attachment.alt": "Anhang",

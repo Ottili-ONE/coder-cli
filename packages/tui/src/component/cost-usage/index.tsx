@@ -91,7 +91,7 @@ export function CostUsageMeter(props: { sessionID: string }) {
 }
 
 /** Full detail dialog: actual cost, token usage, plan limits, per-step breakdown. */
-export function DialogCostUsage(props: { sessionID: string }) {
+export function DialogCostUsage(props: { sessionID?: string }) {
   const sdk = useSDK()
   const dialog = useDialog()
   const { theme } = useTheme()

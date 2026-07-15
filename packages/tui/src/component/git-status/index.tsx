@@ -113,9 +113,17 @@ export function GitStatusBar(props: GitStatusBarProps) {
       </Show>
 
       <Show when={state().status === "error"}>
-        <text id="git-status-error" fg={theme.error} wrapMode="none">
-          {state().summaryText}
-        </text>
+        <DegradedStateView
+          state={{
+            id: "git-status-error",
+            category: "git",
+            severity: "error",
+            title: "Git status unavailable",
+            message: state().summaryText,
+            dismissible: false,
+            createdAt: 0,
+          }}
+        />
       </Show>
 
       <Show when={state().status !== "not-git" && state().status !== "error"}>

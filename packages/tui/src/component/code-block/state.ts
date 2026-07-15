@@ -14,6 +14,7 @@ import {
   formatGutter,
   gutterWidth,
   highlightFamily,
+  isFilePreviewNarrow,
   lineInSelection,
   normalizeSelection,
   splitFileLines,
@@ -89,7 +90,7 @@ export function buildCodeBlockState(input: CodeBlockInput): CodeBlockState {
 }
 
 /** Re-export the selection helpers so hosts import a single module. */
-export { formatGutter, gutterWidth, highlightFamily, lineInSelection, normalizeSelection, splitFileLines }
+export { formatGutter, gutterWidth, highlightFamily, isFilePreviewNarrow, lineInSelection, normalizeSelection, splitFileLines }
 
 /** Public props for the `CodeBlockView` surface. */
 export interface CodeBlockProps {

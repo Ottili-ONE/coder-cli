@@ -2,6 +2,7 @@
 import { createEffect, createMemo, createSignal, For, Show, type Accessor } from "solid-js"
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
+import { DegradedStateView } from "../error-state"
 import {
   type FilterMode,
   type TestCaseInput,
@@ -252,9 +253,17 @@ export function TestResults(props: TestResultsProps) {
         </text>
       </Show>
       <Show when={state().status === "failure"}>
-        <text id="test-results-failure" fg={theme.error}>
-          {`Test run failed: ${redactFailure(state().context.error ?? "unknown error")}`}
-        </text>
+        <DegradedStateView
+          state={{
+            id: "test-results-failure",
+            category: "test",
+            severity: "error",
+            title: "Test run failed",
+            message: state().context.error ?? "unknown error",
+            dismissible: false,
+            createdAt: 0,
+          }}
+        />
       </Show>
       <Show when={state().status === "degraded"}>
         <text id="test-results-degraded" fg={theme.warning}>
