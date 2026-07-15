@@ -66,6 +66,16 @@ import { usePromptRef } from "../../context/prompt"
 import { Sidebar } from "./sidebar"
 import { computeFocusChrome, computeSidebarVisible } from "./focus"
 import { computeCompactChrome, computeCompactSpacing } from "./compact"
+import {
+  compactViewState,
+  windowMessages,
+  type CompactViewContext,
+  type CompactViewData,
+  type CompactViewState,
+} from "./compact-state"
+import { CompactStatusLine, type CompactStatusColors } from "./compact-status-line"
+import { useConnected } from "../../component/use-connected"
+import { detectNoColor } from "../../util/redact"
 import { useSessionSidebarOpenRequest } from "./session-sidebar/controller"
 import { SessionHeaderStrip } from "./header-strip"
 import { SubagentFooter } from "./subagent-footer.tsx"
@@ -286,6 +296,72 @@ export function Session() {
   const [compactMode, setCompactMode] = kv.signal<boolean>("compact_mode", false)
   const compact = () => compactMode() && Flag.EVOLUTION_T_CLI_0209_TUI_REDESIGN_COMPACT_MODE__CORE_IMP_ENABLED
 
+  // Compact mode hardening (T-CLI-0210): a load failure is captured so the
+  // Compact status line can render the failure state (with the diagnostic
+  // redacted) instead of leaving the surface ambiguous.
+  const [loadError, setLoadError] = createSignal<string | undefined>(undefined)
+
+  // Compact-view state projection. Derived purely from observable harness
+  // inputs + the pre-projected message data, so the surface stays fixed while
+  // the assistant streams. Only evaluated when compact mode is engaged.
+  const compactConnected = useConnected()
+  const compactData = createMemo<CompactViewData>(() => {
+    const msgs = messages()
+    let hasContent = false
+    let longestMessageLength = 0
+    let totalChars = 0
+    let runningCount = 0
+    for (const message of msgs) {
+      const parts = sync.data.part[message.id] ?? []
+      let length = 0
+      for (const part of parts) {
+        if (part.type === "text" && typeof part.text === "string") length += part.text.length
+      }
+      if (length > 0) hasContent = true
+      if (length > longestMessageLength) longestMessageLength = length
+      totalChars += length
+      const completed = "completed" in message.time ? message.time.completed : undefined
+      if (completed === undefined) runningCount++
+    }
+    return { messageCount: msgs.length, hasContent, longestMessageLength, totalChars, runningCount }
+  })
+  const compactView = createMemo<CompactViewState>(() => {
+    const ctx: CompactViewContext = {
+      isReady: session() != null,
+      loading: session() == null,
+      error: loadError(),
+      offline: !compactConnected(),
+      denied: false,
+      degraded: false,
+    }
+    return compactViewState({
+      ctx,
+      data: compactData(),
+      opts: { width: dimensions().width, noColor: detectNoColor() },
+    })
+  })
+  const compactStatusColors = createMemo<CompactStatusColors>(() => ({
+    error: theme.error,
+    warning: theme.warning,
+    info: theme.info,
+    success: theme.success,
+    text: theme.text,
+    textMuted: theme.textMuted,
+    borderSubtle: theme.borderSubtle,
+  }))
+
+  // Performance safeguard (T-CLI-0210): when Compact mode is engaged and the
+  // transcript exceeds the render budget, render only the most recent tail
+  // window. The newest content stays visible (the scrollbox anchors to the
+  // bottom), so focus and scroll position are preserved while DOM/render cost
+  // is bounded for very large transcripts. The active revert range is preserved
+  // verbatim so it is never dropped from the window.
+  const visibleMessages = createMemo(() => {
+    if (!compact()) return messages()
+    if (revert()?.messageID) return messages()
+    return windowMessages(messages(), compactView().renderBudget.maxMessages, true)
+  })
+
   const wide = createMemo(() => dimensions().width > 120)
   const sidebarVisible = createMemo(() =>
     computeSidebarVisible({
@@ -336,6 +412,7 @@ export function Session() {
 
   createEffect(() => {
     const sessionID = route.sessionID
+    setLoadError(undefined)
     void (async () => {
       const previousWorkspace = untrack(() => project.workspace.current())
       const result = await sdk.client.session.get({ sessionID }, { throwOnError: true })
@@ -365,6 +442,7 @@ export function Session() {
       if (route.sessionID === sessionID && scroll) scroll.scrollBy(100_000)
     })().catch((error) => {
       if (route.sessionID !== sessionID) return
+      setLoadError(errorMessage(error))
       toast.show({
         message: errorMessage(error),
         variant: "error",
@@ -1513,6 +1591,9 @@ export function Session() {
             <Show when={chrome().headerVisible}>
               <SessionHeaderStrip sessionID={route.sessionID} sidebarShortcut={sidebarShortcut()} />
             </Show>
+            <Show when={compact()}>
+              <CompactStatusLine state={compactView()} colors={compactStatusColors()} />
+            </Show>
             <Show when={session()}>
               <scrollbox
                 ref={(r) => (scroll = r)}
@@ -1533,7 +1614,7 @@ export function Session() {
                 scrollAcceleration={scrollAcceleration()}
               >
                 <box height={1} />
-                <For each={messages()}>
+                <For each={visibleMessages()}>
                   {(message, index) => (
                     <Switch>
                       <Match when={message.id === revert()?.messageID}>
