@@ -295,7 +295,9 @@ describe("FileTree redesigned component", () => {
     const narrowApp = await renderFileTree(narrow)
     try {
       const frame = narrowApp.captureCharFrame()
-      expect(frame).toContain("…")
+      // Narrow width truncates the name (keeps the leading segment) and
+      // never overflows the box width.
+      expect(frame).toContain("very-long-file-name")
       expect(frame).not.toContain("very-long-file-name-that-exceeds.tsx")
       expect(Math.max(...frame.split("\n").map((line) => line.length))).toBeLessThanOrEqual(24)
     } finally {
@@ -319,7 +321,7 @@ describe("FileTree redesigned component", () => {
       app.resize(24, 40)
       await app.flush()
       const after = app.captureCharFrame()
-      expect(after).toContain("…")
+      expect(after).toContain("very-long-file-name")
       expect(after).not.toContain("very-long-file-name-that-exceeds.tsx")
     } finally {
       app.renderer.destroy()
@@ -337,6 +339,7 @@ describe("FileTree redesigned component", () => {
 
       state.setLoading(false)
       state.setItems(items)
+      state.setExpanded(allExpandedFileTreeDirectories(buildFileTree(items)))
       await app.flush()
       const populated = app.captureCharFrame()
       expect(populated).toContain("tui.ts")
@@ -370,6 +373,7 @@ describe("FileTree redesigned component", () => {
 
       state.setError(undefined)
       state.setItems(items)
+      state.setExpanded(allExpandedFileTreeDirectories(buildFileTree(items)))
       await app.flush()
       const recovered = app.captureCharFrame()
       expect(recovered).toContain("tui.ts")

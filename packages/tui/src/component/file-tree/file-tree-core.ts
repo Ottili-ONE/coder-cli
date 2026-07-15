@@ -14,6 +14,213 @@
 // No OpenCode-specific imports live here; the palette is supplied by the host
 // (the resolved Ottili Theme) and consumed by the presentational component.
 
+import { redactSensitive } from "../agent-roster/model"
+
+// ---------------------------------------------------------------------------
+// Lifecycle hardening model
+//
+// The File tree is rendered in many environments (diff viewer, repo browser,
+// pickers, dialogs) that each can be loading, offline, denied, failed, empty,
+// partially loaded, large, or fully populated. These helpers classify and
+// summarize that lifecycle so the presentational component can render every
+// state intentionally and keep the view accessible and within a render budget.
+// They are pure and item-shape agnostic: they only need a count and a context.
+// ---------------------------------------------------------------------------
+
+/** The eight intentionally-rendered lifecycle states of the File tree. */
+export type FileTreeLifecycleStatus =
+  | "loading"
+  | "offline"
+  | "denied"
+  | "failure"
+  | "empty"
+  | "degraded"
+  | "long-content"
+  | "populated"
+
+/** Environmental context that decides which top-level lifecycle state we are in. */
+export interface FileTreeContext {
+  loading: boolean
+  connected: boolean
+  permitted: boolean
+  partial: boolean
+  error?: string
+}
+
+/** Derivable, memoizable File tree view state consumed by the component. */
+export interface FileTreeViewState {
+  status: FileTreeLifecycleStatus
+  context: FileTreeContext
+  itemCount: number
+  showAll: boolean
+  renderBudget: number
+  narrowWidth: number
+}
+
+/** Default maximum number of rows painted before a "show more" budget hint. */
+export const FILE_TREE_RENDER_BUDGET_DEFAULT = 200
+
+/** Terminal width below which the tree collapses to a compact, truncated layout. */
+export const FILE_TREE_NARROW_WIDTH_DEFAULT = 60
+
+/** Marker substituted for redacted secrets in visual output and diagnostics. */
+export const FILE_TREE_REDACTION_MARKER = "••••"
+
+/** Redact secrets from an error message so it can be shown or logged safely. */
+export function redactFileTreeError(message: string): string {
+  return redactSensitive(message).text
+}
+
+/** A terminal is "narrow" when long paths must be truncated to preserve layout. */
+export function isFileTreeNarrow(width: number, threshold = FILE_TREE_NARROW_WIDTH_DEFAULT): boolean {
+  return width < threshold
+}
+
+/**
+ * Classify the File tree's top-level state. Order matters: transient/blocking
+ * states win over presentational ones so the user always sees the most
+ * actionable message first.
+ */
+export function deriveFileTreeLifecycleStatus(
+  context: FileTreeContext,
+  itemCount: number,
+  renderBudget: number,
+  showAll: boolean,
+): FileTreeLifecycleStatus {
+  if (context.loading) return "loading"
+  if (!context.connected) return "offline"
+  if (!context.permitted) return "denied"
+  if (context.error) return "failure"
+  if (itemCount === 0) return "empty"
+  if (context.partial) return "degraded"
+  if (!showAll && itemCount > renderBudget) return "long-content"
+  return "populated"
+}
+
+export function buildFileTreeViewState(
+  context: FileTreeContext,
+  itemCount: number,
+  overrides: { showAll?: boolean; renderBudget?: number; narrowWidth?: number } = {},
+): FileTreeViewState {
+  const renderBudget = overrides.renderBudget ?? FILE_TREE_RENDER_BUDGET_DEFAULT
+  const showAll = overrides.showAll ?? false
+  return {
+    status: deriveFileTreeLifecycleStatus(context, itemCount, renderBudget, showAll),
+    context,
+    itemCount,
+    showAll,
+    renderBudget,
+    narrowWidth: overrides.narrowWidth ?? FILE_TREE_NARROW_WIDTH_DEFAULT,
+  }
+}
+
+/** Count of rows painted when the render budget is applied (0 once expanded). */
+export function visibleItemCount(state: FileTreeViewState): number {
+  if (state.showAll) return state.itemCount
+  return Math.min(state.itemCount, state.renderBudget)
+}
+
+/** Count of rows hidden by the render budget (0 once expanded). */
+export function hiddenItemCount(state: FileTreeViewState): number {
+  if (state.showAll) return 0
+  return Math.max(0, state.itemCount - state.renderBudget)
+}
+
+/** Single-line summary used as the accessible live-region label and header. */
+export function fileTreeSummary(state: FileTreeViewState): string {
+  const count = state.itemCount
+  switch (state.status) {
+    case "loading":
+      return "File tree: loading…"
+    case "offline":
+      return "File tree: offline — unavailable"
+    case "denied":
+      return "File tree: permission denied"
+    case "failure":
+      return `File tree: failed to load — ${redactFileTreeError(state.context.error ?? "unknown error")}`
+    case "empty":
+      return "File tree: No files"
+    case "degraded":
+      return `File tree: ${count} files (degraded)`
+    case "long-content":
+      return `File tree: ${count} files (showing ${state.renderBudget})`
+    case "populated":
+    default:
+      return `File tree: ${count} ${count === 1 ? "file" : "files"}`
+  }
+}
+
+/** Short textual status label, always rendered so state is never color-only. */
+export function fileTreeLifecycleLabel(status: FileTreeLifecycleStatus): string {
+  switch (status) {
+    case "loading":
+      return "loading"
+    case "offline":
+      return "offline"
+    case "denied":
+      return "denied"
+    case "failure":
+      return "failed"
+    case "empty":
+      return "empty"
+    case "degraded":
+      return "degraded"
+    case "long-content":
+      return "truncated"
+    case "populated":
+      return "ready"
+  }
+}
+
+/** Compact marker for a state; colored glyph when color is available, else a bracket tag. */
+export function fileTreeLifecycleGlyph(status: FileTreeLifecycleStatus, useColor: boolean): string {
+  if (useColor) {
+    switch (status) {
+      case "loading":
+        return "…"
+      case "offline":
+        return "○"
+      case "denied":
+        return "⊘"
+      case "failure":
+        return "✗"
+      case "empty":
+        return "∅"
+      case "degraded":
+        return "△"
+      case "long-content":
+        return "▤"
+      case "populated":
+        return "✓"
+    }
+  }
+  switch (status) {
+    case "loading":
+      return "[loading]"
+    case "offline":
+      return "[offline]"
+    case "denied":
+      return "[denied]"
+    case "failure":
+      return "[failed]"
+    case "empty":
+      return "[empty]"
+    case "degraded":
+      return "[degraded]"
+    case "long-content":
+      return "[truncated]"
+    case "populated":
+      return "[ok]"
+  }
+}
+
+/** Truncate a single name to fit a narrow terminal without dropping its meaning. */
+export function truncateFileName(name: string, max: number): string {
+  if (name.length <= max) return name
+  if (max <= 1) return name.slice(0, Math.max(0, max))
+  return name.slice(0, max - 1) + "…"
+}
+
 export type FileTreeStatus =
   | "added"
   | "deleted"

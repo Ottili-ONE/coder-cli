@@ -2,16 +2,26 @@ import { describe, expect, test } from "bun:test"
 import {
   allExpandedFileTreeDirectories,
   buildFileTree,
+  buildFileTreeViewState,
+  deriveFileTreeLifecycleStatus,
   fileTreeItemSelection,
+  fileTreeLifecycleGlyph,
+  fileTreeLifecycleLabel,
   fileTreeStatusLetter,
+  fileTreeSummary,
   flattenFileTree,
+  hiddenItemCount,
+  isFileTreeNarrow,
   moveFileTreeSelection,
   moveFileTreeSelectionToFile,
   moveFileTreeSelectionToFirstChild,
   moveFileTreeSelectionToParent,
+  redactFileTreeError,
   setFileTreeDirectoryExpanded,
   shouldShowFileTree,
   toggleFileTreeDirectory,
+  truncateFileName,
+  visibleItemCount,
   type FileTreeItem,
 } from "../src/component/file-tree/file-tree-core"
 
@@ -293,5 +303,95 @@ describe("reusable file tree core", () => {
     expect(fileTreeStatusLetter("untracked")).toBe("U")
     expect(fileTreeStatusLetter("conflict")).toBe("!")
     expect(fileTreeStatusLetter(undefined)).toBe("?")
+  })
+})
+
+describe("file tree lifecycle hardening model", () => {
+  const online = { loading: false, connected: true, permitted: true, partial: false }
+
+  test("deriveFileTreeLifecycleStatus orders blocking states first", () => {
+    expect(deriveFileTreeLifecycleStatus({ ...online, loading: true }, 0, 200, false)).toBe("loading")
+    expect(deriveFileTreeLifecycleStatus({ ...online, connected: false }, 0, 200, false)).toBe("offline")
+    expect(deriveFileTreeLifecycleStatus({ ...online, permitted: false }, 0, 200, false)).toBe("denied")
+    expect(deriveFileTreeLifecycleStatus({ ...online, error: "boom" }, 0, 200, false)).toBe("failure")
+    expect(deriveFileTreeLifecycleStatus(online, 0, 200, false)).toBe("empty")
+    expect(deriveFileTreeLifecycleStatus({ ...online, partial: true }, 3, 200, false)).toBe("degraded")
+    expect(deriveFileTreeLifecycleStatus(online, 500, 200, false)).toBe("long-content")
+    expect(deriveFileTreeLifecycleStatus(online, 500, 200, true)).toBe("populated")
+    expect(deriveFileTreeLifecycleStatus(online, 3, 200, false)).toBe("populated")
+  })
+
+  test("buildFileTreeViewState defaults keep the prior behaviour", () => {
+    const state = buildFileTreeViewState(online, 3)
+    expect(state.status).toBe("populated")
+    expect(state.showAll).toBe(false)
+    expect(state.renderBudget).toBe(200)
+    expect(state.context.connected).toBe(true)
+    expect(state.context.permitted).toBe(true)
+  })
+
+  test("visibleItemCount and hiddenItemCount track the render budget", () => {
+    const capped = buildFileTreeViewState(online, 500, { renderBudget: 200 })
+    expect(visibleItemCount(capped)).toBe(200)
+    expect(hiddenItemCount(capped)).toBe(300)
+    const expanded = buildFileTreeViewState(online, 500, { renderBudget: 200, showAll: true })
+    expect(visibleItemCount(expanded)).toBe(500)
+    expect(hiddenItemCount(expanded)).toBe(0)
+    const small = buildFileTreeViewState(online, 5, { renderBudget: 200 })
+    expect(hiddenItemCount(small)).toBe(0)
+  })
+
+  test("fileTreeSummary is semantic per state and redacts on failure", () => {
+    expect(fileTreeSummary(buildFileTreeViewState({ ...online, loading: true }, 0))).toBe("File tree: loading…")
+    expect(fileTreeSummary(buildFileTreeViewState({ ...online, connected: false }, 0))).toBe(
+      "File tree: offline — unavailable",
+    )
+    expect(fileTreeSummary(buildFileTreeViewState({ ...online, permitted: false }, 0))).toBe(
+      "File tree: permission denied",
+    )
+    const failing = fileTreeSummary(
+      buildFileTreeViewState({ ...online, error: "Bearer sk-live-secret-token" }, 0),
+    )
+    expect(failing).toContain("failed to load")
+    expect(failing).not.toContain("sk-live")
+    expect(fileTreeSummary(buildFileTreeViewState(online, 0))).toBe("File tree: No files")
+    expect(fileTreeSummary(buildFileTreeViewState({ ...online, partial: true }, 3))).toContain("degraded")
+    expect(fileTreeSummary(buildFileTreeViewState(online, 500, { renderBudget: 200 }))).toContain("showing 200")
+    expect(fileTreeSummary(buildFileTreeViewState(online, 1))).toBe("File tree: 1 file")
+    expect(fileTreeSummary(buildFileTreeViewState(online, 2))).toBe("File tree: 2 files")
+  })
+
+  test("lifecycle label and glyph never rely on color alone", () => {
+    const statuses = ["loading", "offline", "denied", "failure", "empty", "degraded", "long-content", "populated"] as const
+    for (const status of statuses) {
+      expect(fileTreeLifecycleLabel(status)).toBeTruthy()
+      // Color glyphs and no-color bracket tags are both non-empty and distinct enough.
+      expect(fileTreeLifecycleGlyph(status, true)).not.toBe(fileTreeLifecycleGlyph(status, false))
+    }
+  })
+
+  test("no-color glyphs are bracket tags while color glyphs are single symbols", () => {
+    expect(fileTreeLifecycleGlyph("populated", false)).toBe("[ok]")
+    expect(fileTreeLifecycleGlyph("populated", true)).toBe("✓")
+    expect(fileTreeLifecycleGlyph("offline", false)).toBe("[offline]")
+  })
+
+  test("redactFileTreeError removes tokens and keys", () => {
+    expect(redactFileTreeError("api_key = supersecretvalue123")).toContain("••••")
+    expect(redactFileTreeError("Bearer sk-live-abcdefghijklmnop")).not.toContain("sk-live")
+    expect(redactFileTreeError("plain message")).toBe("plain message")
+  })
+
+  test("isFileTreeNarrow flags narrow terminals past the threshold", () => {
+    expect(isFileTreeNarrow(40)).toBe(true)
+    expect(isFileTreeNarrow(80)).toBe(false)
+    expect(isFileTreeNarrow(40, 30)).toBe(false)
+  })
+
+  test("truncateFileName preserves short names and ellipsizes long ones", () => {
+    expect(truncateFileName("short", 20)).toBe("short")
+    const long = truncateFileName("x".repeat(200), 10)
+    expect(long.endsWith("…")).toBe(true)
+    expect(long).toHaveLength(10)
   })
 })
