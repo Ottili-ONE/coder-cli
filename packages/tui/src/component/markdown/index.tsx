@@ -1,9 +1,10 @@
 /** @jsxImportSource @opentui/solid */
-import { createMemo, For, Show, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Show, type Accessor, type JSX } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
-import { TextAttributes } from "@opentui/core"
+import { RGBA, TextAttributes } from "@opentui/core"
 import { useTheme } from "../../context/theme"
-import { redactSensitive } from "../agent-roster/model"
+import { colorSupport, redactSensitive } from "../agent-roster/model"
+import { Spinner } from "../spinner"
 import {
   parseMarkdown,
   inlineToPlain,
@@ -14,6 +15,19 @@ import {
   type CalloutKind,
   type Inline,
 } from "./model"
+import {
+  buildMarkdownState,
+  createMarkdownThrottle,
+  isMarkdownNarrow,
+  markdownStatusGlyph,
+  markdownStatusLabel,
+  markdownSummary,
+  MARKDOWN_COMMIT_INTERVAL_MS,
+  MARKDOWN_NARROW_WIDTH,
+  MARKDOWN_RENDER_BUDGET,
+  type MarkdownContext,
+  type MarkdownStatus,
+} from "./state"
 
 export interface MarkdownViewProps {
   content: string
@@ -288,6 +302,216 @@ export function MarkdownView(props: MarkdownViewProps) {
   return (
     <box flexDirection="column" gap={1} flexShrink={0}>
       <For each={blocks()}>{(block) => renderBlock(block, theme, props.conceal, indent())}</For>
+    </box>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// State-hardened wrapper
+// ---------------------------------------------------------------------------
+
+export interface MarkdownStateViewProps {
+  /** Raw markdown content (may be a live stream accessor). */
+  content: Accessor<string> | string
+  /** Content is being fetched or streamed and not yet presentable. */
+  loading?: Accessor<boolean> | boolean
+  /** A network is required to resolve linked/embedded content. */
+  connected?: Accessor<boolean> | boolean
+  /** The caller is allowed to view this content. */
+  permitted?: Accessor<boolean> | boolean
+  /** A render/load failure message (surfaced in the failure state). */
+  error?: Accessor<string | null | undefined> | string | null
+  /** Render in reduced-fidelity mode (e.g. no callouts/highlight). */
+  degraded?: Accessor<boolean> | boolean
+  /** When true, secret-shaped text is redacted before painting. */
+  conceal?: boolean
+  /** Left indentation reserved by the parent box. */
+  indent?: number
+  /** Render budget (characters) before the markdown switches to long-content. */
+  renderBudget?: number
+  /** Terminal width at or below which the compact layout is used. */
+  narrowWidth?: number
+  /** Explicit color level (0 disables color). */
+  colorLevel?: number | Accessor<number>
+  /** Throttle rapid content updates to the render budget window (default true). */
+  coalesce?: boolean
+}
+
+function isAccessor<T>(value: unknown): value is Accessor<T> {
+  return typeof value === "function"
+}
+
+function resolveFlag<T>(value: Accessor<T> | T | undefined, fallback: T): Accessor<T> {
+  if (value === undefined) return () => fallback
+  if (isAccessor<T>(value)) return value
+  return () => value
+}
+
+function noticeColor(status: "failure" | "denied" | "offline", theme: ReturnType<typeof useTheme>["theme"]): RGBA {
+  switch (status) {
+    case "failure":
+    case "denied":
+      return theme.error
+    case "offline":
+      return theme.warning
+    default:
+      return theme.textMuted
+  }
+}
+
+function MarkdownNotice(props: {
+  status: "failure" | "denied" | "offline"
+  message: string
+  theme: ReturnType<typeof useTheme>["theme"]
+  useColor: boolean
+}) {
+  const accent = () => (props.useColor ? noticeColor(props.status, props.theme) : props.theme.textMuted)
+  return (
+    <box
+      flexDirection="column"
+      gap={0}
+      backgroundColor={props.theme.backgroundPanel}
+      borderColor={accent()}
+      border={["left"]}
+      paddingLeft={1}
+      paddingRight={1}
+      paddingTop={1}
+      paddingBottom={1}
+    >
+      <text fg={accent()} attributes={TextAttributes.BOLD}>
+        {`${markdownStatusGlyph(props.status, props.useColor)} ${markdownStatusLabel(props.status)}`}
+      </text>
+      <text fg={props.theme.text} wrapMode="word">
+        {props.message}
+      </text>
+    </box>
+  )
+}
+
+/**
+ * State-hardened Markdown renderer. Wraps {@link MarkdownView} so every
+ * lifecycle state (loading, empty, populated, long-content, failure, denied,
+ * offline, degraded) is intentionally rendered and actionable.
+ *
+ * Hardening:
+ *  - Accessibility: a `live` status line announces state changes with a
+ *    self-contained redacted label; color is never the only signal (glyph +
+ *    bracketed text fallback when color is off).
+ *  - Terminal fallbacks: narrow terminals collapse the layout; NO_COLOR /
+ *    colorLevel 0 disable color while keeping the textual markers.
+ *  - Performance: runaway/rapid streams are capped by a hard safety budget and
+ *    coalesced (leading+trailing throttle) so the parser runs at most once per
+ *    render-budget window, never per keystroke.
+ *  - Secrets: every error/banner is redacted before painting; the parser
+ *    redacts inline when `conceal` is set.
+ *
+ * Focus is never captured: the root is a single stable box whose children are
+ * swapped via `<Show>`, so Solid reuses the DOM node and any external focus
+ * (parent scroll/selection) is retained across content updates.
+ */
+export function MarkdownStateView(props: MarkdownStateViewProps) {
+  const dims = useTerminalDimensions()
+  const { theme } = useTheme()
+
+  const getContent = resolveFlag(props.content, "")
+  const getLoading = resolveFlag(props.loading, false)
+  const getConnected = resolveFlag(props.connected, true)
+  const getPermitted = resolveFlag(props.permitted, true)
+  const getError = resolveFlag(props.error, null)
+  const getDegraded = resolveFlag(props.degraded, false)
+
+  const level = () => (typeof props.colorLevel === "function" ? props.colorLevel() : (props.colorLevel ?? 3))
+  const useColor = () => colorSupport(level()).useColor
+
+  // Rapid-stream coalescing: bound reparse rate to the render-budget window.
+  const [committed, setCommitted] = createSignal(getContent())
+  const throttle = createMarkdownThrottle((value: string) => setCommitted(value), MARKDOWN_COMMIT_INTERVAL_MS)
+  createEffect(() => {
+    const next = getContent()
+    if (props.coalesce ?? true) throttle.push(next)
+    else setCommitted(next)
+  })
+
+  const ctx = (): MarkdownContext => ({
+    loading: getLoading(),
+    connected: getConnected(),
+    permitted: getPermitted(),
+    error: getError() ?? null,
+    degraded: getDegraded(),
+  })
+
+  const state = createMemo(() =>
+    buildMarkdownState(committed(), ctx(), {
+      renderBudget: props.renderBudget ?? MARKDOWN_RENDER_BUDGET,
+      narrowWidth: props.narrowWidth ?? MARKDOWN_NARROW_WIDTH,
+    }),
+  )
+
+  const status = () => state().status
+  const narrow = () => isMarkdownNarrow(dims().width, state().narrowWidth)
+  const showContent = () => status() === "populated" || status() === "long-content" || status() === "degraded"
+
+  return (
+    <box flexDirection="column" gap={1} flexShrink={0}>
+      <Show when={status() !== "populated"}>
+        <text id="markdown-status" live>
+          {`${markdownStatusGlyph(status(), useColor())} ${markdownSummary(state())}`}
+        </text>
+      </Show>
+
+      <Show when={status() === "loading"}>
+        <Spinner color={useColor() ? theme.info : theme.textMuted}>Rendering markdown…</Spinner>
+      </Show>
+
+      <Show when={status() === "empty"}>
+        <text fg={theme.textMuted} wrapMode="word">
+          {"(no content)"}
+        </text>
+      </Show>
+
+      <Show when={status() === "denied"}>
+        <MarkdownNotice
+          status="denied"
+          message="Permission denied — you cannot view this content."
+          theme={theme}
+          useColor={useColor()}
+        />
+      </Show>
+
+      <Show when={status() === "offline"}>
+        <MarkdownNotice
+          status="offline"
+          message="No network — linked or embedded content is unavailable."
+          theme={theme}
+          useColor={useColor()}
+        />
+      </Show>
+
+      <Show when={status() === "failure"}>
+        <MarkdownNotice
+          status="failure"
+          message={redactSensitive(state().context.error ?? "unknown error").text}
+          theme={theme}
+          useColor={useColor()}
+        />
+      </Show>
+
+      <Show when={status() === "degraded"}>
+        <text fg={useColor() ? theme.warning : theme.textMuted} wrapMode="word">
+          {`${markdownStatusGlyph("degraded", useColor())} ${markdownStatusLabel("degraded")}: rendering in reduced mode`}
+        </text>
+      </Show>
+
+      <Show when={showContent()}>
+        <MarkdownView content={state().content} conceal={props.conceal} indent={narrow() ? 0 : props.indent} />
+        <Show when={status() === "long-content"}>
+          <text fg={theme.textMuted} wrapMode="word">
+            {state().droppedChars > 0
+              ? `Long content — truncated to ${state().content.length} characters (${state().droppedChars} dropped). Increase the render budget to expand.`
+              : `Long content — showing ${state().content.length} characters. Increase the render budget to expand.`}
+          </text>
+        </Show>
+      </Show>
     </box>
   )
 }
