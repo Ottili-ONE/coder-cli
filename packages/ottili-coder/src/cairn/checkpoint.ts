@@ -1,5 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect"
+import { Clock } from "effect"
 import { SessionMemory } from "./session-memory"
+import { CrashResume } from "./crash-resume"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 
 export class CheckpointError extends Schema.TaggedErrorClass<CheckpointError>()("CheckpointError", {
@@ -32,6 +34,9 @@ export interface Interface {
   readonly appendKnownProblem: (sessionId: string, problem: string, severity: string, unblock: string) => Effect.Effect<void>
   readonly setNextAction: (sessionId: string, action: string) => Effect.Effect<void>
   readonly recoveryHint: (sessionId: string) => Effect.Effect<string | undefined>
+  readonly captureSnapshot: (sessionId: string) => Effect.Effect<void>
+  readonly heartbeat: (sessionId: string) => Effect.Effect<void>
+  readonly clearHeartbeat: (sessionId: string) => Effect.Effect<void>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@ottili-coder/CairnCheckpoint") {}

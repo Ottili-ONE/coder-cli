@@ -4,6 +4,7 @@ import { HintReader } from "./hint-reader"
 import { HintWriter } from "./hint-writer"
 import { Worktime } from "./worktime"
 import { Checkpoint } from "./checkpoint"
+import { CrashResume } from "./crash-resume"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 
 export { SessionMemory } from "./session-memory"
@@ -11,6 +12,7 @@ export { HintReader } from "./hint-reader"
 export { HintWriter } from "./hint-writer"
 export { Worktime } from "./worktime"
 export { Checkpoint } from "./checkpoint"
+export { CrashResume } from "./crash-resume"
 
 // All sub-layers depend on SessionMemory.Service.
 // The layer requires SessionMemory.Service from the outside.
@@ -19,6 +21,7 @@ export const layer = Layer.mergeAll(
   HintWriter.layer,
   Worktime.layer,
   Checkpoint.layer,
+  CrashResume.layer,
 )
 
 // defaultLayer provides SessionMemory internally so it's self-contained.
