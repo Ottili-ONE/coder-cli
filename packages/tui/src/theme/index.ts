@@ -1,4 +1,4 @@
-import { SyntaxStyle, RGBA, type TerminalColors } from "@opentui/core"
+import { SyntaxStyle, RGBA, rgbToHex, type TerminalColors } from "@opentui/core"
 import aura from "./assets/aura.json" with { type: "json" }
 import claude from "./assets/claude.json" with { type: "json" }
 import ayu from "./assets/ayu.json" with { type: "json" }
@@ -1096,4 +1096,211 @@ function getSyntaxRules(theme: Theme) {
       },
     },
   ]
+}
+
+// ── Theme engine hardening ────────────────────────────────────────────────
+// Hardening layer for terminal/state variety, accessibility, terminal
+// fallbacks, performance and safe diagnostics. Kept separate from the core
+// resolution logic above so each concern is independently testable and the
+// original behavior (including throwing on circular references) is preserved.
+
+const RESOLVED_DEFAULT = resolveTheme(DEFAULT_THEMES.ottiliCoder, "dark")
+
+const THEME_COLOR_KEYS = Object.keys(RESOLVED_DEFAULT).filter(
+  (key) => key !== "thinkingOpacity" && key !== "_hasSelectedListItemText",
+) as ThemeColor[]
+
+const KNOWN_THEME_KEYS = new Set<string>(THEME_COLOR_KEYS)
+
+export function mapTheme(theme: Theme, transform: (color: RGBA, key: ThemeColor) => RGBA): Theme {
+  const next = {} as Record<ThemeColor, RGBA>
+  for (const key of THEME_COLOR_KEYS) next[key] = transform(theme[key], key)
+  return {
+    ...next,
+    _hasSelectedListItemText: theme._hasSelectedListItemText,
+    thinkingOpacity: theme.thinkingOpacity,
+  }
+}
+
+// Performance safeguard: the same ThemeJson object (e.g. one of DEFAULT_THEMES
+// or a discovered theme) is re-resolved on every theme switch and during rapid
+// stream updates. A WeakMap keyed by object identity bounds the cache to live
+// themes with no leak and avoids re-walking every color reference each time.
+const resolvedThemeCache = new WeakMap<ThemeJson, Partial<Record<"dark" | "light", Theme>>>()
+
+export function resolveThemeCached(theme: ThemeJson, mode: "dark" | "light"): Theme {
+  const cached = resolvedThemeCache.get(theme)
+  if (cached?.[mode]) return cached[mode]!
+  const resolved = resolveTheme(theme, mode)
+  if (!cached) resolvedThemeCache.set(theme, { [mode]: resolved })
+  else cached[mode] = resolved
+  return resolved
+}
+
+// ── Accessibility ─────────────────────────────────────────────────────────
+
+export function relativeLuminance(color: RGBA): number {
+  const channel = (value: number) => {
+    const c = value / 255
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  }
+  return (
+    0.2126 * channel(color.r * 255) +
+    0.7152 * channel(color.g * 255) +
+    0.0722 * channel(color.b * 255)
+  )
+}
+
+export function contrastRatio(a: RGBA, b: RGBA): number {
+  const lighter = Math.max(relativeLuminance(a), relativeLuminance(b))
+  const darker = Math.min(relativeLuminance(a), relativeLuminance(b))
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
+export function readableOn(background: RGBA): RGBA {
+  const luminance = 0.299 * background.r * 255 + 0.587 * background.g * 255 + 0.114 * background.b * 255
+  return luminance > 127.5 ? RGBA.fromInts(0, 0, 0) : RGBA.fromInts(255, 255, 255)
+}
+
+export function ensureReadable(foreground: RGBA, background: RGBA, fallback: RGBA, minContrast = 4.5): RGBA {
+  if (contrastRatio(foreground, background) >= minContrast) return foreground
+  if (contrastRatio(fallback, background) >= minContrast) return fallback
+  return readableOn(background)
+}
+
+export type ContrastIssue = {
+  pair: string
+  foreground: string
+  background: string
+  ratio: number
+  required: number
+}
+
+export function auditContrast(theme: Theme): ContrastIssue[] {
+  const checks: Array<[string, RGBA, RGBA, number]> = [
+    ["text/background", theme.text, theme.background, 4.5],
+    ["textMuted/background", theme.textMuted, theme.background, 3],
+    ["error/background", theme.error, theme.background, 4.5],
+    ["success/background", theme.success, theme.background, 4.5],
+    ["warning/background", theme.warning, theme.background, 4.5],
+    ["info/background", theme.info, theme.background, 4.5],
+    ["primary/background", theme.primary, theme.background, 3],
+  ]
+  return checks
+    .map(([pair, fg, bg, required]) => ({
+      pair,
+      foreground: rgbToHex(fg),
+      background: rgbToHex(bg),
+      ratio: contrastRatio(fg, bg),
+      required,
+    }))
+    .filter((issue) => issue.ratio < issue.required)
+}
+
+// ── Terminal fallbacks ─────────────────────────────────────────────────────
+
+export function monochromeTheme(theme: Theme): Theme {
+  return mapTheme(theme, (color) => {
+    const luminance = Math.round(0.299 * color.r * 255 + 0.587 * color.g * 255 + 0.114 * color.b * 255)
+    return RGBA.fromInts(luminance, luminance, luminance, Math.round(color.a * 255))
+  })
+}
+
+export function limitDepth(theme: Theme, levels = 6): Theme {
+  if (levels <= 1) {
+    return mapTheme(theme, (color) => RGBA.fromValues(0, 0, 0, color.a))
+  }
+  const step = 255 / (levels - 1)
+  const quantize = (value: number) => (Math.round((value * 255) / step) * step) / 255
+  return mapTheme(theme, (color) =>
+    RGBA.fromValues(quantize(color.r), quantize(color.g), quantize(color.b), color.a),
+  )
+}
+
+export function compactTheme(theme: Theme): Theme {
+  const transparent = RGBA.fromValues(theme.background.r, theme.background.g, theme.background.b, 0)
+  return mapTheme(theme, (color, key) => {
+    if (key === "border" || key === "borderSubtle" || key === "borderActive") return theme.backgroundPanel
+    if (
+      key === "diffAddedBg" ||
+      key === "diffRemovedBg" ||
+      key === "diffContextBg" ||
+      key === "diffAddedLineNumberBg" ||
+      key === "diffRemovedLineNumberBg"
+    ) {
+      return transparent
+    }
+    return color
+  })
+}
+
+export function responsiveTheme(theme: Theme, options: { width: number }): Theme {
+  if (options.width > 0 && options.width < 40) return compactTheme(theme)
+  return theme
+}
+
+// ── State classification & safe resolution ─────────────────────────────────
+
+export type ThemeLoadState =
+  | "loading"
+  | "empty"
+  | "populated"
+  | "failure"
+  | "denied"
+  | "offline"
+  | "degraded"
+
+export function classifyThemeState(input: {
+  ready: boolean
+  themes: Record<string, unknown>
+  active?: string
+  error?: unknown
+  denied?: boolean
+  offline?: boolean
+}): ThemeLoadState {
+  if (input.offline) return "offline"
+  if (input.denied) return "denied"
+  if (input.error) return "failure"
+  if (!input.ready) return "loading"
+  if (Object.keys(input.themes).length === 0) return "empty"
+  if (input.active !== undefined && input.themes[input.active] === undefined) return "degraded"
+  return "populated"
+}
+
+export function safeResolveTheme(
+  theme: ThemeJson | undefined,
+  mode: "dark" | "light",
+  fallback: Theme = RESOLVED_DEFAULT,
+): Theme {
+  if (!theme) return fallback
+  try {
+    return resolveThemeCached(theme, mode)
+  } catch {
+    return fallback
+  }
+}
+
+// ── Diagnostics safety ─────────────────────────────────────────────────────
+
+export function sanitizeThemeSource(raw: unknown): ThemeJson | undefined {
+  if (!isTheme(raw)) return undefined
+  const json = raw as ThemeJson
+  const theme = Object.fromEntries(
+    Object.entries(json.theme).filter(
+      ([key, value]) =>
+        KNOWN_THEME_KEYS.has(key) &&
+        (typeof value === "string" ||
+          typeof value === "number" ||
+          (typeof value === "object" && value !== null && ("dark" in value || "light" in value))),
+    ),
+  ) as ThemeJson["theme"]
+  const result: ThemeJson = { theme }
+  if (json.defs) result.defs = structuredClone(json.defs)
+  return result
+}
+
+export function redactThemeError(error: unknown): string {
+  if (!(error instanceof Error)) return "unknown theme error"
+  const message = error.message.replace(/\/\S+/g, "<path>").replace(/\n[\s\S]*/, "")
+  return message.length > 120 ? `${message.slice(0, 117)}...` : message
 }

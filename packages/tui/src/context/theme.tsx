@@ -9,7 +9,7 @@ import {
   generateSystem,
   hasTheme,
   isTheme,
-  resolveTheme,
+  safeResolveTheme,
   resolveThemeName,
   selectedForeground,
   setCustomThemes,
@@ -68,18 +68,34 @@ export {
   DEFAULT_THEMES,
   addTheme,
   allThemes,
+  auditContrast,
+  classifyThemeState,
+  compactTheme,
+  contrastRatio,
+  ensureReadable,
   generateSubtleSyntax,
   generateSyntax,
   generateSystem,
   hasTheme,
   isTheme,
+  limitDepth,
+  mapTheme,
+  monochromeTheme,
+  readableOn,
+  redactThemeError,
+  relativeLuminance,
   resolveTheme,
+  resolveThemeCached,
   resolveThemeName,
+  responsiveTheme,
+  safeResolveTheme,
+  sanitizeThemeSource,
   selectedForeground,
   tint,
   upsertTheme,
   type Theme,
   type ThemeJson,
+  type ThemeLoadState,
   type SyntaxStyleOverrides,
 } from "../theme"
 
@@ -214,15 +230,15 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     const values = createMemo(() => {
       const activeName = resolveThemeName(store.active)
       const active = store.themes[activeName]
-      if (active) return resolveTheme(active, THEME_MODE)
+      if (active) return safeResolveTheme(active, THEME_MODE)
 
       const saved = kv.get("theme")
       if (typeof saved === "string") {
         const theme = store.themes[resolveThemeName(saved)]
-        if (theme) return resolveTheme(theme, THEME_MODE)
+        if (theme) return safeResolveTheme(theme, THEME_MODE)
       }
 
-      return resolveTheme(store.themes.ottiliCoder, THEME_MODE)
+      return safeResolveTheme(store.themes.ottiliCoder, THEME_MODE)
     })
 
     createEffect(() => renderer.setBackgroundColor(values().background))
