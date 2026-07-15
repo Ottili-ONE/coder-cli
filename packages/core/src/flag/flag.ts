@@ -102,6 +102,15 @@ export const Flag = {
     return truthy("EVOLUTION_T_CLI_0205_TUI_REDESIGN_FOCUS_MODE__CORE_IMPLE_ENABLED")
   },
 
+  // Compact mode (T-CLI-0209): high-density layout for small terminals and
+  // power users. Tightens transcript padding, message gaps, and the header
+  // strip into a single dense line so more content fits per screen. Off until
+  // staging validation passes; when off `compact()` is forced false so the
+  // session renders exactly as today (zero regression).
+  get EVOLUTION_T_CLI_0209_TUI_REDESIGN_COMPACT_MODE__CORE_IMP_ENABLED() {
+    return truthy("EVOLUTION_T_CLI_0209_TUI_REDESIGN_COMPACT_MODE__CORE_IMP_ENABLED")
+  },
+
   // Evaluated at access time (not module load) because tests, the CLI, and
   // external tooling set these env vars at runtime.
   get OTTILI_CODER_DISABLE_PROJECT_CONFIG() {

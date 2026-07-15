@@ -65,6 +65,7 @@ import { MarkdownStateView } from "../../component/markdown"
 import { usePromptRef } from "../../context/prompt"
 import { Sidebar } from "./sidebar"
 import { computeFocusChrome, computeSidebarVisible } from "./focus"
+import { computeCompactChrome, computeCompactSpacing } from "./compact"
 import { useSessionSidebarOpenRequest } from "./session-sidebar/controller"
 import { SessionHeaderStrip } from "./header-strip"
 import { SubagentFooter } from "./subagent-footer.tsx"
@@ -279,6 +280,12 @@ export function Session() {
   const [focus, setFocus] = kv.signal<boolean>("focus_mode", false)
   const focused = () => focus() && Flag.EVOLUTION_T_CLI_0205_TUI_REDESIGN_FOCUS_MODE__CORE_IMPLE_ENABLED
 
+  // Compact mode (T-CLI-0209): high-density layout for small terminals and
+  // power users. The preference persists like `sidebar`; the flag forces it
+  // off (zero regression) when disabled.
+  const [compactMode, setCompactMode] = kv.signal<boolean>("compact_mode", false)
+  const compact = () => compactMode() && Flag.EVOLUTION_T_CLI_0209_TUI_REDESIGN_COMPACT_MODE__CORE_IMP_ENABLED
+
   const wide = createMemo(() => dimensions().width > 120)
   const sidebarVisible = createMemo(() =>
     computeSidebarVisible({
@@ -289,13 +296,23 @@ export function Session() {
       wide: wide(),
     }),
   )
-  const chrome = createMemo(() =>
-    computeFocusChrome({
+  const chrome = createMemo(() => {
+    const focusChrome = computeFocusChrome({
       focused: focused(),
       sessionExists: session() !== undefined,
       sidebarVisible: sidebarVisible(),
-    }),
-  )
+    })
+    const compactChrome = computeCompactChrome({
+      compact: compact(),
+      headerVisible: focusChrome.headerVisible,
+    })
+    return {
+      headerVisible: focusChrome.headerVisible,
+      focusHintVisible: focusChrome.focusHintVisible,
+      headerCondensed: compactChrome.headerCondensed,
+    }
+  })
+  const spacing = createMemo(() => computeCompactSpacing({ compact: compact() }))
 
   // `session.list` (defined in app.tsx) requests the sidebar to open.
   // Focus mode forces the sidebar off, so an inbound open request is ignored
@@ -307,7 +324,9 @@ export function Session() {
     }),
   )
   const showTimestamps = createMemo(() => timestamps() === "show")
-  const contentWidth = createMemo(() => dimensions().width - (sidebarVisible() ? 42 : 0) - 4)
+  const contentWidth = createMemo(
+    () => dimensions().width - (sidebarVisible() ? 42 : 0) - spacing().paddingLeft - spacing().paddingRight,
+  )
   const providers = createMemo(() => Model.index(sync.data.provider))
 
   const scrollAcceleration = createMemo(() => getScrollAcceleration(tuiConfig))
