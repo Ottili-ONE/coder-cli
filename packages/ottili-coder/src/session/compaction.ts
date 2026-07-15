@@ -14,7 +14,7 @@ import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import { NotFoundError } from "@/storage/storage"
 
-import { Effect, Layer, Context, MutableHashMap, Schema } from "effect"
+import { Effect, Layer, Context, MutableHashMap, Schema, Option } from "effect"
 import * as DateTime from "effect/DateTime"
 import { InstanceState } from "@/effect/instance-state"
 import { isOverflow as overflow, usable } from "./overflow"
@@ -738,7 +738,7 @@ export const layer = Layer.effect(
     })
 
     const current = Effect.fnUntraced(function current(sessionID: SessionID) {
-      return MutableHashMap.get(registry, sessionID)
+      return Option.getOrUndefined(MutableHashMap.get(registry, sessionID))
     })
 
     // Admission contract: validates conflict/idempotency, admits a compaction
