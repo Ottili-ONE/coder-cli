@@ -57,6 +57,7 @@ import { DialogCostUsage } from "../../component/cost-usage"
 import type { PromptInfo } from "../../component/prompt/history"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
+import { DialogContextMeter } from "../../component/context-meter/dialog"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { Sidebar } from "./sidebar"
@@ -1167,6 +1168,19 @@ export function Session() {
         } catch {
           toast.show({ message: "Failed to load status", variant: "error" })
         }
+      },
+    },
+    {
+      title: "Show context usage meter",
+      value: "session.context",
+      category: "Session",
+      slash: { name: "/context" },
+      enabled: true,
+      run: () => {
+        dialog.clear()
+        dialog.replace(() => (
+          <DialogContextMeter sessionID={route.sessionID} onClose={dialog.clear} />
+        ))
       },
     },
     {

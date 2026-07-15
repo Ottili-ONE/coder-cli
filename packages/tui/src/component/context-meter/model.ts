@@ -98,12 +98,13 @@ export const RENDER_BUDGET_MS = 400
 function redactSecrets(text: string): string {
   if (!text) return text
   return text
+    .replace(/\bsk-[A-Za-z0-9]{8,}/gi, "sk-••••")
+    .replace(/\bgh[pousr]_[A-Za-z0-9]{20,}/gi, "ghp_••••")
+    .replace(/\bAKIA[0-9A-Z]{16}/g, "AKIA••••")
+    .replace(/\bxox[baprs]-[0-9a-z-]+/gi, "xox-••••")
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "eyJ••••")
     .replace(/\bBearer\s+[A-Za-z0-9._-]+/gi, "Bearer ••••")
-    .replace(/\b(token|secret)-[A-Za-z0-9_-]{6,}/gi, "$1-••••")
-    .replace(/(sk|pk|api[_-]?key|token|secret|password|bearer)\s*[=:]\s*\S+/gi, (m) =>
-      /=\s*$/.test(m) || /:\s*$/.test(m) ? m : m.replace(/\S+$/, "••••"),
-    )
-    .replace(/(Bearer|sk|pk)-[A-Za-z0-9_-]{8,}/g, (m) => `${m.slice(0, 6)}••••`)
+    .replace(/\b(token|secret|api[_-]?key|password)[=:]\S+/gi, "$1=••••")
 }
 
 function truncateError(text: string): string {
@@ -339,7 +340,9 @@ function buildSegments(data: ContextMeterData, narrow: boolean, expanded: boolea
   segments.push({
     kind: "sources",
     label: "sources",
-    detail: data.sources.map((s) => `${s.label} ${s.percent}%`).join(" · "),
+    detail: capSources(data.sources)
+      .map((s) => `${s.label} ${s.percent}%`)
+      .join(" · "),
     focusable: true,
     wideOnly: false,
   })
@@ -536,4 +539,85 @@ export function actionFor(kind: ContextMeterSegmentKind | null): ContextMeterAct
     default:
       return null
   }
+}
+
+// --- performance + terminal hardening --------------------------------------
+
+/**
+ * Maximum number of context-source rows rendered before they are collapsed into
+ * a single "other" segment. Cap avoids layout thrash when a response streams
+ * many source fragments at once.
+ */
+export const CONTEXT_METER_MAX_SOURCES = 12
+
+/** Minimum time between two meter rebuilds driven by a rapid update stream. */
+export const CONTEXT_METER_RENDER_BUDGET_MS = 250
+
+/** Block-meter glyphs used when the terminal advertises color support. */
+export const BLOCK_FULL = "█"
+export const BLOCK_EMPTY = "░"
+
+/**
+ * Render a single-line usage bar. When `noColor` is set (no-color / limited
+ * palette terminals) it falls back to ASCII `#`/`_` so the meter stays legible
+ * without any color or Unicode block glyphs. An unknown limit renders a neutral
+ * placeholder that still carries "no data" meaning without color.
+ */
+export function renderUsageBar(
+  percent: number | null,
+  opts: { width?: number; narrow?: boolean; noColor?: boolean } = {},
+): string {
+  const width = opts.width ?? (opts.narrow ? 6 : 12)
+  if (percent == null) return opts.noColor ? "[?]" : `${BLOCK_EMPTY.repeat(width)}`
+  const clamped = Math.max(0, Math.min(100, percent))
+  const filled = Math.round((clamped / 100) * width)
+  const empty = Math.max(0, width - filled)
+  if (opts.noColor) return "#".repeat(filled) + "_".repeat(empty)
+  return BLOCK_FULL.repeat(filled) + BLOCK_EMPTY.repeat(empty)
+}
+
+/**
+ * Collapse an oversized source list so the meter stays within its render budget
+ * during large/rapid streams. The tail is merged into a single "other" segment
+ * whose tokens/percent reflect the remainder, preserving the total.
+ */
+export function capSources(sources: ContextSource[], max: number = CONTEXT_METER_MAX_SOURCES): ContextSource[] {
+  if (sources.length <= max) return sources
+  const head = sources.slice(0, max)
+  const rest = sources.slice(max)
+  const total = sources.reduce((sum, s) => sum + s.tokens, 0)
+  const otherTokens = rest.reduce((sum, s) => sum + s.tokens, 0)
+  return [
+    ...head,
+    {
+      key: "other",
+      label: `+${rest.length} more`,
+      glyph: "…",
+      tokens: otherTokens,
+      percent: total > 0 ? Math.round((otherTokens / total) * 100) : 0,
+      focusable: true,
+      wideOnly: false,
+    },
+  ]
+}
+
+/**
+ * Detect a no-color / limited-palette terminal so the meter can swap block
+ * glyphs for ASCII. Honors `NO_COLOR` (https://no-color.org) and the common
+ * `TERM` fallbacks; defaults to color when the environment is undefined.
+ */
+export function detectNoColor(): boolean {
+  if (typeof process === "undefined" || !process.env) return false
+  if (process.env.NO_COLOR) return true
+  const term = process.env.TERM ?? ""
+  if (/^(dumb|unknown)$/i.test(term)) return true
+  return false
+}
+
+/** Compact token counts for narrow terminals (e.g. 1234 -> 1.2k). */
+export function compactTokens(value: number): string {
+  if (!Number.isFinite(value)) return "0"
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
+  return `${value}`
 }
