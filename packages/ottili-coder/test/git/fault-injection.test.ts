@@ -104,7 +104,7 @@ describe("Git fault-injection", () => {
 
   it.live("status() returns empty on a corrupt .git directory", () =>
     Effect.gen(function* () {
-      const tmp = yield* scopedTmpdir()
+      const tmp = yield* scopedTmpdir({ git: true })
       // Trash the git internals so porcelain output is meaningless.
       yield* Effect.promise(() => fs.rm(path.join(tmp.path, ".git", "HEAD"), { force: true }))
       yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, ".git", "HEAD"), "not a valid ref\n"))
