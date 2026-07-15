@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { RGBA } from "@opentui/core"
 import {
   createStreamingColors,
   createStreamingFrames,
@@ -17,13 +18,15 @@ describe("motion streaming feedback", () => {
 
   it("streaming color generator is stable for a fixed frame/char and on-palette", () => {
     const gen = createStreamingColors({ width: 10, color: "#f97316" })
-    const first = gen(0, 0, 100, 10)
-    const again = gen(0, 0, 100, 10)
+    const first = gen(0, 0, 100, 10) as RGBA
+    const again = gen(0, 0, 100, 10) as RGBA
+    expect(first).toBeInstanceOf(RGBA)
     expect(first.r).toBe(again.r)
     expect(first.g).toBe(again.g)
     expect(first.b).toBe(again.b)
     // The inactive (default) color must be dim, not a full-brightness cell.
-    const idle = gen(20, 0, 100, 10)
+    const idle = gen(20, 0, 100, 10) as RGBA
+    expect(idle).toBeInstanceOf(RGBA)
     expect(idle.a).toBeLessThan(1)
   })
 
