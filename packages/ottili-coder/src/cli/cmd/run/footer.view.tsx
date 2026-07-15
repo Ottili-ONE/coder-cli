@@ -257,12 +257,12 @@ export function RunFooterView(props: RunFooterViewProps) {
       frames: createStreamingFrames({
         color: theme().highlight,
         width: 10,
-        inactiveFactor: 0.6,
+        inactiveFactor: 0.18,
       }),
       color: createStreamingColors({
         color: theme().highlight,
         width: 10,
-        inactiveFactor: 0.6,
+        inactiveFactor: 0.18,
       }),
     }
   })
