@@ -388,6 +388,13 @@ export function build(input: { slug: string; time: { created: number } }, instan
   return path.join(base, [input.time.created, input.slug].join("-") + ".json")
 }
 
+export function review(input: { slug: string; time: { created: number } }, instance: InstanceContext) {
+  const base = instance.project.vcs
+    ? path.join(instance.worktree, ".ottili-coder", "reviews")
+    : path.join(Global.Path.data, "reviews")
+  return path.join(base, [input.time.created, input.slug].join("-") + ".json")
+}
+
 export const getUsage = (input: { model: Provider.Model; usage: Usage; metadata?: ProviderMetadata }) => {
   const safe = (value: number) => {
     if (!Number.isFinite(value)) return 0
