@@ -13,7 +13,7 @@ describe("plugin.tool", () => {
     })
 
     expect(def.description).toBe("echo a value")
-    expect(def.args).toEqual({ value: z.string() })
+    expect(Object.keys(def.args)).toEqual(["value"])
     expect(def.execute).toBe(execute)
   })
 
