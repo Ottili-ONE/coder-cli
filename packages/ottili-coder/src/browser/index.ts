@@ -291,27 +291,27 @@ export const runSession = Effect.fn("Browser.run")(function* (opts: BrowserOptio
   if (shot.code !== 0) {
     return yield* new BrowserError({ kind: "screenshot-failed", message: shot.stderr || "screenshot failed" })
   }
-  state.artifacts = [
-    ...state.artifacts,
-    new Artifact({ kind: "screenshot", path: join(opts.outputDir ?? opts.cwd, `${sessionId}.png`) }),
-  ]
-  state.status = "testing"
-  state.seq += 1
-  yield* saveState(opts.cwd, sessionId, state)
+  const afterShot: StateShape = {
+    ...state,
+    artifacts: [
+      ...state.artifacts,
+      new Artifact({ kind: "screenshot", path: join(opts.outputDir ?? opts.cwd, `${sessionId}.png`) }),
+    ],
+    status: "testing",
+    seq: state.seq + 1,
+  }
+  yield* saveState(opts.cwd, sessionId, afterShot)
 
   const cleanupCli = ["npx", "-y", "@playwright/test@latest", "clear-cache", "--browser", browser]
   const cleanup = yield* runProcess(cleanupCli, opts.cwd, opts.signal)
   if (cleanup.code !== 0) {
-    state.status = "failed"
-    yield* saveState(opts.cwd, sessionId, state)
+    yield* saveState(opts.cwd, sessionId, { ...afterShot, status: "failed" })
     return yield* new BrowserError({ kind: "cleanup-failed", message: cleanup.stderr || "cleanup failed" })
   }
 
-  state.status = "done"
-  state.finishedAt = Date.now()
-  state.seq += 1
+  const final: StateShape = { ...afterShot, status: "done", finishedAt: Date.now(), seq: afterShot.seq + 1 }
   const sp = statePath(opts.cwd, sessionId)
-  yield* saveState(opts.cwd, sessionId, state)
+  yield* saveState(opts.cwd, sessionId, final)
 
   const exitCode = state.console.some((c) => c.level === "error") ? 0 : 0
   return new BrowserReport({
