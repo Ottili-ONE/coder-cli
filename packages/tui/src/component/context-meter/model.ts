@@ -139,7 +139,7 @@ export function formatTokens(value: number): string {
   if (!Number.isFinite(value)) return "0"
   if (value === 0) return "0"
   if (value >= 1_000_000) return `${Math.round(value / 100_000) / 10}M`
-  if (value >= 1_000) return `${Math.round(value / 100)}K`
+  if (value >= 1_000) return `${Math.round(value / 1000)}K`
   return value.toLocaleString()
 }
 
@@ -444,8 +444,8 @@ export function contextMeterState(
 
   let status: ContextMeterStatus
   if (ctx.offline) status = "offline"
-  else if (ctx.error) status = "failure"
   else if (ctx.denied) status = "denied"
+  else if (ctx.error) status = "failure"
   else if (ctx.loading && !ctx.isReady) status = "loading"
   else if (!ctx.isReady) status = "empty"
   else if (!lastAssistantWithTokens(messages)) status = "empty"
@@ -453,7 +453,25 @@ export function contextMeterState(
   else if (data.limit == null) status = "degraded"
   else status = "populated"
 
-  if (status === "failure" || status === "denied" || status === "offline" || status === "empty") {
+  // Offline still carries the last-known metrics so the meter never blanks; the
+  // other terminal states (failure/denied/empty) have no safe data to show.
+  if (status === "offline") {
+    return {
+      status,
+      data,
+      segments: [],
+      focusIndex: -1,
+      focusedKind: null,
+      narrow,
+      expanded,
+      stale: false,
+      summaryText: summarize(status, ctx, data),
+      meterText: summarize(status, ctx, data),
+      accessibleSummary: accessibleSummary(status, ctx, data),
+    }
+  }
+
+  if (status === "failure" || status === "denied" || status === "empty") {
     return {
       status,
       data: status === "empty" ? data : null,

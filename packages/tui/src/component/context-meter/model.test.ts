@@ -50,23 +50,45 @@ describe("contextMeterState — status", () => {
     expect(state.status).toBe("empty")
   })
 
-  test("renders ready with a known limit", () => {
+  test("renders populated with a known limit", () => {
     const state = contextMeterState([message()], [provider()], ctx())
-    expect(state.status).toBe("ready")
+    expect(state.status).toBe("populated")
     expect(state.data?.usagePercent).toBe(36) // 360/1000
   })
 
-  test("renders unknown when the model limit is missing", () => {
-    const p = provider({ models: { "gpt-4.1": { name: "gpt-4.1", limit: { context: 0 } } } })
-    const state = contextMeterState([message()], [p], ctx())
-    expect(state.status).toBe("unknown")
+  test("renders degraded when the model limit is missing", () => {
+    const state = contextMeterState([message()], [provider({ models: {} })], ctx())
+    expect(state.status).toBe("degraded")
+    expect(state.data?.limit).toBeNull()
   })
 
-  test("renders error and drops data when the harness reports an error", () => {
+  test("renders long-content for very large token totals", () => {
+    const big = message({ tokens: { input: 200_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } } })
+    const state = contextMeterState([big], [provider()], ctx())
+    expect(state.status).toBe("long-content")
+  })
+
+  test("renders failure and drops data when the harness reports an error", () => {
     const state = contextMeterState([message()], [provider()], ctx({ error: "session not found" }))
-    expect(state.status).toBe("error")
+    expect(state.status).toBe("failure")
     expect(state.data).toBeNull()
     expect(state.summaryText).toContain("session not available")
+  })
+
+  test("renders denied when access is blocked", () => {
+    const state = contextMeterState([message()], [provider()], ctx({ denied: true }))
+    expect(state.status).toBe("denied")
+  })
+
+  test("renders offline while still carrying last-known metrics", () => {
+    const state = contextMeterState([message()], [provider()], ctx({ offline: true }))
+    expect(state.status).toBe("offline")
+    expect(state.data).not.toBeNull()
+  })
+
+  test("renders loading while a refresh is in flight and data is not ready", () => {
+    const state = contextMeterState([], [provider()], ctx({ loading: true, isReady: false }))
+    expect(state.status).toBe("loading")
   })
 })
 
@@ -89,10 +111,15 @@ describe("contextMeterState — narrow terminals", () => {
 })
 
 describe("redaction", () => {
-  test("redactError masks leaked secrets in diagnostics", () => {
-    expect(redactError("Bearer sk-abcd1234efgh5678 leaked")).toBe("Bearer •••• sk-•••• leaked")
-    expect(redactError("key=ghp_abcdefghijklmnopqrstuvwxyz012345")).toContain("ghp_••••")
+  test("redactError masks common secret shapes", () => {
+    expect(redactError("sk-abcd1234efgh5678")).toBe("sk-••••")
     expect(redactError("AKIAIOSFODNN7EXAMPLE")).toBe("AKIA••••")
+    expect(redactError("ghp_abcdefghijklmnopqrstuvwxyz012345")).toContain("ghp_••••")
+  })
+
+  test("redactError never leaks the raw secret", () => {
+    expect(redactError("token Bearer sk-abcd1234efgh5678 leaked")).not.toContain("sk-abcd1234efgh5678")
+    expect(redactError("key=ghp_abcdefghijklmnopqrstuvwxyz012345")).not.toContain("ghp_abcdefghijklmnopqrstuvwxyz012345")
   })
 
   test("redactError bounds the message length", () => {
@@ -104,6 +131,7 @@ describe("redaction", () => {
     expect(parseContextError("session not found")).toBe("session not available")
     expect(parseContextError("provider not found")).toBe("provider not available")
     expect(parseContextError("rate limit exceeded")).toBe("usage refresh rate limited")
+    expect(parseContextError("403 forbidden")).toBe("access denied")
   })
 
   test("parseContextError redacts unknown errors rather than throwing", () => {
@@ -134,6 +162,7 @@ describe("focus navigation", () => {
     const first = contextMeterState([message()], [provider()], ctx(), { focusIndex: 2 })
     const second = contextMeterState([message()], [provider()], ctx(), { focusIndex: first.focusIndex })
     expect(second.focusIndex).toBe(first.focusIndex)
+    expect(second.focusedKind).toBe(first.focusedKind)
   })
 })
 
