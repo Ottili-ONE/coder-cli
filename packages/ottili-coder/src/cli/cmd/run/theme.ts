@@ -3,10 +3,12 @@
 // Derives scrollback and footer colors from the terminal's actual palette.
 // resolveRunTheme() queries the renderer for the terminal's palette,
 // detects dark/light mode, builds a small system theme locally, and maps it to
-// the run footer + scrollback color model. Falls back to a hardcoded dark-mode
-// palette if detection fails.
+// the run footer + scrollback color model. When an explicit theme override is
+// supplied it resolves that named Ottili variant instead. Falls back to a
+// hardcoded Ottili-anchored dark palette if detection or resolution fails.
 import { RGBA, SyntaxStyle, type CliRenderer, type ColorInput, type TerminalColors } from "@opentui/core"
 import type { TuiThemeCurrent } from "@opencode-ai/plugin/tui"
+import { hasTheme, resolveActiveTheme } from "./theme-engine"
 import type { EntryKind } from "./types"
 
 type Tone = {
@@ -582,13 +584,13 @@ function map(
 }
 
 const seed = {
-  highlight: RGBA.fromIndex(6, rgba("#38bdf8")),
-  muted: RGBA.fromIndex(8, rgba("#64748b")),
-  text: RGBA.defaultForeground(rgba("#f8fafc")),
-  panel: rgba("#0f172a"),
-  success: RGBA.fromIndex(2, rgba("#22c55e")),
-  warning: RGBA.fromIndex(3, rgba("#f59e0b")),
-  error: RGBA.fromIndex(1, rgba("#ef4444")),
+  highlight: RGBA.fromIndex(9, rgba("#f97316")),
+  muted: RGBA.fromIndex(11, rgba("#7d7670")),
+  text: RGBA.defaultForeground(rgba("#eae6e1")),
+  panel: rgba("#0d0a08"),
+  success: RGBA.fromIndex(2, rgba("#7fd88f")),
+  warning: RGBA.fromIndex(3, rgba("#f5a742")),
+  error: RGBA.fromIndex(1, rgba("#e06c75")),
 }
 
 function tone(body: ColorInput, start?: ColorInput): Tone {
