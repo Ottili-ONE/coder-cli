@@ -98,7 +98,7 @@ export const CompactionInput = Schema.Struct({
 })
 export type CompactionInput = Schema.Schema.Type<typeof CompactionInput>
 
-export const CompactionState = Schema.Literals("idle", "pending", "running", "completed", "failed")
+export const CompactionState = Schema.Literals(["idle", "pending", "running", "completed", "failed"])
 export type CompactionState = Schema.Schema.Type<typeof CompactionState>
 
 // Versioned, headless-friendly status payload returned by session.compaction_status
