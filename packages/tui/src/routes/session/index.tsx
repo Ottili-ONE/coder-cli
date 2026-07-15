@@ -52,6 +52,8 @@ import { TodoItem } from "../../component/todo-item"
 import { ToolCallCard } from "../../component/tool-call-card"
 import { toggleActiveOrLastToolCard } from "../../component/tool-call-store"
 import { DialogMessage } from "./dialog-message"
+import { DialogCostUsage } from "../../component/cost-usage"
+import { DialogCostUsage } from "../../component/cost-usage"
 import type { PromptInfo } from "../../component/prompt/history"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
@@ -1129,30 +1131,9 @@ export function Session() {
       category: "Session",
       slash: { name: "/cost" },
       enabled: true,
-      run: async () => {
+      run: () => {
         dialog.clear()
-        try {
-          const s = (await sdk.client.session.get({ sessionID: route.sessionID }, { throwOnError: true })).data!
-          const cost = s.cost ?? 0
-          const t = s.tokens
-          const lines = [
-            `Session: ${s.title}`,
-            "",
-            `Cost: $${cost.toFixed(4)}`,
-            t ? `Tokens — input: ${t.input}  output: ${t.output}  reasoning: ${t.reasoning}` : "Tokens: n/a",
-            t ? `Cache — read: ${t.cache.read}  write: ${t.cache.write}` : "",
-          ].filter(Boolean)
-          dialog.replace(() => (
-            <Dialog onClose={dialog.clear} size="large">
-              <box padding={1} flexDirection="column">
-                <text>/cost</text>
-                <For each={lines}>{(line) => <text>{line}</text>}</For>
-              </box>
-            </Dialog>
-          ))
-        } catch {
-          toast.show({ message: "Failed to load cost", variant: "error" })
-        }
+        dialog.replace(() => <DialogCostUsage sessionID={route.sessionID} />)
       },
     },
     {

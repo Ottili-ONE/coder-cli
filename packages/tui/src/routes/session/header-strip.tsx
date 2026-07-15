@@ -4,6 +4,7 @@ import { useSync } from "../../context/sync"
 import { useLocal } from "../../context/local"
 import { useTheme } from "../../context/theme"
 import { Locale } from "../../util/locale"
+import { CostUsageMeter } from "../cost-usage"
 
 export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: string }) {
   const sync = useSync()
@@ -42,6 +43,9 @@ export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: 
               <text fg={theme.text}>{model().model}</text>
             </>
           )}
+        </Show>
+        <Show when={model().model}>
+          <CostUsageMeter sessionID={props.sessionID} />
         </Show>
       </box>
       <text fg={theme.textMuted} flexShrink={0}>
