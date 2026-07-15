@@ -2091,17 +2091,9 @@ function GenericTool(props: ToolProps) {
 function Shell(props: ToolProps) {
   const { theme } = useTheme()
   const pathFormatter = usePathFormatter()
-  const ctx = use()
   const isRunning = createMemo(() => props.part.state.status === "running")
   const output = createMemo(() => stripAnsi(stringValue(props.metadata.output)?.trim() ?? ""))
-  const [expanded, setExpanded] = createSignal(false)
-  const maxLines = 10
-  const maxChars = createMemo(() => maxLines * Math.max(20, ctx.width - 6))
-  const collapsed = createMemo(() => collapseToolOutput(output(), maxLines, maxChars()))
-  const limited = createMemo(() => {
-    if (expanded() || !collapsed().overflow) return output()
-    return collapsed().output
-  })
+  const hasOutput = stringValue(props.metadata.output) !== undefined && output().length > 0
 
   const workdirDisplay = createMemo(() => {
     const workdir = stringValue(props.input.workdir)
@@ -2118,31 +2110,28 @@ function Shell(props: ToolProps) {
   })
 
   return (
-    <Switch>
-      <Match when={stringValue(props.metadata.output) !== undefined}>
-        <BlockTool
-          title={title()}
-          part={props.part}
-          spinner={isRunning()}
-          onClick={collapsed().overflow ? () => setExpanded((prev) => !prev) : undefined}
-        >
-          <box gap={1}>
-            <text fg={theme.text}>$ {stringValue(props.input.command)}</text>
-            <Show when={output()}>
-              <text fg={theme.text}>{limited()}</text>
-            </Show>
-            <Show when={collapsed().overflow}>
-              <text fg={theme.textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
-            </Show>
-          </box>
-        </BlockTool>
-      </Match>
-      <Match when={true}>
-        <InlineTool icon="$" pending="Writing command..." complete={stringValue(props.input.command)} part={props.part}>
-          {stringValue(props.input.command)}
-        </InlineTool>
-      </Match>
-    </Switch>
+    <ToolCallCard
+      part={props.part}
+      icon="$"
+      title={title()}
+      pending="Writing command..."
+      complete={stringValue(props.input.command)}
+      collapsible={hasOutput}
+      spinner={isRunning()}
+      statusText={() => toolDurationText(props.part)}
+      separateAfter={props.separateAfter}
+    >
+      <box marginTop={1} gap={1}>
+        <text fg={theme.text} wrapMode="none">
+          $ {stringValue(props.input.command)}
+        </text>
+        <Show when={output()}>
+          <text fg={theme.text} wrapMode="none">
+            {output()}
+          </text>
+        </Show>
+      </box>
+    </ToolCallCard>
   )
 }
 
