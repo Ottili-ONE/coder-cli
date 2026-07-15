@@ -6,6 +6,7 @@ import { Session } from "@/session/session"
 import { MessageV2 } from "@/session/message-v2"
 import { SessionPrompt } from "@/session/prompt"
 import { SessionRevert } from "@/session/revert"
+import { SessionCompaction } from "@/session/compaction"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "@/session/todo"
@@ -67,6 +68,34 @@ export const SummarizePayload = Schema.Struct({
   modelID: ModelV2.ID,
   auto: Schema.optional(Schema.Boolean),
 })
+
+export const CompactionPayload = Schema.Struct({
+  providerID: ProviderV2.ID,
+  modelID: ModelV2.ID,
+  reason: Schema.optional(SessionCompaction.CompactionReason).annotate({
+    description: "Why compaction was triggered (auto|manual|overflow|command).",
+  }),
+  auto: Schema.optional(Schema.Boolean).annotate({
+    description: "Auto-continue the session after compaction (default: false).",
+  }),
+  keep: Schema.optional(SessionCompaction.CompactionKeep).annotate({
+    description: "Per-request recent-context overrides merged over config.compaction.keep.",
+  }),
+  idempotencyKey: Schema.optional(Schema.String).annotate({
+    description: "Client-supplied idempotency key; replays are coalesced.",
+  }),
+  force: Schema.optional(Schema.Boolean).annotate({
+    description: "Skip the busy/ownership conflict check. Recovery/operator use only.",
+  }),
+  respectPermissions: Schema.optional(Schema.Boolean).annotate({
+    description: "Honor permission rules for compaction context gathering (default: true).",
+  }),
+}).annotate({
+  identifier: "CompactionPayload",
+  description: "Request contract for an explicit context compaction (T-CLI-0331).",
+})
+
+export const CompactionStatusPayload = Schema.Void
 export const PromptPayload = Schema.Struct(Struct.omit(SessionPrompt.PromptInput.fields, ["sessionID"]))
 export const CommandPayload = Schema.Struct(Struct.omit(SessionPrompt.CommandInput.fields, ["sessionID"]))
 export const ShellPayload = Schema.Struct(Struct.omit(SessionPrompt.ShellInput.fields, ["sessionID"]))
@@ -92,6 +121,8 @@ export const SessionPaths = {
   share: `${root}/:sessionID/share`,
   init: `${root}/:sessionID/init`,
   summarize: `${root}/:sessionID/summarize`,
+  compact: `${root}/:sessionID/compact`,
+  compactionStatus: `${root}/:sessionID/compaction_status`,
   prompt: `${root}/:sessionID/message`,
   promptAsync: `${root}/:sessionID/prompt_async`,
   command: `${root}/:sessionID/command`,
@@ -300,17 +331,31 @@ export const SessionApi = HttpApi.make("session")
             description: "Remove the shareable link for a session, making it private again.",
           }),
         ),
-        HttpApiEndpoint.post("summarize", SessionPaths.summarize, {
+        HttpApiEndpoint.post("compact", SessionPaths.compact, {
           params: { sessionID: SessionID },
           query: WorkspaceRoutingQuery,
-          payload: SummarizePayload,
-          success: described(Schema.Boolean, "Summarized session"),
+          payload: CompactionPayload,
+          success: described(SessionCompaction.CompactionStatus, "Compaction admitted"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError, SessionBusyError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.compact",
+            summary: "Compact session context",
+            description:
+              "Trigger the context compaction engine: condense messages and tool output into a source-linked summary that preserves decisions, failures and unresolved tasks. Supports idempotency (idempotencyKey), cancellation (SessionBusyError on conflict) and recovery (force).",
+          }),
+        ),
+        HttpApiEndpoint.get("compactionStatus", SessionPaths.compactionStatus, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          success: described(SessionCompaction.CompactionStatus, "Compaction status"),
           error: [HttpApiError.BadRequest, ApiNotFoundError],
         }).annotateMerge(
           OpenApi.annotations({
-            identifier: "session.summarize",
-            summary: "Summarize session",
-            description: "Generate a concise summary of the session using AI compaction to preserve key information.",
+            identifier: "session.compaction_status",
+            summary: "Get compaction status",
+            description:
+              "Return the versioned, headless-friendly compaction status for a session (idempotency, state, source-linked boundaries).",
           }),
         ),
         HttpApiEndpoint.post("prompt", SessionPaths.prompt, {
