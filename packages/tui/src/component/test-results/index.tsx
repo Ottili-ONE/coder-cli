@@ -56,7 +56,7 @@ export interface TestResultsProps {
 }
 
 function resolveBoolean(value: Accessor<boolean | undefined> | undefined, fallback: boolean): boolean {
-  return value ? value() : fallback
+  return value ? (value() ?? fallback) : fallback
 }
 
 function resolveLevel(level: number | Accessor<number> | undefined): number {

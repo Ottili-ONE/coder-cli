@@ -111,8 +111,15 @@ function stateApi(sync: ReturnType<typeof useSync>): TuiPluginApi["state"] {
     },
     get vcs() {
       if (!sync.data.vcs) return
+      const vcs = sync.data.vcs
       return {
-        branch: sync.data.vcs.branch,
+        branch: vcs.branch,
+        default_branch: vcs.default_branch,
+        dirty: vcs.dirty,
+        ahead: vcs.ahead,
+        behind: vcs.behind,
+        conflict: vcs.conflict,
+        worktree: vcs.worktree,
       }
     },
     session: {

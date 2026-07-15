@@ -451,7 +451,7 @@ export const {
 
         case "vcs.branch.updated": {
           if (workspace === project.workspace.current()) {
-            setStore("vcs", { branch: event.properties.branch })
+            setStore("vcs", (prev) => ({ ...prev, branch: event.properties.branch }))
           }
           break
         }

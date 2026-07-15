@@ -382,7 +382,20 @@ export type TuiState = {
     worktree: string
     directory: string
   }
-  readonly vcs: { branch?: string } | undefined
+  readonly vcs: {
+    branch?: string
+    default_branch?: string
+    dirty?: {
+      added: number
+      modified: number
+      deleted: number
+      untracked: number
+    }
+    ahead?: number
+    behind?: number
+    conflict?: number
+    worktree?: number
+  } | undefined
   session: {
     count: () => number
     get: (sessionID: string) => Session | undefined

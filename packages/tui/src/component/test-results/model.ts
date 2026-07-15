@@ -87,13 +87,13 @@ export interface TestRun {
 }
 
 export interface TestRunSummary {
-  readonly total: number
-  readonly passed: number
-  readonly failed: number
-  readonly skipped: number
-  readonly todo: number
-  readonly queued: number
-  readonly running: number
+  total: number
+  passed: number
+  failed: number
+  skipped: number
+  todo: number
+  queued: number
+  running: number
 }
 
 export type TestNodeFilter = "all" | "failed" | "passed" | "skipped"
@@ -205,8 +205,8 @@ export function parseTestOutput(opts: { command: string; output: string; id?: st
   const command = opts.command ?? ""
   const lines = opts.output.split("\n").map(clean)
   const runner = detectRunner(command, opts.output)
-  const root: TestSuite = { id: "suite:root", kind: "suite", name: "All tests", status: "passed", children: [] }
   let failed = 0
+  let children: TestNode[]
 
   if (runner === "unknown") {
     const cases = lines
@@ -217,36 +217,41 @@ export function parseTestOutput(opts: { command: string; output: string; id?: st
         if (isErr) failed++
         return caseFrom(line, status, undefined, isErr ? redactSensitive(line).text : undefined)
       })
-    root.children = cases.length ? [groupSuite("Output", cases)] : []
-    root.status = deriveSuiteStatus(root.children)
-    return finish(command, runner, root, opts.id, failed)
-  }
+    children = cases.length ? [groupSuite("Output", cases)] : []
+  } else {
+    const fileMap = new Map<string, TestCase[]>()
+    const loose: TestCase[] = []
 
-  const fileMap = new Map<string, TestCase[]>()
-  const loose: TestCase[] = []
-
-  for (const line of lines) {
-    const hit = classifyCaseLine(line)
-    if (!hit) continue
-    if (hit.status === "failed") failed++
-    const parts = splitPath(hit.name)
-    const file = parts[0]
-    if (parts.length > 1 || runner === "pytest") {
-      const list = fileMap.get(file) ?? []
-      list.push(caseFrom(hit.name, hit.status, hit.durationMs))
-      fileMap.set(file, list)
-    } else {
-      loose.push(caseFrom(hit.name, hit.status, hit.durationMs))
+    for (const line of lines) {
+      const hit = classifyCaseLine(line)
+      if (!hit) continue
+      if (hit.status === "failed") failed++
+      const parts = splitPath(hit.name)
+      const file = parts[0]
+      if (parts.length > 1 || runner === "pytest") {
+        const list = fileMap.get(file) ?? []
+        list.push(caseFrom(hit.name, hit.status, hit.durationMs))
+        fileMap.set(file, list)
+      } else {
+        loose.push(caseFrom(hit.name, hit.status, hit.durationMs))
+      }
     }
+
+    const suites: TestNode[] = []
+    for (const [file, cases] of fileMap) {
+      suites.push(groupSuite(file, cases))
+    }
+    if (loose.length) suites.push(...loose)
+    children = suites
   }
 
-  const suites: TestNode[] = []
-  for (const [file, cases] of fileMap) {
-    suites.push(groupSuite(file, cases))
+  const root: TestSuite = {
+    id: "suite:root",
+    kind: "suite",
+    name: "All tests",
+    status: deriveSuiteStatus(children),
+    children,
   }
-  if (loose.length) suites.push(...loose)
-  root.children = suites
-  root.status = deriveSuiteStatus(root.children)
   return finish(command, runner, root, opts.id, failed)
 }
 

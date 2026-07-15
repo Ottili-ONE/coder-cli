@@ -243,9 +243,22 @@ export const Event = {
   }),
 }
 
+export const Dirty = Schema.Struct({
+  added: Schema.Number,
+  modified: Schema.Number,
+  deleted: Schema.Number,
+  untracked: Schema.Number,
+}).annotate({ identifier: "VcsDirty" })
+export type Dirty = Schema.Schema.Type<typeof Dirty>
+
 export const Info = Schema.Struct({
   branch: Schema.optional(Schema.String),
   default_branch: Schema.optional(Schema.String),
+  dirty: Schema.optional(Dirty),
+  ahead: Schema.optional(Schema.Number),
+  behind: Schema.optional(Schema.Number),
+  conflict: Schema.optional(Schema.Number),
+  worktree: Schema.optional(Schema.Number),
 }).annotate({ identifier: "VcsInfo" })
 export type Info = Schema.Schema.Type<typeof Info>
 
@@ -288,6 +301,7 @@ export interface Interface {
   readonly init: () => Effect.Effect<void>
   readonly branch: () => Effect.Effect<string | undefined>
   readonly defaultBranch: () => Effect.Effect<string | undefined>
+  readonly info: () => Effect.Effect<Info>
   readonly status: () => Effect.Effect<FileStatus[]>
   readonly diff: (mode: Mode, options?: DiffOptions) => Effect.Effect<FileDiff[]>
   readonly diffRaw: () => Effect.Effect<string>
@@ -350,6 +364,53 @@ export const layer: Layer.Layer<Service, never, Git.Service | EventV2Bridge.Serv
       }),
       defaultBranch: Effect.fn("Vcs.defaultBranch")(function* () {
         return yield* InstanceState.use(state, (x) => x.root?.name)
+      }),
+      info: Effect.fn("Vcs.info")(function* () {
+        const ctx = yield* InstanceState.context
+        if (ctx.project.vcs !== "git") {
+          return { branch: undefined, default_branch: undefined }
+        }
+        const [branch, defaultBase, list, aheadBehind, worktree] = yield* Effect.all(
+          [
+            git.branch(ctx.directory),
+            git.defaultBranch(ctx.directory),
+            git.status(ctx.directory),
+            git.aheadBehind(ctx.directory),
+            git.worktreeCount(ctx.directory),
+          ],
+          { concurrency: 5 },
+        )
+        let added = 0
+        let modified = 0
+        let deleted = 0
+        let untracked = 0
+        let conflict = 0
+        for (const item of list) {
+          if (item.code === "??") {
+            untracked++
+            continue
+          }
+          if (item.code.includes("U") || item.code === "AA" || item.code === "DD") {
+            conflict++
+            continue
+          }
+          if (item.status === "added") added++
+          else if (item.status === "deleted") deleted++
+          else modified++
+        }
+        const dirty: Dirty | undefined =
+          added + modified + deleted + untracked + conflict > 0
+            ? { added, modified, deleted, untracked }
+            : undefined
+        return {
+          branch,
+          default_branch: defaultBase?.name,
+          dirty,
+          ahead: aheadBehind?.ahead,
+          behind: aheadBehind?.behind,
+          conflict: conflict > 0 ? conflict : undefined,
+          worktree: worktree > 1 ? worktree : undefined,
+        }
       }),
       status: Effect.fn("Vcs.status")(function* () {
         const ctx = yield* InstanceState.context
