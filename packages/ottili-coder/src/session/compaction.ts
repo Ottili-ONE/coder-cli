@@ -36,6 +36,113 @@ export const Event = {
   }),
 }
 
+// JSON/headless output for compaction status is versioned so headless
+// consumers can detect and adapt to wire-shape changes without breaking.
+export const CompactionOutputVersion = "1" as const
+
+export const CompactionReason = Schema.Literals("auto", "manual", "overflow", "command")
+export type CompactionReason = Schema.Schema.Type<typeof CompactionReason>
+
+export const CompactionKeep = Schema.Struct({
+  tokens: NonNegativeInt.pipe(Schema.optional).annotate({
+    description: "Override: max recent tokens preserved verbatim (maps to keep.tokens)",
+  }),
+  turns: NonNegativeInt.pipe(Schema.optional).annotate({
+    description: "Override: recent user turns preserved verbatim (maps to keep.turns)",
+  }),
+}).annotate({
+  identifier: "CompactionKeep",
+  description: "Per-request overrides for the recent-context budget.",
+})
+
+// Service-level input contract for an explicit compaction request. Reuses the
+// config schema (auto/prune/keep) as defaults and adds request-scoped flags.
+export const CompactionInput = Schema.Struct({
+  sessionID: SessionID,
+  agent: Schema.String,
+  model: Schema.Struct({
+    providerID: ProviderV2.ID,
+    modelID: ModelV2.ID,
+  }),
+  reason: CompactionReason.pipe(Schema.optional).annotate({
+    description: "Why compaction was triggered; drives idempotency key and event reason.",
+  }),
+  auto: Schema.optional(Schema.Boolean).annotate({
+    description: "Whether this compaction auto-continues the session afterwards (default: false).",
+  }),
+  keep: CompactionKeep.pipe(Schema.optional).annotate({
+    description: "Per-request recent-context overrides; merged over config.compaction.keep.",
+  }),
+  // Idempotency: same key within a session is a no-op if a compaction is
+  // already in flight or recently completed. Prevents duplicate work when a
+  // client retries after a network/timeout error.
+  idempotencyKey: Schema.String.pipe(Schema.optional).annotate({
+    description: "Client-supplied idempotency key. Replays of the same key are coalesced.",
+  }),
+  // Cancellation: an explicit compaction request refuses to run while another
+  // compaction owns the session (SessionBusyError -> HTTP 409). `force` opts
+  // out of the conflict check for recovery/operator use only.
+  force: Schema.optional(Schema.Boolean).annotate({
+    description: "Skip the busy/session-ownership conflict check. Recovery/operator use only.",
+  }),
+  // Permissions: explicit compaction triggers the compaction agent which may
+  // read tool history but never executes tools, so no tool permission prompt
+  // is required. `respectPermissions` keeps this explicit at the boundary.
+  respectPermissions: Schema.optional(Schema.Boolean).annotate({
+    description: "Honor permission rules for compaction context gathering (default: true).",
+  }),
+}).annotate({
+  identifier: "CompactionInput",
+  description: "Request contract for an explicit context compaction.",
+})
+export type CompactionInput = Schema.Schema.Type<typeof CompactionInput>
+
+export const CompactionState = Schema.Literals("idle", "pending", "running", "completed", "failed")
+export type CompactionState = Schema.Schema.Type<typeof CompactionState>
+
+// Versioned, headless-friendly status payload returned by session.compaction_status
+// and emitted on completion. Designed for JSON output consumers.
+export const CompactionStatus = Schema.Struct({
+  version: Schema.Literal(CompactionOutputVersion).annotate({
+    description: "Output schema version for headless/JSON consumers.",
+  }),
+  sessionID: SessionID,
+  state: CompactionState,
+  reason: CompactionReason.pipe(Schema.optional),
+  messageID: MessageID.pipe(Schema.optional).annotate({
+    description: "The compaction user-message ID once a request is admitted.",
+  }),
+  summaryMessageID: MessageID.pipe(Schema.optional).annotate({
+    description: "The assistant summary message ID once compaction completes.",
+  }),
+  tailStartID: MessageID.pipe(Schema.optional).annotate({
+    description: "First message ID kept verbatim after compaction (source-linked boundary).",
+  }),
+  prunedParts: Schema.Number.pipe(Schema.optional).annotate({
+    description: "Count of tool-output parts pruned to reclaim context (source-linked).",
+  }),
+  preservedDecisions: Schema.Number.pipe(Schema.optional).annotate({
+    description: "Count of decision/failure/unresolved markers preserved in the summary (T-CLI-0331 outcome).",
+  }),
+  idempotencyKey: Schema.String.pipe(Schema.optional),
+  error: Schema.String.pipe(Schema.optional),
+  updatedAt: Schema.Number,
+}).annotate({
+  identifier: "CompactionStatus",
+  description: "Versioned headless status for the context compaction engine.",
+})
+export type CompactionStatus = Schema.Schema.Type<typeof CompactionStatus>
+
+export const COMPACTION_EXIT_CODES = {
+  success: 0,
+  cancelled: 130,
+  busy: 1,
+  invalidInput: 2,
+  notFound: 3,
+  permissionDenied: 4,
+  internalError: 5,
+} as const
+
 export const PRUNE_MINIMUM = 20_000
 export const PRUNE_PROTECT = 40_000
 const TOOL_OUTPUT_MAX_CHARS = 2_000
