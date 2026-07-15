@@ -2,6 +2,7 @@ import { createEffect, createMemo, type ParentProps } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import {
+  type ParityState,
   type ParitySurface,
   type PlatformCapabilities,
   resolveLayoutTier,
