@@ -18,15 +18,15 @@ function createResolvedKeymapConfig(input: TuiKeybind.KeybindOverrides = {}) {
   }
 }
 
-test("focus_toggle default binding is the leader-f chord", () => {
-  expect(TuiKeybind.defaultValue("focus_toggle")).toBe("<leader>f")
+test("session_compact default binding is the leader-c chord", () => {
+  expect(TuiKeybind.defaultValue("session_compact")).toBe("<leader>c")
 })
 
-test("focus_toggle maps to the session.focus.toggle command", () => {
-  expect(TuiKeybind.CommandMap.focus_toggle).toBe("session.focus.toggle")
+test("session_compact maps to the session.compact command", () => {
+  expect(TuiKeybind.CommandMap.session_compact).toBe("session.compact")
 })
 
-test("session.focus.toggle resolves to a leader chord ending in 'f'", async () => {
+test("session.compact resolves to a leader chord ending in 'c'", async () => {
   const sequences: string[][] = []
 
   function Harness() {
@@ -35,14 +35,14 @@ test("session.focus.toggle resolves to a leader chord ending in 'f'", async () =
     const config = createResolvedKeymapConfig()
     const offKeymap = registerOttiliCoderKeymap(keymap, renderer, config)
     keymap.registerLayer({
-      commands: [{ name: "session.focus.toggle", run() {} }],
-      bindings: config.keybinds.gather("session", ["session.focus.toggle"]),
+      commands: [{ name: "session.compact", run() {} }],
+      bindings: config.keybinds.gather("session", ["session.compact"]),
     })
     const bindings = keymap.getCommandBindings({
       visibility: "registered",
-      commands: ["session.focus.toggle"],
+      commands: ["session.compact"],
     })
-    for (const binding of bindings.get("session.focus.toggle") ?? []) {
+    for (const binding of bindings.get("session.compact") ?? []) {
       sequences.push(binding.sequence.map((part) => part.stroke.name))
     }
     onCleanup(() => offKeymap())
@@ -56,36 +56,36 @@ test("session.focus.toggle resolves to a leader chord ending in 'f'", async () =
 
   const app = await testRender(() => <Harness />)
   try {
-    // The binding must exist and be a leader chord (leader + f).
+    // The binding must exist and be a leader chord (leader + c).
     expect(sequences.length).toBeGreaterThan(0)
     for (const seq of sequences) {
       expect(seq.length).toBe(2)
-      expect(seq[seq.length - 1]).toBe("f")
+      expect(seq[seq.length - 1]).toBe("c")
     }
   } finally {
     app.renderer.destroy()
   }
 })
 
-test("focus_toggle overrides are honoured by the resolved keymap", () => {
-  // Default is the two-stroke leader chord "<leader>f" (leader + f).
+test("session_compact overrides are honoured by the resolved keymap", () => {
+  // Default is the two-stroke leader chord "<leader>c" (leader + c).
   const defaults = TuiKeybind.parse({})
   const defaultConfig = createBindingLookup(TuiKeybind.toBindingConfig(defaults), {
     commandMap: TuiKeybind.CommandMap,
     bindingDefaults: TuiKeybind.bindingDefaults(),
   })
-  const defaultBindings = defaultConfig.gather("session", ["session.focus.toggle"])
+  const defaultBindings = defaultConfig.gather("session", ["session.compact"])
   expect(defaultBindings.length).toBe(1)
   expect(typeof defaultBindings[0].key).toBe("string")
   expect(defaultBindings[0].key).toContain("leader")
 
   // An override replaces the leader chord with a single key stroke.
-  const keybinds = TuiKeybind.parse({ focus_toggle: "ctrl+f" })
+  const keybinds = TuiKeybind.parse({ session_compact: "ctrl+k" })
   const config = createBindingLookup(TuiKeybind.toBindingConfig(keybinds), {
     commandMap: TuiKeybind.CommandMap,
     bindingDefaults: TuiKeybind.bindingDefaults(),
   })
-  const bindings = config.gather("session", ["session.focus.toggle"])
+  const bindings = config.gather("session", ["session.compact"])
   expect(bindings.length).toBe(1)
-  expect(bindings[0].key).toBe("ctrl+f")
+  expect(bindings[0].key).toBe("ctrl+k")
 })

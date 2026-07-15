@@ -48,17 +48,17 @@ describe("classifyCompactState — harness failures take precedence", () => {
     expect(classifyCompactState(ctx(), data())).toBe("empty")
   })
   test("degraded with content is degraded", () => {
-    expect(classifyCompactState(ctx({ degraded: true }), data({ hasContent: true }))).toBe("degraded")
+    expect(classifyCompactState(ctx({ degraded: true }), data({ messageCount: 1, hasContent: true }))).toBe("degraded")
   })
   test("degraded without content falls through to empty", () => {
     expect(classifyCompactState(ctx({ degraded: true }), data())).toBe("empty")
   })
   test("long content is detected by longest message or total volume", () => {
-    expect(classifyCompactState(ctx(), data({ hasContent: true, longestMessageLength: COMPACT_LONG_CONTENT_CHARS }))).toBe(
-      "long-content",
-    )
     expect(
-      classifyCompactState(ctx(), data({ hasContent: true, totalChars: COMPACT_LONG_CONTENT_TOTAL_CHARS })),
+      classifyCompactState(ctx(), data({ messageCount: 1, hasContent: true, longestMessageLength: COMPACT_LONG_CONTENT_CHARS })),
+    ).toBe("long-content")
+    expect(
+      classifyCompactState(ctx(), data({ messageCount: 1, hasContent: true, totalChars: COMPACT_LONG_CONTENT_TOTAL_CHARS })),
     ).toBe("long-content")
   })
   test("content without long threshold is populated", () => {
@@ -216,7 +216,7 @@ describe("windowMessages — performance budget for large transcripts", () => {
     expect(windowMessages(list, 600, false)).toBe(list)
   })
   test("returns the full list when under budget", () => {
-    expect(windowMessages(list, 600, true).length).toBe(1000)
+    expect(windowMessages(list, 2000, true).length).toBe(1000)
   })
   test("keeps only the most recent tail when over budget", () => {
     const windowed = windowMessages(list, 600, true)
