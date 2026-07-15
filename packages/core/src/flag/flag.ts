@@ -83,6 +83,16 @@ export const Flag = {
     return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_TUI_UPDATE_BANNER")
   },
 
+  // Diagnostics screen (T-CLI-0236 / T-CLI-0238 / T-CLI-0239): consolidated
+  // TUI diagnostics dialog (Environment, Providers, MCP, LSP, Formatters,
+  // Plugins, Account/Cloud, Logs) replacing the legacy status surface when the
+  // flag is on. The MEE flag EVOLUTION_T_CLI_0236_TUI_REDESIGN_DIAGNOSTICS_SCREEN__IN_ENABLED
+  // maps to this env var; off keeps the existing DialogStatus behavior.
+  get OTTILI_CODER_EXPERIMENTAL_TUI_DIAGNOSTICS() {
+    if (truthy("EVOLUTION_T_CLI_0236_TUI_REDESIGN_DIAGNOSTICS_SCREEN__IN_ENABLED")) return true
+    return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_TUI_DIAGNOSTICS")
+  },
+
   // Search across session (T-CLI-0185): unified full-session search surface
   // over messages, tool calls, files, tasks, errors and decisions. The
   // redesigned surface is always active; this flag additionally exposes the

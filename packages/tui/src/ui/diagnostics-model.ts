@@ -1,399 +1,155 @@
 /**
- * Diagnostics domain model for the Ottili Coder TUI.
+ * Diagnostics screen domain model for the Ottili Coder TUI.
  *
  * Pure and rendering-free so the diagnostics logic can be unit tested in
- * isolation and reused by the Solid view in `../component/dialog-diagnostics.tsx`.
+ * isolation and reused by the Solid view in `../component/dialog-diagnostics`.
  * Every transition is a pure function: it takes inputs and returns new values,
  * which keeps the data flow deterministic and snapshot-free in tests.
  *
- * The model mirrors the patterns established by `update-banner-model.ts` and
- * `agent-roster/model.ts`. It reuses `redactSensitive`, `truncate` and
- * `isNarrow` from the agent roster model, exactly as `update-banner-model.ts`
- * already does, so secrets are never rendered and the surface stays within a
- * predictable render budget.
+ * This module consolidates every diagnostic domain — environment, providers,
+ * MCP, LSP, formatters, plugins, account/cloud and logs — into a single typed
+ * model. Data is gathered by `collectDiagnostics`, which accepts injected
+ * `sources` so unit tests stub them with no network or filesystem access.
  *
- * Data collection is fully injectable: `collectDiagnostics` accepts a
- * `DiagnosticsSources` object that the view assembles from real application
- * state (`useSync()`, `process`, `useSDK()`). Unit tests pass stubbed sources
- * so no network or filesystem access is required.
+ * The model mirrors `update-banner-model.ts` (pure, no SolidJS, fully
+ * unit-testable) and reuses `redactSensitive`, `truncate` and `isNarrow` from
+ * `agent-roster/model`. Color is never the only signal: every status carries a
+ * glyph + word, and the export bundle redacts any key/token values.
  */
 
-import { redactSensitive, truncate, isNarrow } from "../component/agent-roster/model"
+import { isNarrow, redactSensitive, truncate } from "../component/agent-roster/model"
 
-/** Rollup health of a single diagnostics domain (section) or the whole surface. */
+/** Rollup status for any diagnostic element. */
 export type DiagnosticsStatus = "ok" | "warn" | "error" | "unknown"
 
-/** A single key/value field rendered as `key: value` (env, runtime, cwd, …). */
-export interface DiagnosticsField {
-  key: string
-  value: string
-  /** When true the value is run through `redactSecrets` before display/export. */
-  redact?: boolean
+const SEVERITY: Record<DiagnosticsStatus, number> = {
+  ok: 0,
+  unknown: 1,
+  warn: 2,
+  error: 3,
 }
 
-/** A single row inside a section (an MCP server, a provider, an account, …). */
-export interface DiagnosticsItem {
-  label: string
+/** Severity ordering so "worst wins" when rolling up sections. */
+export function statusSeverity(status: DiagnosticsStatus): number {
+  return SEVERITY[status]
+}
+
+/** Reduce a list of statuses to the most severe one. Pure. */
+export function worstStatus(...statuses: DiagnosticsStatus[]): DiagnosticsStatus {
+  return statuses.reduce<DiagnosticsStatus>(
+    (acc, next) => (SEVERITY[next] > SEVERITY[acc] ? next : acc),
+    "ok",
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Structured diagnostics data
+// ---------------------------------------------------------------------------
+
+/** Environment facts gathered from the runtime (mirrors doctor.report). */
+export interface EnvironmentInfo {
+  version: string
+  runtime: string
+  platform: string
+  cwd: string
+  git: string | null
+  repoRoot: string | null
+  hooks: string[]
+}
+
+export type ProviderSource = "env" | "config" | "oauth" | "account"
+
+/** A provider the user could route through, regardless of how it was configured. */
+export interface ProviderInfo {
+  name: string
+  source: ProviderSource
+  status: DiagnosticsStatus
   detail?: string
-  status: DiagnosticsStatus
-  /** Optional corrective deep-link, e.g. open the MCP dialog to fix a failed server. */
-  fix?: { command: string; label: string }
 }
 
-/** A collapsible diagnostics section shown in the dialog. */
-export interface DiagnosticsSection {
-  id: string
-  title: string
-  status: DiagnosticsStatus
-  collapsed: boolean
-  fields: DiagnosticsField[]
-  items: DiagnosticsItem[]
-  /** Shown when the section is empty or otherwise has nothing actionable. */
-  note?: string
-}
+export type McpStatus =
+  | "connected"
+  | "failed"
+  | "disabled"
+  | "needs_auth"
+  | "needs_client_registration"
 
-/** The full structured diagnostics payload consumed by the view. */
-export interface DiagnosticsData {
-  sections: DiagnosticsSection[]
-}
-
-// ---------------------------------------------------------------------------
-// Source shapes (structural; the view maps SDK types into these)
-// ---------------------------------------------------------------------------
-
-export interface DiagnosticsMcpLike {
-  status: "connected" | "failed" | "disabled" | "needs_auth" | "needs_client_registration"
+export interface McpServerInfo {
+  name: string
+  status: McpStatus
   error?: string
 }
 
-export interface DiagnosticsLspLike {
-  id: string
-  root: string
-  status: "connected" | "error"
-}
+export type LspStatus = "connected" | "error"
 
-export interface DiagnosticsFormatterLike {
+export interface LspServerInfo {
   name: string
-  enabled: boolean
+  status: LspStatus
+  error?: string
 }
 
-export interface DiagnosticsPluginLike {
+export interface NamedInfo {
   name: string
   version?: string
 }
 
-export interface DiagnosticsProviderSource {
-  name: string
-  source: "env" | "config" | "oauth" | "account"
-  status: DiagnosticsStatus
-}
-
-export interface DiagnosticsAccountLike {
+export interface AccountInfo {
   loggedIn: boolean
-  email?: string
-  orgName?: string
+  cloudConfigured: boolean
 }
 
-export interface DiagnosticsCloudLike {
-  configured: boolean
-  activeJobs?: number
+export interface LogLine {
+  level: string
+  message: string
 }
 
-export interface DiagnosticsLogsLike {
+export interface LogsInfo {
   available: boolean
-  lines: string[]
+  lines: LogLine[]
 }
 
-/**
- * Everything `collectDiagnostics` needs, gathered by the view from real state.
- * Keeping this the single input keeps the model pure and unit-testable.
- */
-export interface DiagnosticsSources {
-  version: string
-  cwd: string
-  env: Record<string, string | undefined>
-  runtime: { bun?: string; node: string }
-  platform: { platform: string; arch: string }
-  git?: { version?: string; root?: string; branch?: string }
-  hooks?: string[]
-  providers: DiagnosticsProviderSource[]
-  mcp: Record<string, DiagnosticsMcpLike>
-  lsp: DiagnosticsLspLike[]
-  formatter: DiagnosticsFormatterLike[]
-  plugins: DiagnosticsPluginLike[]
-  accountStatus: DiagnosticsAccountLike
-  cloudStatus: DiagnosticsCloudLike
-  logs?: DiagnosticsLogsLike
+/** Full structured diagnostics snapshot consumed by the view model. */
+export interface DiagnosticsData {
+  collectedAt: number
+  environment: EnvironmentInfo | null
+  providers: ProviderInfo[]
+  mcp: McpServerInfo[]
+  lsp: LspServerInfo[]
+  formatters: NamedInfo[]
+  plugins: NamedInfo[]
+  account: AccountInfo | null
+  logs: LogsInfo
 }
 
 // ---------------------------------------------------------------------------
-// Status rollup helpers
+// View model (presentational)
 // ---------------------------------------------------------------------------
 
-/** Worst-case status across a set (error > warn > unknown > ok). */
-export function worstStatus(statuses: DiagnosticsStatus[]): DiagnosticsStatus {
-  if (statuses.includes("error")) return "error"
-  if (statuses.includes("warn")) return "warn"
-  if (statuses.includes("unknown")) return "unknown"
-  return "ok"
+export interface DiagnosticsItem {
+  label: string
+  value?: string
+  status: DiagnosticsStatus
+  detail?: string
+  /** Optional inline corrective action (e.g. fix a failed MCP server). */
+  action?: { key: string; label: string; command: string }
 }
 
-/** Single-glyph status marker; color is never the only signal (a word always accompanies it). */
-export function statusGlyph(status: DiagnosticsStatus, useColor = true): string {
-  if (useColor) {
-    switch (status) {
-      case "ok":
-        return "●"
-      case "warn":
-        return "▲"
-      case "error":
-        return "✕"
-      case "unknown":
-        return "?"
-    }
-  }
-  switch (status) {
-    case "ok":
-      return "[ok]"
-    case "warn":
-      return "[warn]"
-    case "error":
-      return "[err]"
-    case "unknown":
-      return "[?]"
-  }
+export interface DiagnosticsSection {
+  id: string
+  title: string
+  status: DiagnosticsStatus
+  items: DiagnosticsItem[]
 }
 
-/** Spelled-out status word so color-blind / no-color terminals stay legible. */
-export function statusWord(status: DiagnosticsStatus): string {
-  switch (status) {
-    case "ok":
-      return "ok"
-    case "warn":
-      return "warn"
-    case "error":
-      return "error"
-    case "unknown":
-      return "unknown"
-  }
+export interface DiagnosticsView {
+  sections: DiagnosticsSection[]
+  overall: DiagnosticsStatus
+  counts: { ok: number; warn: number; error: number; unknown: number }
+  ariaLabel: string
+  tier: DiagnosticsTier
 }
 
-/** Color-role token the view maps onto an Ottili palette color. */
-export function statusColorRole(status: DiagnosticsStatus): "success" | "warning" | "error" | "info" | "text" {
-  switch (status) {
-    case "ok":
-      return "success"
-    case "warn":
-      return "warning"
-    case "error":
-      return "error"
-    case "unknown":
-      return "info"
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Section builders
-// ---------------------------------------------------------------------------
-
-/** Environment: version, runtime, platform, cwd, git and hooks. */
-export function buildEnvironmentSection(s: DiagnosticsSources): DiagnosticsSection {
-  const fields: DiagnosticsField[] = [
-    { key: "version", value: s.version },
-    { key: "runtime", value: `bun ${s.runtime.bun ?? "n/a"} / node ${s.runtime.node}` },
-    { key: "platform", value: `${s.platform.platform} ${s.platform.arch}` },
-    { key: "cwd", value: s.cwd },
-  ]
-  if (s.git) {
-    fields.push({ key: "git", value: s.git.version ?? "unknown" })
-    if (s.git.root) fields.push({ key: "repo root", value: s.git.root })
-    if (s.git.branch) fields.push({ key: "branch", value: s.git.branch })
-  } else {
-    fields.push({ key: "git", value: "not a git repository" })
-  }
-  if (s.hooks && s.hooks.length) fields.push({ key: "hooks", value: s.hooks.join(", ") })
-
-  return { id: "environment", title: "Environment", status: "ok", collapsed: false, fields, items: [] }
-}
-
-/** Providers: unified from env keys, config and account sign-in. */
-export function buildProvidersSection(s: DiagnosticsSources): DiagnosticsSection {
-  const items: DiagnosticsItem[] = s.providers.map((p) => ({
-    label: p.name,
-    detail: `source: ${p.source}`,
-    status: p.status,
-  }))
-
-  if (items.length === 0) {
-    return {
-      id: "providers",
-      title: "Providers",
-      status: "warn",
-      collapsed: false,
-      fields: [],
-      items: [],
-      note: "No API keys detected — set a provider API key in your environment or configure it via ottiliCoder.json / your account.",
-    }
-  }
-
-  return { id: "providers", title: "Providers", status: worstStatus(items.map((i) => i.status)), collapsed: false, fields: [], items }
-}
-
-/** MCP servers with corrective deep-links for failed / needs-auth states. */
-export function buildMcpSection(mcp: Record<string, DiagnosticsMcpLike>): DiagnosticsSection {
-  const items: DiagnosticsItem[] = Object.entries(mcp).map(([name, m]) => {
-    switch (m.status) {
-      case "connected":
-        return { label: name, detail: "Connected", status: "ok" }
-      case "disabled":
-        return { label: name, detail: "Disabled in configuration", status: "ok" }
-      case "failed":
-        return {
-          label: name,
-          detail: m.error ?? "Failed",
-          status: "error",
-          fix: { command: "ottiliCoder.mcp", label: "fix" },
-        }
-      case "needs_auth":
-        return {
-          label: name,
-          detail: `Needs authentication (run: ottili-coder mcp auth ${name})`,
-          status: "warn",
-          fix: { command: "ottiliCoder.mcp", label: "fix" },
-        }
-      case "needs_client_registration":
-        return {
-          label: name,
-          detail: m.error ?? "Needs client registration",
-          status: "error",
-          fix: { command: "ottiliCoder.mcp", label: "fix" },
-        }
-    }
-  })
-
-  if (items.length === 0) {
-    return { id: "mcp", title: "MCP", status: "ok", collapsed: false, fields: [], items, note: "None configured" }
-  }
-
-  return { id: "mcp", title: "MCP", status: worstStatus(items.map((i) => i.status)), collapsed: false, fields: [], items }
-}
-
-/** LSP servers. */
-export function buildLspSection(lsp: DiagnosticsLspLike[]): DiagnosticsSection {
-  const items = lsp.map((l) => ({ label: l.id, detail: l.root, status: l.status === "connected" ? "ok" : "error" }))
-  if (items.length === 0) {
-    return { id: "lsp", title: "LSP", status: "ok", collapsed: false, fields: [], items, note: "None configured" }
-  }
-  return { id: "lsp", title: "LSP", status: worstStatus(items.map((i) => i.status)), collapsed: false, fields: [], items }
-}
-
-/** Enabled formatters. */
-export function buildFormattersSection(formatter: DiagnosticsFormatterLike[]): DiagnosticsSection {
-  const items = formatter
-    .filter((f) => f.enabled)
-    .map((f) => ({ label: f.name, status: "ok" as DiagnosticsStatus }))
-  if (items.length === 0) {
-    return { id: "formatters", title: "Formatters", status: "ok", collapsed: false, fields: [], items, note: "None configured" }
-  }
-  return { id: "formatters", title: "Formatters", status: "ok", collapsed: false, fields: [], items }
-}
-
-/** Installed plugins. */
-export function buildPluginsSection(plugins: DiagnosticsPluginLike[]): DiagnosticsSection {
-  const items = plugins.map((p) => ({
-    label: p.version ? `${p.name} @${p.version}` : p.name,
-    status: "ok" as DiagnosticsStatus,
-  }))
-  if (items.length === 0) {
-    return { id: "plugins", title: "Plugins", status: "ok", collapsed: false, fields: [], items, note: "None configured" }
-  }
-  return { id: "plugins", title: "Plugins", status: "ok", collapsed: false, fields: [], items }
-}
-
-/** Account / Cloud sign-in and connection state. */
-export function buildAccountCloudSection(
-  account: DiagnosticsAccountLike,
-  cloud: DiagnosticsCloudLike,
-): DiagnosticsSection {
-  const items: DiagnosticsItem[] = []
-
-  if (account.loggedIn) {
-    const org = account.orgName ? ` · ${account.orgName}` : ""
-    items.push({ label: "Ottili Account", detail: `${account.email ?? "signed in"}${org}`, status: "ok" })
-  } else {
-    items.push({
-      label: "Ottili Account",
-      detail: "Not signed in",
-      status: "warn",
-      fix: { command: "ottiliCoder.account.login", label: "sign in" },
-    })
-  }
-
-  if (cloud.configured) {
-    const jobs = cloud.activeJobs !== undefined ? ` · ${cloud.activeJobs} active job(s)` : ""
-    items.push({ label: "Ottili Cloud", detail: `configured${jobs}`, status: "ok" })
-  } else {
-    items.push({ label: "Ottili Cloud", detail: "Not configured", status: "warn" })
-  }
-
-  return { id: "account-cloud", title: "Account / Cloud", status: worstStatus(items.map((i) => i.status)), collapsed: false, fields: [], items }
-}
-
-/** Recent logs. Honest fallback when no readable source exists (no fabrication). */
-export function buildLogsSection(logs?: DiagnosticsLogsLike): DiagnosticsSection {
-  if (!logs || !logs.available) {
-    return {
-      id: "logs",
-      title: "Logs",
-      status: "unknown",
-      collapsed: false,
-      fields: [],
-      items: [],
-      note: "Logs unavailable in this build",
-    }
-  }
-  const items = logs.lines
-    .slice(-200)
-    .map((line) => ({ label: line, status: "ok" as DiagnosticsStatus }))
-  return { id: "logs", title: "Logs", status: "ok", collapsed: true, fields: [], items }
-}
-
-/** Assemble the full structured payload from injected sources. */
-export function collectDiagnostics(sources: DiagnosticsSources): DiagnosticsData {
-  return {
-    sections: [
-      buildEnvironmentSection(sources),
-      buildProvidersSection(sources),
-      buildMcpSection(sources.mcp),
-      buildLspSection(sources.lsp),
-      buildFormattersSection(sources.formatter),
-      buildPluginsSection(sources.plugins),
-      buildAccountCloudSection(sources.accountStatus, sources.cloudStatus),
-      buildLogsSection(sources.logs),
-    ],
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Rollups + view model
-// ---------------------------------------------------------------------------
-
-/** Summary status of a section (its own rolled-up status). */
-export function sectionSummary(section: DiagnosticsSection): DiagnosticsStatus {
-  return section.status
-}
-
-/** Worst status across every section — the dialog's headline status. */
-export function overallStatus(data: DiagnosticsData): DiagnosticsStatus {
-  return worstStatus(data.sections.map((s) => s.status))
-}
-
-/** Count of sections per status, used by the compact/width-tiered layouts. */
-export function diagnosticsCounts(data: DiagnosticsData): { ok: number; warn: number; error: number; unknown: number } {
-  const counts = { ok: 0, warn: 0, error: 0, unknown: 0 }
-  for (const section of data.sections) counts[section.status]++
-  return counts
-}
+export type DiagnosticsTier = "wide" | "standard" | "narrow" | "minimal"
 
 // ---------------------------------------------------------------------------
 // Terminal width tiers (spec §5.2)
@@ -403,8 +159,6 @@ export const DIAGNOSTICS_WIDE_WIDTH = 110
 export const DIAGNOSTICS_STANDARD_WIDTH = 80
 export const DIAGNOSTICS_NARROW_WIDTH = 60
 
-export type DiagnosticsTier = "wide" | "standard" | "narrow" | "minimal"
-
 /** Map a terminal width to its render tier (spec §5.2). */
 export function diagnosticsTier(width: number): DiagnosticsTier {
   if (width >= DIAGNOSTICS_WIDE_WIDTH) return "wide"
@@ -413,68 +167,559 @@ export function diagnosticsTier(width: number): DiagnosticsTier {
   return "minimal"
 }
 
-/** Is the width too small for descriptive columns? */
-export function isDiagnosticsNarrow(width: number): boolean {
-  return isNarrow(width, DIAGNOSTICS_NARROW_WIDTH)
+/** Glyph for a status. Color-free variants keep meaning when color is off. */
+export function statusGlyph(status: DiagnosticsStatus, useColor: boolean): string {
+  if (useColor) {
+    return status === "ok" ? "●" : status === "warn" ? "▲" : status === "error" ? "✕" : "?"
+  }
+  return status === "ok" ? "[ok]" : status === "warn" ? "[warn]" : status === "error" ? "[err]" : "[?]"
 }
 
-/** Presentational view of the data, width-aware. The view stays a thin renderer. */
-export interface DiagnosticsView {
-  tier: DiagnosticsTier
-  overall: DiagnosticsStatus
-  counts: { ok: number; warn: number; error: number; unknown: number }
-  ariaLabel: string
-  sections: DiagnosticsSection[]
+/** Human word for a status — always a word, never a bare color. */
+export function statusWord(status: DiagnosticsStatus): string {
+  return status
 }
 
-/** Map data to a presentational view. Width tiers drive truncation in the view. */
-export function diagnosticsViewModel(data: DiagnosticsData, opts: { width?: number } = {}): DiagnosticsView {
-  const width = opts.width ?? DIAGNOSTICS_WIDE_WIDTH
-  const tier = diagnosticsTier(width)
-  const overall = overallStatus(data)
-  const counts = diagnosticsCounts(data)
-  const ariaLabel = `Diagnostics: ${counts.ok} ok, ${counts.warn} warn, ${counts.error} error. Tab to navigate sections, x to export, r to refresh, esc to close.`
-  return { tier, overall, counts, ariaLabel, sections: data.sections }
+/** Map an MCP connection status to a rollup diagnostic status. */
+export function mcpStatusToDiagnostics(status: McpStatus): DiagnosticsStatus {
+  switch (status) {
+    case "connected":
+      return "ok"
+    case "disabled":
+      return "unknown"
+    case "needs_auth":
+      return "warn"
+    case "failed":
+    case "needs_client_registration":
+      return "error"
+  }
+}
+
+/** Map an LSP connection status to a rollup diagnostic status. */
+export function lspStatusToDiagnostics(status: LspStatus): DiagnosticsStatus {
+  return status === "connected" ? "ok" : "error"
 }
 
 // ---------------------------------------------------------------------------
-// Redaction + export
+// Section builders (pure: data -> section)
 // ---------------------------------------------------------------------------
 
-/** Redact secrets from a single user-facing string. */
-export function redactSecrets(text: string): { text: string; redacted: boolean } {
-  return redactSensitive(text)
+function environmentSection(env: EnvironmentInfo | null, error?: string): DiagnosticsSection {
+  if (error) {
+    return {
+      id: "environment",
+      title: "Environment",
+      status: "error",
+      items: [{ label: "Environment", status: "error", detail: error }],
+    }
+  }
+  if (!env) {
+    return {
+      id: "environment",
+      title: "Environment",
+      status: "unknown",
+      items: [{ label: "Environment", status: "unknown", detail: "Unavailable" }],
+    }
+  }
+  const items: DiagnosticsItem[] = [
+    { label: "version", value: env.version, status: "ok" },
+    { label: "runtime", value: env.runtime, status: "ok" },
+    { label: "platform", value: env.platform, status: "ok" },
+    { label: "cwd", value: env.cwd, status: "ok" },
+  ]
+  if (env.git) items.push({ label: "git", value: env.git, status: "ok" })
+  if (env.repoRoot) items.push({ label: "repo", value: env.repoRoot, status: "ok" })
+  if (env.hooks.length) items.push({ label: "hooks", value: `${env.hooks.length} configured`, status: "ok" })
+  return { id: "environment", title: "Environment", status: "ok", items }
 }
 
-/** Render a section to its markdown lines (redacting sensitive field values). */
-function sectionToMarkdown(section: DiagnosticsSection): string[] {
-  const lines: string[] = [`## ${section.title} (${statusWord(section.status)})`]
-  if (section.note) lines.push("", section.note)
-  for (const field of section.fields) {
-    const value = field.redact ? redactSensitive(field.value).text : field.value
-    lines.push(`- **${field.key}**: ${value}`)
+function providersSection(providers: ProviderInfo[], error?: string): DiagnosticsSection {
+  if (error) {
+    return {
+      id: "providers",
+      title: "Providers",
+      status: "error",
+      items: [{ label: "Providers", status: "error", detail: error }],
+    }
   }
-  for (const item of section.items) {
-    const detail = item.detail ? ` — ${redactSensitive(item.detail).text}` : ""
-    lines.push(`- ${statusGlyph(item.status, false)} ${item.label}${detail}`)
+  if (providers.length === 0) {
+    return {
+      id: "providers",
+      title: "Providers",
+      status: "warn",
+      items: [
+        {
+          label: "No API keys detected",
+          status: "warn",
+          detail: "Set a provider API key in your environment or ottiliCoder.json",
+        },
+      ],
+    }
   }
-  return lines
+  const items: DiagnosticsItem[] = providers.map((provider) => ({
+    label: `${provider.name} (${provider.source})`,
+    status: provider.status,
+    detail: provider.detail,
+  }))
+  return {
+    id: "providers",
+    title: "Providers",
+    status: worstStatus(...providers.map((provider) => provider.status)),
+    items,
+  }
+}
+
+function mcpSection(mcp: McpServerInfo[], error?: string): DiagnosticsSection {
+  if (error) {
+    return {
+      id: "mcp",
+      title: "MCP",
+      status: "error",
+      items: [{ label: "MCP", status: "error", detail: error }],
+    }
+  }
+  if (mcp.length === 0) {
+    return {
+      id: "mcp",
+      title: "MCP",
+      status: "ok",
+      items: [{ label: "No MCP servers configured", status: "ok" }],
+    }
+  }
+  const items: DiagnosticsItem[] = mcp.map((server) => {
+    const status = mcpStatusToDiagnostics(server.status)
+    const item: DiagnosticsItem = { label: server.name, status, detail: server.error }
+    if (server.status === "failed" || server.status === "needs_client_registration") {
+      item.action = { key: "fix", label: "fix", command: "mcp.fix" }
+    }
+    return item
+  })
+  return {
+    id: "mcp",
+    title: "MCP",
+    status: worstStatus(...items.map((item) => item.status)),
+    items,
+  }
+}
+
+function lspSection(lsp: LspServerInfo[], error?: string): DiagnosticsSection {
+  if (error) {
+    return {
+      id: "lsp",
+      title: "LSP",
+      status: "error",
+      items: [{ label: "LSP", status: "error", detail: error }],
+    }
+  }
+  if (lsp.length === 0) {
+    return {
+      id: "lsp",
+      title: "LSP",
+      status: "ok",
+      items: [{ label: "No LSP servers configured", status: "ok" }],
+    }
+  }
+  const items: DiagnosticsItem[] = lsp.map((server) => ({
+    label: server.name,
+    status: lspStatusToDiagnostics(server.status),
+    detail: server.error,
+  }))
+  return {
+    id: "lsp",
+    title: "LSP",
+    status: worstStatus(...items.map((item) => item.status)),
+    items,
+  }
+}
+
+function namedSection(id: string, title: string, items: NamedInfo[], error?: string): DiagnosticsSection {
+  if (error) {
+    return { id, title, status: "error", items: [{ label: title, status: "error", detail: error }] }
+  }
+  if (items.length === 0) {
+    return { id, title, status: "ok", items: [{ label: `No ${title.toLowerCase()} configured`, status: "ok" }] }
+  }
+  return {
+    id,
+    title,
+    status: "ok",
+    items: items.map((item) => ({
+      label: item.name,
+      value: item.version ? `@${item.version}` : undefined,
+      status: "ok" as DiagnosticsStatus,
+    })),
+  }
+}
+
+function accountSection(account: AccountInfo | null, error?: string): DiagnosticsSection {
+  if (error) {
+    return {
+      id: "account",
+      title: "Account/Cloud",
+      status: "error",
+      items: [{ label: "Account/Cloud", status: "error", detail: error }],
+    }
+  }
+  if (!account) {
+    return {
+      id: "account",
+      title: "Account/Cloud",
+      status: "unknown",
+      items: [{ label: "Account status unavailable", status: "unknown" }],
+    }
+  }
+  const items: DiagnosticsItem[] = []
+  if (!account.loggedIn) {
+    items.push({
+      label: "Signed out",
+      status: "error",
+      detail: "Sign in with /login",
+      action: { key: "login", label: "login", command: "account.login" },
+    })
+  } else {
+    items.push({ label: "Signed in", status: "ok" })
+  }
+  if (!account.cloudConfigured) {
+    items.push({ label: "Cloud not configured", status: "warn" })
+  } else {
+    items.push({ label: "Cloud configured", status: "ok" })
+  }
+  return {
+    id: "account",
+    title: "Account/Cloud",
+    status: worstStatus(...items.map((item) => item.status)),
+    items,
+  }
+}
+
+function logsSection(logs: LogsInfo, error?: string): DiagnosticsSection {
+  if (error) {
+    return {
+      id: "logs",
+      title: "Logs",
+      status: "error",
+      items: [{ label: "Logs", status: "error", detail: error }],
+    }
+  }
+  if (!logs.available) {
+    return {
+      id: "logs",
+      title: "Logs",
+      status: "unknown",
+      items: [{ label: "Logs unavailable in this build", status: "unknown" }],
+    }
+  }
+  if (logs.lines.length === 0) {
+    return { id: "logs", title: "Logs", status: "ok", items: [{ label: "No recent log lines", status: "ok" }] }
+  }
+  const items: DiagnosticsItem[] = logs.lines.map((line) => ({
+    label: `[${line.level}]`,
+    value: line.message,
+    status: line.level === "error" ? "error" : line.level === "warn" ? "warn" : ("ok" as DiagnosticsStatus),
+  }))
+  return {
+    id: "logs",
+    title: "Logs",
+    status: worstStatus(...items.map((item) => item.status)),
+    items,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Section rollup
+// ---------------------------------------------------------------------------
+
+/** Worst status across a section's items, falling back to the section status. */
+export function sectionSummary(section: DiagnosticsSection): DiagnosticsStatus {
+  if (section.items.length === 0) return section.status
+  return worstStatus(section.status, ...section.items.map((item) => item.status))
+}
+
+// ---------------------------------------------------------------------------
+// View model assembly
+// ---------------------------------------------------------------------------
+
+interface BuildInput {
+  environment: { value: EnvironmentInfo | null; error?: string }
+  providers: { value: ProviderInfo[]; error?: string }
+  mcp: { value: McpServerInfo[]; error?: string }
+  lsp: { value: LspServerInfo[]; error?: string }
+  formatters: { value: NamedInfo[]; error?: string }
+  plugins: { value: NamedInfo[]; error?: string }
+  account: { value: AccountInfo | null; error?: string }
+  logs: { value: LogsInfo; error?: string }
 }
 
 /**
- * Render the full diagnostics payload as a redacted markdown bundle suitable for
- * export. Secrets are never written: field values marked `redact` and every item
- * detail pass through `redactSecrets`.
+ * Build the presentational view from structured data. Redaction, width tiers
+ * and status rollup all happen here so the view stays a thin, dumb renderer.
+ * Color is never the only signal: every section carries a glyph + word and
+ * the overall aria label spells counts out for screen readers.
  */
-export function exportDiagnosticsBundle(data: DiagnosticsData): string {
-  const lines: string[] = ["# Ottili Coder Diagnostics", ""]
-  for (const section of data.sections) {
-    lines.push(...sectionToMarkdown(section), "")
+export function diagnosticsViewModel(
+  data: DiagnosticsData,
+  opts: { width?: number; useColor?: boolean } = {},
+): DiagnosticsView {
+  const width = opts.width ?? DIAGNOSTICS_WIDE_WIDTH
+  const tier = diagnosticsTier(width)
+
+  const sections = buildSections(data).map((section) => ({ ...section, status: sectionSummary(section) }))
+
+  const overall = worstStatus(...sections.map((section) => section.status))
+  const counts = { ok: 0, warn: 0, error: 0, unknown: 0 }
+  for (const section of sections) counts[section.status]++
+
+  const ariaLabel =
+    `Diagnostics: ${counts.ok} ok, ${counts.warn} warn, ${counts.error} error. ` +
+    `Tab to navigate sections, x to export, r to refresh, esc to close.`
+
+  return { sections, overall, counts, ariaLabel, tier }
+}
+
+function buildSections(data: DiagnosticsData): DiagnosticsSection[] {
+  const input: BuildInput = {
+    environment: { value: data.environment },
+    providers: { value: data.providers },
+    mcp: { value: data.mcp },
+    lsp: { value: data.lsp },
+    formatters: { value: data.formatters },
+    plugins: { value: data.plugins },
+    account: { value: data.account },
+    logs: { value: data.logs },
   }
+  return [
+    environmentSection(input.environment.value, input.environment.error),
+    providersSection(input.providers.value, input.providers.error),
+    mcpSection(input.mcp.value, input.mcp.error),
+    lspSection(input.lsp.value, input.lsp.error),
+    namedSection("formatters", "Formatters", input.formatters.value, input.formatters.error),
+    namedSection("plugins", "Plugins", input.plugins.value, input.plugins.error),
+    accountSection(input.account.value, input.account.error),
+    logsSection(input.logs.value, input.logs.error),
+  ]
+}
+
+// ---------------------------------------------------------------------------
+// Redaction
+// ---------------------------------------------------------------------------
+
+/** Redact secrets from a single exported/visible string. */
+export function redactSecrets(input: string): { text: string; redacted: boolean } {
+  return redactSensitive(input)
+}
+
+// ---------------------------------------------------------------------------
+// Collection (injected sources so tests stub them)
+// ---------------------------------------------------------------------------
+
+export interface DiagnosticsSources {
+  readEnvironment?: () => EnvironmentInfo | null | Promise<EnvironmentInfo | null>
+  readProviders?: () => ProviderInfo[] | Promise<ProviderInfo[]>
+  readMcp?: () => McpServerInfo[] | Promise<McpServerInfo[]>
+  readLsp?: () => LspServerInfo[] | Promise<LspServerInfo[]>
+  readFormatters?: () => NamedInfo[] | Promise<NamedInfo[]>
+  readPlugins?: () => NamedInfo[] | Promise<NamedInfo[]>
+  readAccount?: () => AccountInfo | null | Promise<AccountInfo | null>
+  readLogs?: () => LogsInfo | Promise<LogsInfo>
+}
+
+async function resolveSource<T>(
+  fn: (() => T | Promise<T>) | undefined,
+  fallback: T,
+): Promise<{ value: T; error?: string }> {
+  if (!fn) return { value: fallback }
+  try {
+    return { value: await fn() }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { value: fallback, error: redactSensitive(message).text }
+  }
+}
+
+/**
+ * Gather every diagnostic domain into a single snapshot. Each source is
+ * isolated: a throwing source degrades only its own section (failure path) and
+ * never rejects the whole collection. `cwd` is accepted for parity with the
+ * CLI `doctor` command but the injected sources decide what to read.
+ */
+export async function collectDiagnostics(cwd: string, sources: DiagnosticsSources = {}): Promise<DiagnosticsData> {
+  const [environment, providers, mcp, lsp, formatters, plugins, account, logs] = await Promise.all([
+    resolveSource(sources.readEnvironment, null),
+    resolveSource(sources.readProviders, []),
+    resolveSource(sources.readMcp, []),
+    resolveSource(sources.readLsp, []),
+    resolveSource(sources.readFormatters, []),
+    resolveSource(sources.readPlugins, []),
+    resolveSource(sources.readAccount, null),
+    resolveSource(sources.readLogs, { available: false, lines: [] }),
+  ])
+
+  return {
+    collectedAt: Date.now(),
+    environment: environment.value,
+    providers: providers.value,
+    mcp: mcp.value,
+    lsp: lsp.value,
+    formatters: formatters.value,
+    plugins: plugins.value,
+    account: account.value,
+    logs: logs.value,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Export bundle (redacted markdown)
+// ---------------------------------------------------------------------------
+
+/** A default export filename, anchored to the collection time. */
+export function exportFilename(collectedAt: number): string {
+  const stamp = new Date(collectedAt).toISOString().replace(/[:.]/g, "-")
+  return `ottili-diagnostics-${stamp}.md`
+}
+
+/**
+ * Render a redacted markdown bundle of the full snapshot. Every value and log
+ * line is passed through `redactSecrets` so keys/tokens never leave the screen.
+ */
+export function buildExportBundle(data: DiagnosticsData, view: DiagnosticsView): string {
+  const lines: string[] = ["# Ottili Coder diagnostics", ""]
+  lines.push(`Collected: ${new Date(data.collectedAt).toISOString()}`, "")
+
+  for (const section of view.sections) {
+    lines.push(`## ${section.title} (${section.status})`)
+    if (section.items.length === 0) {
+      lines.push("- None")
+    }
+    for (const item of section.items) {
+      const raw = item.value ?? item.detail ?? section.status
+      const redacted = redactSecrets(raw)
+      const suffix = item.status !== "ok" ? ` [${item.status}]` : ""
+      lines.push(`- ${item.label}: ${redacted.text || section.status}${suffix}`)
+    }
+    lines.push("")
+  }
+
+  if (data.logs.available && data.logs.lines.length) {
+    lines.push("## Logs")
+    for (const line of data.logs.lines) {
+      lines.push(`[${line.level}] ${redactSecrets(line.message).text}`)
+    }
+    lines.push("")
+  }
+
   return lines.join("\n")
 }
 
-/** Cap a user-visible value to a render budget. Pure. */
-export function withinDiagnosticsBudget(value: string, max: number): string {
-  return truncate(value, max)
+// ---------------------------------------------------------------------------
+// Keyboard / focus navigation (pure reducers — regression coverage)
+// ---------------------------------------------------------------------------
+
+/** Move focus between section headers. Pure: returns the next section id. */
+export function moveSectionFocus(
+  sections: DiagnosticsSection[],
+  activeId: string | null,
+  dir: 1 | -1,
+): string | null {
+  if (sections.length === 0) return null
+  const index = activeId ? sections.findIndex((section) => section.id === activeId) : -1
+  if (index === -1) {
+    return sections[dir === 1 ? 0 : sections.length - 1]!.id
+  }
+  const next = index + dir
+  if (next < 0) return sections[0]!.id
+  if (next >= sections.length) return sections[sections.length - 1]!.id
+  return sections[next]!.id
 }
+
+/** Move focus between items inside a section. Pure. */
+export function moveItemFocus(
+  section: DiagnosticsSection,
+  activeIndex: number | null,
+  dir: 1 | -1,
+): number | null {
+  const count = section.items.length
+  if (count === 0) return null
+  if (activeIndex === null || activeIndex < 0 || activeIndex >= count) {
+    return dir === 1 ? 0 : count - 1
+  }
+  const next = activeIndex + dir
+  if (next < 0) return 0
+  if (next >= count) return count - 1
+  return next
+}
+
+// ---------------------------------------------------------------------------
+// Load state machine (state transitions + streaming)
+// ---------------------------------------------------------------------------
+
+export type DiagnosticsLoadState =
+  | { status: "idle" }
+  | { status: "loading"; previous: DiagnosticsData | null }
+  | { status: "ready"; data: DiagnosticsData }
+  | { status: "error"; error: string; previous: DiagnosticsData | null }
+
+/** Pure reducer for the dialog's load lifecycle. */
+export function reduceDiagnosticsLoad(
+  state: DiagnosticsLoadState,
+  event: { type: "load" } | { type: "loaded"; data: DiagnosticsData } | { type: "failed"; error: string },
+): DiagnosticsLoadState {
+  switch (event.type) {
+    case "load":
+      return { status: "loading", previous: state.status === "ready" ? state.data : null }
+    case "loaded":
+      return { status: "ready", data: event.data }
+    case "failed": {
+      const previous =
+        state.status === "ready" ? state.data : state.status === "loading" ? state.previous : null
+      return { status: "error", error: redactSecrets(event.error).text, previous }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Streaming coalescing (no timing sleeps in tests)
+// ---------------------------------------------------------------------------
+
+export type DiagnosticsCommit = (view: DiagnosticsView) => void
+
+/**
+ * Leading+trailing throttle over diagnostics-view commits. The first push in a
+ * quiet period commits immediately, while any pushes arriving within `interval`
+ * are buffered and flushed together as one trailing batch. Latest value wins.
+ * `flush()` forces the pending buffer out synchronously so tests never sleep.
+ */
+export function createDiagnosticsQueue(commit: DiagnosticsCommit, interval = 120) {
+  let pending: DiagnosticsView | undefined
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  function flush() {
+    if (pending === undefined) return
+    const next = pending
+    pending = undefined
+    commit(next)
+  }
+
+  function schedule() {
+    if (timer) return
+    timer = setTimeout(() => {
+      timer = undefined
+      flush()
+    }, interval) as ReturnType<typeof setTimeout>
+    if (typeof timer.unref === "function") timer.unref()
+  }
+
+  return {
+    push(next: DiagnosticsView) {
+      const buffered = pending !== undefined
+      pending = next
+      if (buffered) return
+      commit(next)
+      schedule()
+    },
+    flush,
+    pending: () => (pending === undefined ? 0 : 1),
+  }
+}
+
+/** Re-export so consumers need not import agent-roster for narrow checks. */
+export { isNarrow, truncate }
