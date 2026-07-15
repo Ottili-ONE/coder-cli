@@ -24,15 +24,15 @@ import { redactUnknown } from "@/util/redact"
 // territory via a hostile config payload.
 export const PlannerConfig = Schema.Struct({
   // Wall-clock budget for the entire graph in milliseconds.
-  graphTimeoutMs: Schema.Number.pipe(Schema.lessThanOrEqualTo(3_600_000), Schema.greaterThanOrEqualTo(1000)),
+  graphTimeoutMs: Schema.Number.check(Schema.isGreaterThanOrEqualTo(1000), Schema.isLessThanOrEqualTo(3_600_000)),
   // Wall-clock budget per task in milliseconds.
-  taskTimeoutMs: Schema.Number.pipe(Schema.lessThanOrEqualTo(600_000), Schema.greaterThanOrEqualTo(100)),
+  taskTimeoutMs: Schema.Number.check(Schema.isGreaterThanOrEqualTo(100), Schema.isLessThanOrEqualTo(600_000)),
   // Max tasks executing at once.
-  maxConcurrency: Schema.Number.pipe(Schema.int(), Schema.lessThanOrEqualTo(16), Schema.greaterThanOrEqualTo(1)),
+  maxConcurrency: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(16)),
   // Max retries of a failed task.
-  maxRetries: Schema.Number.pipe(Schema.int(), Schema.lessThanOrEqualTo(5), Schema.greaterThanOrEqualTo(0)),
+  maxRetries: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(5)),
   // Safety cap on graph size to bound memory / fork fan-out.
-  maxNodes: Schema.Number.pipe(Schema.int(), Schema.lessThanOrEqualTo(256), Schema.greaterThanOrEqualTo(1)),
+  maxNodes: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(256)),
 })
 export type PlannerConfig = Schema.Schema.Type<typeof PlannerConfig>
 
