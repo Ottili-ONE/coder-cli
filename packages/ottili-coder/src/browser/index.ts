@@ -39,7 +39,7 @@ export class BrowserError extends Schema.TaggedErrorClass<BrowserError>()("Brows
  * console message type; `text` is the serialized payload.
  */
 export class ConsoleMessage extends Schema.Class<ConsoleMessage>("Browser.ConsoleMessage")({
-  level: Schema.Literals("log", "info", "warn", "error", "debug", "trace"),
+  level: Schema.Literals(["log", "info", "warn", "error", "debug", "trace"]),
   text: Schema.String,
   source: Schema.optional(Schema.String),
   location: Schema.optional(Schema.String),
@@ -63,7 +63,7 @@ export class NetworkEntry extends Schema.Class<NetworkEntry>("Browser.NetworkEnt
  * A single captured artifact (screenshot or trace) produced by a run.
  */
 export class Artifact extends Schema.Class<Artifact>("Browser.Artifact")({
-  kind: Schema.Literals("screenshot", "trace", "video", "har"),
+  kind: Schema.Literals(["screenshot", "trace", "video", "har"]),
   path: Schema.String,
   width: Schema.optional(Schema.Number),
   height: Schema.optional(Schema.Number),
@@ -82,7 +82,7 @@ export class BrowserSession extends Schema.Class<BrowserSession>("Browser.Sessio
   browser: Schema.String,
   createdAt: Schema.Number,
   finishedAt: Schema.optional(Schema.Number),
-  status: Schema.Literals("launched", "inspecting", "testing", "cleanup", "done", "failed", "cancelled"),
+  status: Schema.Literals(["launched", "inspecting", "testing", "cleanup", "done", "failed", "cancelled"]),
 }) {}
 
 /**
@@ -94,7 +94,7 @@ export class BrowserEvent extends Schema.Class<BrowserEvent>("Browser.Event")({
   schemaVersion: Schema.Literal(BROWSER_EVENT_SCHEMA_VERSION),
   sessionId: Schema.String,
   seq: Schema.Number,
-  type: Schema.Literals("launched", "console", "network", "screenshot", "navigation", "assertion", "cleanup", "error", "done"),
+  type: Schema.Literals(["launched", "console", "network", "screenshot", "navigation", "assertion", "cleanup", "error", "done"]),
   message: Schema.String,
   console: Schema.optional(Schema.Array(ConsoleMessage)),
   network: Schema.optional(Schema.Array(NetworkEntry)),
@@ -108,7 +108,7 @@ export class BrowserReport extends Schema.Class<BrowserReport>("Browser.Report")
   target: Schema.String,
   headless: Schema.Boolean,
   browser: Schema.String,
-  status: Schema.Literals("done", "failed", "cancelled"),
+  status: Schema.Literals(["done", "failed", "cancelled"]),
   console: Schema.Array(ConsoleMessage),
   network: Schema.Array(NetworkEntry),
   artifacts: Schema.Array(Artifact),
@@ -249,18 +249,32 @@ export const runSession = Effect.fn("Browser.run")(function* (opts: BrowserOptio
   const start = Date.now()
   yield* launchBrowser(opts)
 
-  const state: StateShape = prior ?? {
-    sessionId,
-    target: opts.target,
-    headless,
-    browser,
-    console: [],
-    network: [],
-    artifacts: [],
-    status: "launched",
-    startedAt: start,
-    seq: 0,
-  }
+  const state: StateShape = prior
+    ? {
+        sessionId: prior.sessionId,
+        target: prior.target,
+        headless: prior.headless,
+        browser: prior.browser,
+        console: prior.console,
+        network: prior.network,
+        artifacts: prior.artifacts,
+        status: prior.status,
+        startedAt: prior.startedAt,
+        finishedAt: prior.finishedAt,
+        seq: prior.seq,
+      }
+    : {
+        sessionId,
+        target: opts.target,
+        headless,
+        browser,
+        console: [],
+        network: [],
+        artifacts: [],
+        status: "launched",
+        startedAt: start,
+        seq: 0,
+      }
 
   if (opts.signal?.aborted) {
     return yield* new BrowserError({ kind: "aborted", message: "session cancelled before navigation" })
