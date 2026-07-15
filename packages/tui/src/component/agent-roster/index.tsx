@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 import { createEffect, createMemo, createSignal, For, Show, type Accessor } from "solid-js"
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
-import { useTheme } from "../context/theme"
+import { useTheme } from "../../context/theme"
 import type { Agent } from "@opencode-ai/sdk/v2"
 import {
   type AgentRowStatus,

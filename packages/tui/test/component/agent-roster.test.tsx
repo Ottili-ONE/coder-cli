@@ -7,6 +7,7 @@ import { ThemeProvider } from "../../src/context/theme"
 import { TuiConfigProvider, resolve } from "../../src/config"
 import { AgentRoster, toRosterInput } from "../../src/component/agent-roster/index"
 import type { Agent } from "@opencode-ai/sdk/v2"
+import { TestTuiContexts } from "../../test/fixture/tui-environment"
 import {
   type RosterAgentInput,
   type RosterContext,
@@ -189,13 +190,15 @@ test("toRosterInput maps the SDK Agent into the decoupled roster shape", () => {
 async function renderRoster(width: number, props: Parameters<typeof AgentRoster>[0]) {
   const app = await testRender(
     () => (
-      <TuiConfigProvider config={resolve({}, { terminalSuspend: true })}>
-        <KVProvider>
-          <ThemeProvider>
-            <AgentRoster {...props} />
-          </ThemeProvider>
-        </KVProvider>
-      </TuiConfigProvider>
+      <TestTuiContexts>
+        <TuiConfigProvider config={resolve({}, { terminalSuspend: true })}>
+          <KVProvider>
+            <ThemeProvider>
+              <AgentRoster {...props} />
+            </ThemeProvider>
+          </KVProvider>
+        </TuiConfigProvider>
+      </TestTuiContexts>
     ),
     { width, height: 40 },
   )
