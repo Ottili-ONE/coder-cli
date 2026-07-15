@@ -1,7 +1,8 @@
 import path from "path"
-import { Clock, Effect, Schema } from "effect"
+import { Clock, Context, Effect, Layer, Schema } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { Session } from "@/session/session"
+import { SessionID } from "@/session/schema"
 import { StageName, StageStatus, StopLevel } from "./event"
 
 // Ordered pipeline. The runtime walks this list and stops at the configured
@@ -128,7 +129,6 @@ export interface Interface {
   readonly resume: (input: { runID: string; executor: StageExecutor }) => Effect.Effect<Run, NotFoundError>
   readonly get: (input: { runID: string }) => Effect.Effect<Run, NotFoundError>
   readonly status: (input: { runID: string }) => Effect.Effect<Run, NotFoundError>
-  readonly runPath: (input: { runID: string; slug?: string }) => Effect.Effect<string>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode-ai/FullRunState") {}
@@ -137,7 +137,7 @@ const runPath = (sessionID: string, slug?: string) =>
   Effect.gen(function* () {
     const instance = yield* InstanceState.context
     const info = yield* Session.Service
-    const session = yield* info.get(sessionID)
+    const session = yield* info.get(sessionID as SessionID)
     const created = session.time?.created ?? Date.now()
     const usedSlug = slug ?? session.slug ?? sessionID
     return Session.fullrun({ slug: usedSlug, time: { created } }, instance)
@@ -149,9 +149,10 @@ const readRun = (file: string) =>
       try: () => Bun.file(file).text(),
       catch: (cause) => cause,
     })
-    return yield* Schema.decodeUnknown(RunSchema)(JSON.parse(text)).pipe(
-      Effect.mapError(() => new NotFoundError({ runID: path.basename(file) })),
-    )
+    return yield* Effect.try({
+      try: () => Schema.decodeUnknownSync(RunSchema)(JSON.parse(text)),
+      catch: () => new NotFoundError({ runID: path.basename(file) }),
+    })
   })
 
 // Build a fresh run record from the requested stages, marking each as pending.
@@ -251,7 +252,11 @@ const executeStages = (run: Run, executor: StageExecutor, persist: (next: Run) =
 export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const state = yield* InstanceState.make<Record<string, string>>(Effect.succeed({} as Record<string, string>))
+    const state = yield* InstanceState.make<Record<string, string>>(
+      Effect.fn("FullRunState.state")(function* () {
+        return {} as Record<string, string>
+      }),
+    )
 
     const resolvePath = (sessionID: string, slug?: string) =>
       Effect.gen(function* () {
@@ -276,68 +281,95 @@ export const layer = Layer.effect(
         )
       })
 
-    return Service.of({
-      runPath: ({ runID, slug }) =>
-        Effect.gen(function* () {
-          // runID is derived from session+message in this runtime; resolve via session.
-          const [sessionID] = runID.split(":")
-          return yield* resolvePath(sessionID, slug)
-        }),
-      start: ({ sessionID, messageID, goal, stopLevel = "none", stages, executor }) =>
-        Effect.gen(function* () {
-          const info = yield* Session.Service
-          const session = yield* info.get(sessionID)
-          if (!session) return yield* new NotFoundError({ runID: sessionID })
-          const runID = `${sessionID}:${messageID}`
-          const ordered = stages ?? STAGES
-          const run = freshRun({ runID, sessionID, messageID, goal, stopLevel, stages: ordered })
-          yield* persist(sessionID, run)
-          return yield* executeStages(run, executor, (next) => persist(sessionID, next))
-        }),
-      cancel: ({ runID, reason }) =>
-        Effect.gen(function* () {
-          const [sessionID] = runID.split(":")
-          const target = yield* resolvePath(sessionID)
-          const run = yield* readRun(target)
-          if (run.status === "success" || run.status === "failed" || run.status === "cancelled") return run
-          const now = yield* Clock.currentTimeMillis
-          const cancelled: Run = {
-            ...run,
-            cancelled: true,
-            cancelReason: reason,
-            status: "cancelled",
-            finishedAt: run.finishedAt ?? now,
-            currentStage: undefined,
-            stages_: run.stages_.map((s) =>
-              s.status === "running" || s.status === "pending"
-                ? { ...s, status: "cancelled" as const, finishedAt: now }
-                : s,
-            ),
+    const start = Effect.fn("FullRunState.start")(
+      function* (input: {
+        sessionID: string
+        messageID: string
+        goal: string
+        stopLevel?: StopLevel
+        stages?: ReadonlyArray<StageName>
+        executor: StageExecutor
+      }): Effect.Effect<Run, AlreadyRunningError | NotFoundError> {
+        const info = yield* Session.Service
+        const session = yield* info.get(input.sessionID as SessionID)
+        if (!session) return yield* new NotFoundError({ runID: input.sessionID })
+        const runID = `${input.sessionID}:${input.messageID}`
+        const target = yield* resolvePath(input.sessionID)
+        const exists = yield* Effect.exists(
+          Effect.sync(() => Bun.file(target).size > 0),
+        )
+        if (exists) {
+          const prior = yield* readRun(target)
+          if (prior.status === "running" || prior.status === "queued") {
+            return yield* new AlreadyRunningError({ runID })
           }
-          yield* persist(sessionID, cancelled)
-          return cancelled
-        }),
-      resume: ({ runID, executor }) =>
-        Effect.gen(function* () {
-          const resolved = yield* resolvePath(runID.split(":")[0])
-          const run = yield* readRun(resolved)
-          if (run.cancelled) {
-            return yield* new CancelledError({ runID, reason: run.cancelReason })
-          }
-          if (run.status === "success") return run
-          return yield* executeStages(run, executor, (next) => persist(run.sessionID, next))
-        }),
-      get: ({ runID }) =>
-        Effect.gen(function* () {
-          const target = yield* resolvePath(runID.split(":")[0])
-          return yield* readRun(target)
-        }),
-      status: ({ runID }) =>
-        Effect.gen(function* () {
-          const target = yield* resolvePath(runID.split(":")[0])
-          return yield* readRun(target)
-        }),
-    })
+        }
+        const ordered = input.stages ?? STAGES
+        const run = freshRun({
+          runID,
+          sessionID: input.sessionID,
+          messageID: input.messageID,
+          goal: input.goal,
+          stopLevel: input.stopLevel ?? "none",
+          stages: ordered,
+        })
+        yield* persist(input.sessionID, run)
+        return yield* executeStages(run, input.executor, (next) => persist(input.sessionID, next))
+      },
+    )
+
+    const cancel = Effect.fn("FullRunState.cancel")(
+      function* (input: { runID: string; reason?: string }) {
+        const [sessionID] = input.runID.split(":")
+        const target = yield* resolvePath(sessionID)
+        const run = yield* readRun(target)
+        if (run.status === "success" || run.status === "failed" || run.status === "cancelled") return run
+        const now = yield* Clock.currentTimeMillis
+        const cancelled: Run = {
+          ...run,
+          cancelled: true,
+          cancelReason: input.reason,
+          status: "cancelled",
+          finishedAt: run.finishedAt ?? now,
+          currentStage: undefined,
+          stages_: run.stages_.map((s) =>
+            s.status === "running" || s.status === "pending"
+              ? { ...s, status: "cancelled" as const, finishedAt: now }
+              : s,
+          ),
+        }
+        yield* persist(sessionID, cancelled)
+        return cancelled
+      },
+    )
+
+    const resume = Effect.fn("FullRunState.resume")(
+      function* (input: { runID: string; executor: StageExecutor }) {
+        const resolved = yield* resolvePath(input.runID.split(":")[0])
+        const run = yield* readRun(resolved)
+        if (run.cancelled) {
+          return yield* new CancelledError({ runID: input.runID, reason: run.cancelReason })
+        }
+        if (run.status === "success") return run
+        return yield* executeStages(run, input.executor, (next) => persist(run.sessionID, next))
+      },
+    )
+
+    const get = Effect.fn("FullRunState.get")(
+      function* (input: { runID: string }) {
+        const target = yield* resolvePath(input.runID.split(":")[0])
+        return yield* readRun(target)
+      },
+    )
+
+    const status = Effect.fn("FullRunState.status")(
+      function* (input: { runID: string }) {
+        const target = yield* resolvePath(input.runID.split(":")[0])
+        return yield* readRun(target)
+      },
+    )
+
+    return Service.of({ start, cancel, resume, get, status })
   }),
 )
 

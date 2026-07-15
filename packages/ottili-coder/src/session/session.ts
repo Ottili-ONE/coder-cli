@@ -402,6 +402,13 @@ export function fullrun(input: { slug: string; time: { created: number } }, inst
   return path.join(base, [input.time.created, input.slug].join("-") + ".json")
 }
 
+export function taskgraph(input: { slug: string; time: { created: number } }, instance: InstanceContext) {
+  const base = instance.project.vcs
+    ? path.join(instance.worktree, ".ottili-coder", "taskgraphs")
+    : path.join(Global.Path.data, "taskgraphs")
+  return path.join(base, [input.time.created, input.slug].join("-") + ".json")
+}
+
 export const getUsage = (input: { model: Provider.Model; usage: Usage; metadata?: ProviderMetadata }) => {
   const safe = (value: number) => {
     if (!Number.isFinite(value)) return 0

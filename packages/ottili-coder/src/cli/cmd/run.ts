@@ -705,6 +705,7 @@ export const RunCommand = effectCmd({
         async function loop(client: OttiliCoderClient, events: Awaited<ReturnType<typeof sdk.event.subscribe>>) {
           const toggles = new Map<string, boolean>()
           let error: string | undefined
+          let taskGraphFailed = false
 
           for await (const event of events.stream) {
             if (
@@ -781,6 +782,17 @@ export const RunCommand = effectCmd({
               }
             }
 
+            if (event.type.startsWith("taskgraph.")) {
+              if (event.properties.sessionID !== sessionID) continue
+              if (event.type === "taskgraph.complete") {
+                const status = event.properties.status as string
+                if (status === "failed") taskGraphFailed = true
+              }
+              if (event.type === "taskgraph.error") taskGraphFailed = true
+              emit(event.type, { ...event.properties })
+              continue
+            }
+
             if (event.type === "session.error") {
               const props = event.properties
               if (props.sessionID !== sessionID || !props.error) continue
@@ -843,6 +855,7 @@ export const RunCommand = effectCmd({
             if (args.attach) return
             const error = await completed
             if (error) process.exitCode = 1
+            if (taskGraphFailed) process.exitCode = 1
           }
 
           if (args.command) {
