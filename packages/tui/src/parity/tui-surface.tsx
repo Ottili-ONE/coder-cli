@@ -4,6 +4,7 @@ import { Show, createMemo } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import {
+  type ParityState,
   type ParitySurface,
   type PlatformCapabilities,
   resolveLayoutTier,
@@ -30,9 +31,21 @@ export function useTuiParitySurface(): ParitySurface {
 
   const widths = createMemo(() => resolveLayoutTier(dimensions().width))
 
+  // The TUI derives its current lifecycle state from connectivity: when the
+  // host has no network the parity strip announces `offline`; otherwise it is
+  // `populated` (a live session surface). The web/desktop hosts override this
+  // with richer connection/session signals. All states stay renderable.
+  const state = createMemo<ParityState>(() => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return { status: "offline" }
+    }
+    return { status: "populated", title: "Ottili Coder" }
+  })
+
   return {
     capabilities: capabilities(),
     widths: widths(),
+    state: state(),
     toast: (message, tone = "info") => {
       const prefix = tone === "error" ? "error" : tone === "warning" ? "warn" : tone === "success" ? "ok" : "info"
       toast(`${prefix}: ${message}`)
