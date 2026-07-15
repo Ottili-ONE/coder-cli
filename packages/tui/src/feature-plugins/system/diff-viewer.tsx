@@ -34,6 +34,7 @@ import {
   singlePatchFileIndex,
   toggleFileTreeDirectory,
 } from "./diff-viewer-file-tree-utils"
+import { buildAcceptedPatch, countHunks, normalizeAccepted } from "./diff-viewer-hunks"
 
 const ROUTE = "diff"
 const MIN_SPLIT_WIDTH = 100
@@ -105,7 +106,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
       directory: sessionID ? props.api.state.session.get(sessionID)?.directory : undefined,
     }
   })
-  const [diff] = createResource(diffInput, async (input) => {
+  const [diff, diffResource] = createResource(diffInput, async (input) => {
     if (input.mode === "last-turn") {
       const sessionID = input.sessionID
       if (!sessionID) return []
@@ -160,12 +161,25 @@ function DiffViewer(props: { api: TuiPluginApi }) {
   const toggleViewShortcut = useCommandShortcut("diff.toggle_view")
   const markReviewedShortcut = useCommandShortcut("diff.mark_reviewed")
   const helpShortcut = useCommandShortcut("diff.help")
+  const acceptHunkShortcut = useCommandShortcut("diff.accept_hunk")
+  const rejectHunkShortcut = useCommandShortcut("diff.reject_hunk")
+  const acceptFileShortcut = useCommandShortcut("diff.accept_file")
+  const rejectFileShortcut = useCommandShortcut("diff.reject_file")
+  const applyShortcut = useCommandShortcut("diff.apply")
+  const addCommentShortcut = useCommandShortcut("diff.add_comment")
+  const toggleCommentsShortcut = useCommandShortcut("diff.toggle_comments")
   let scroll: ScrollBoxRenderable | undefined
   const patchNodeByFileIndex = new Map<number, BoxRenderable>()
   const diffNodeByFileIndex = new Map<number, DiffRenderable>()
   const [selectedHunk, setSelectedHunk] = createSignal<SelectedHunk | undefined>()
   const [pendingPatchScrollFileIndex, setPendingPatchScrollFileIndex] = createSignal<number | undefined>()
   const [patchFillerHeight, setPatchFillerHeight] = createSignal(0)
+  const [acceptedHunks, setAcceptedHunks] = createSignal<ReadonlyMap<number, ReadonlySet<number>>>(new Map())
+  const [rejectedHunks, setRejectedHunks] = createSignal<ReadonlyMap<number, ReadonlySet<number>>>(new Map())
+  const [commentsByFile, setCommentsByFile] = createSignal<ReadonlyMap<string, readonly string[]>>(
+    new Map(Object.entries(props.api.kv.get<Record<string, string[]>>("diff_viewer_comments", {}) ?? {})),
+  )
+  const [showComments, setShowComments] = createSignal(props.api.kv.get<boolean>("diff_viewer_show_comments", true) !== false)
 
   onCleanup(() => props.api.ui.dialog.clear())
 
@@ -177,6 +191,8 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     setSelectedFileIndex(undefined)
     setSelectedHunk(undefined)
     setReviewedFileNames(new Set<string>())
+    setAcceptedHunks(new Map())
+    setRejectedHunks(new Map())
   })
 
   const ensureHighlightedFileNode = () => {
@@ -423,6 +439,146 @@ function DiffViewer(props: { api: TuiPluginApi }) {
       return next
     })
   }
+
+  const currentFileIndex = () =>
+    selectedFileIndex() ?? activePatchFileIndex() ?? currentPatchFileIndex() ?? firstPatchFileIndex()
+
+  const acceptedFor = (fileIndex: number) => acceptedHunks().get(fileIndex) ?? new Set<number>()
+  const rejectedFor = (fileIndex: number) => rejectedHunks().get(fileIndex) ?? new Set<number>()
+
+  const applyDecision = (
+    map: ReadonlyMap<number, ReadonlySet<number>>,
+    fileIndex: number,
+    hunkIndex: number,
+    add: boolean,
+  ): Map<number, ReadonlySet<number>> => {
+    const next = new Map(map)
+    const current = new Set(next.get(fileIndex) ?? [])
+    if (add) current.add(hunkIndex)
+    else current.delete(hunkIndex)
+    if (current.size === 0) next.delete(fileIndex)
+    else next.set(fileIndex, current)
+    return next
+  }
+
+  const setHunkDecision = (fileIndex: number, hunkIndex: number, decision: "accept" | "reject") => {
+    setAcceptedHunks((prev) => applyDecision(prev, fileIndex, hunkIndex, decision === "accept"))
+    setRejectedHunks((prev) => applyDecision(prev, fileIndex, hunkIndex, decision === "reject"))
+  }
+
+  const setFileDecision = (fileIndex: number, decision: "accept" | "reject") => {
+    const total = countHunks(files()[fileIndex]?.patch)
+    const all = new Set(Array.from({ length: total }, (_, index) => index))
+    if (decision === "accept") {
+      setAcceptedHunks((prev) => new Map(prev).set(fileIndex, all))
+      setRejectedHunks((prev) => {
+        const next = new Map(prev)
+        next.delete(fileIndex)
+        return next
+      })
+      return
+    }
+    setRejectedHunks((prev) => new Map(prev).set(fileIndex, all))
+    setAcceptedHunks((prev) => {
+      const next = new Map(prev)
+      next.delete(fileIndex)
+      return next
+    })
+  }
+
+  const hunkTarget = (fileIndex: number) => {
+    const selected = selectedHunk()
+    if (selected && selected.fileIndex === fileIndex) return selected.hunkIndex
+    return 0
+  }
+
+  const applyAcceptedHunks = async () => {
+    if (mode() !== "git") {
+      props.api.ui.toast({
+        title: "Apply unavailable",
+        message: "Accept and reject hunks only applies to the working tree.",
+        variant: "error",
+      })
+      return
+    }
+    const directory = diffInput().directory
+    if (!directory) return
+    let applied = 0
+    for (const [fileIndex, accepted] of acceptedHunks()) {
+      const patch = buildAcceptedPatch(files()[fileIndex]?.patch, accepted)
+      if (!patch) continue
+      const result = await props.api.client.vcs.apply({ directory, patch })
+      if (result.error) {
+        const message =
+          (result.error as { data?: { message?: string }; message?: string })?.data?.message ??
+          (result.error as { message?: string })?.message ??
+          "The patch could not be applied."
+        props.api.ui.toast({ title: "Apply failed", message: String(message), variant: "error" })
+        return
+      }
+      applied++
+    }
+    if (applied === 0) {
+      props.api.ui.toast({ title: "Nothing to apply", message: "No accepted hunks selected.", variant: "info" })
+      return
+    }
+    setAcceptedHunks(new Map())
+    setRejectedHunks(new Map())
+    void diffResource.refetch()
+    props.api.ui.toast({
+      title: "Applied",
+      message: `Applied ${applied} file${applied === 1 ? "" : "s"} with accepted hunks.`,
+      variant: "success",
+    })
+  }
+
+  const addComment = (file: string, text: string) => {
+    const trimmed = text.trim()
+    if (!trimmed) return
+    setCommentsByFile((prev) => {
+      const next = new Map(prev)
+      next.set(file, [...(next.get(file) ?? []), trimmed])
+      return next
+    })
+  }
+
+  const openCommentDialog = (file: string) => {
+    props.api.ui.dialog.replace(() =>
+      props.api.ui.DialogPrompt({
+        title: `Comment — ${file}`,
+        placeholder: "Add a comment for this file",
+        onConfirm: (value: string) => {
+          addComment(file, value)
+          props.api.ui.dialog.clear()
+        },
+        onCancel: () => props.api.ui.dialog.clear(),
+      }),
+    )
+  }
+
+  createEffect(() => {
+    const record: Record<string, string[]> = {}
+    for (const [file, list] of commentsByFile()) record[file] = [...list]
+    props.api.kv.set("diff_viewer_comments", record)
+  })
+
+  createEffect(() => {
+    props.api.kv.set("diff_viewer_show_comments", showComments())
+  })
+
+  createEffect(() => {
+    files()
+    setAcceptedHunks((prev) => {
+      const next = new Map<number, ReadonlySet<number>>()
+      let changed = false
+      for (const [fileIndex, accepted] of prev) {
+        const normalized = normalizeAccepted(files()[fileIndex]?.patch, accepted)
+        next.set(fileIndex, normalized)
+        if (normalized.size !== accepted.size) changed = true
+      }
+      return changed ? next : prev
+    })
+  })
 
   const commands = [
     {
@@ -673,6 +829,74 @@ function DiffViewer(props: { api: TuiPluginApi }) {
         openHelpDialog()
       },
     },
+    {
+      name: "diff.accept_hunk",
+      title: "Accept current diff hunk",
+      category: "VCS",
+      run() {
+        const fileIndex = currentFileIndex()
+        if (fileIndex === undefined) return
+        setHunkDecision(fileIndex, hunkTarget(fileIndex), "accept")
+      },
+    },
+    {
+      name: "diff.reject_hunk",
+      title: "Reject current diff hunk",
+      category: "VCS",
+      run() {
+        const fileIndex = currentFileIndex()
+        if (fileIndex === undefined) return
+        setHunkDecision(fileIndex, hunkTarget(fileIndex), "reject")
+      },
+    },
+    {
+      name: "diff.accept_file",
+      title: "Accept all hunks in current file",
+      category: "VCS",
+      run() {
+        const fileIndex = currentFileIndex()
+        if (fileIndex === undefined) return
+        setFileDecision(fileIndex, "accept")
+      },
+    },
+    {
+      name: "diff.reject_file",
+      title: "Reject all hunks in current file",
+      category: "VCS",
+      run() {
+        const fileIndex = currentFileIndex()
+        if (fileIndex === undefined) return
+        setFileDecision(fileIndex, "reject")
+      },
+    },
+    {
+      name: "diff.apply",
+      title: "Apply accepted hunks",
+      category: "VCS",
+      run() {
+        void applyAcceptedHunks()
+      },
+    },
+    {
+      name: "diff.add_comment",
+      title: "Comment on current file",
+      category: "VCS",
+      run() {
+        const fileIndex = currentFileIndex()
+        if (fileIndex === undefined) return
+        const file = files()[fileIndex]?.file
+        if (!file) return
+        openCommentDialog(file)
+      },
+    },
+    {
+      name: "diff.toggle_comments",
+      title: "Toggle comment visibility",
+      category: "VCS",
+      run() {
+        setShowComments((value) => !value)
+      },
+    },
   ]
 
   const switchDiffOptions = createMemo(() => [
@@ -812,11 +1036,63 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                               <text fg={reviewed() ? theme().textMuted : theme().diffAdded}>
                                 +{entry.file.additions}
                               </text>
-                              <text fg={reviewed() ? theme().textMuted : theme().diffRemoved}>
-                                -{entry.file.deletions}
-                              </text>
-                            </box>
-                            <Separator axis="x" start={showFileTree() ? "edge" : undefined} />
+        <text fg={reviewed() ? theme().textMuted : theme().diffRemoved}>
+          -{entry.file.deletions}
+        </text>
+        <Show when={reviewed()}>
+          <text fg={theme().textMuted}>✓</text>
+        </Show>
+        <Show when={(commentsByFile().get(entry.file.file) ?? []).length > 0}>
+          <text fg={theme().textMuted} onMouseUp={() => openCommentDialog(entry.file.file)}>
+            c{(commentsByFile().get(entry.file.file) ?? []).length}
+          </text>
+        </Show>
+        <Show when={acceptedFor(entry.fileIndex).size > 0}>
+          <text fg={theme().diffAdded}>a{acceptedFor(entry.fileIndex).size}</text>
+        </Show>
+        <Show when={rejectedFor(entry.fileIndex).size > 0}>
+          <text fg={theme().diffRemoved}>r{rejectedFor(entry.fileIndex).size}</text>
+        </Show>
+      </box>
+      <Show when={entry.file.patch}>
+        <box
+          flexDirection="row"
+          gap={1}
+          flexShrink={0}
+          paddingLeft={1}
+          paddingRight={1}
+          border={patchLeftBorder()}
+          borderColor={theme().border}
+        >
+          <text
+            fg={theme().diffAdded}
+            onMouseUp={() => setHunkDecision(entry.fileIndex, hunkTarget(entry.fileIndex), "accept")}
+          >
+            {acceptHunkShortcut() ?? "a"} accept
+          </text>
+          <text
+            fg={theme().diffRemoved}
+            onMouseUp={() => setHunkDecision(entry.fileIndex, hunkTarget(entry.fileIndex), "reject")}
+          >
+            {rejectHunkShortcut() ?? "r"} reject
+          </text>
+          <text fg={theme().text} onMouseUp={() => setFileDecision(entry.fileIndex, "accept")}>
+            {acceptFileShortcut() ?? "A"} all
+          </text>
+          <text fg={theme().text} onMouseUp={() => setFileDecision(entry.fileIndex, "reject")}>
+            {rejectFileShortcut() ?? "R"} none
+          </text>
+          <Show when={acceptedFor(entry.fileIndex).size > 0}>
+            <text fg={theme().text} onMouseUp={() => void applyAcceptedHunks()}>
+              {applyShortcut() ?? "g"} apply
+            </text>
+          </Show>
+          <text fg={theme().text} onMouseUp={() => openCommentDialog(entry.file.file)}>
+            {addCommentShortcut() ?? "c"} comment
+          </text>
+        </box>
+      </Show>
+      <Separator axis="x" start={showFileTree() ? "edge" : undefined} />
                             <Show
                               when={entry.file.patch}
                               fallback={<text fg={theme().textMuted}>No patch available for this file.</text>}
@@ -846,6 +1122,19 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                                       reviewed() ? theme().backgroundElement : theme().diffRemovedLineNumberBg
                                     }
                                   />
+                                  <Show
+                                    when={showComments() && (commentsByFile().get(entry.file.file) ?? []).length > 0}
+                                  >
+                                    <box flexDirection="column" gap={0} paddingLeft={1} paddingRight={1}>
+                                      <For each={commentsByFile().get(entry.file.file) ?? []}>
+                                        {(comment) => (
+                                          <text fg={theme().textMuted} wrapMode="char">
+                                            ▸ {comment}
+                                          </text>
+                                        )}
+                                      </For>
+                                    </box>
+                                  </Show>
                                 </box>
                               )}
                             </Show>
@@ -911,6 +1200,27 @@ function DiffViewer(props: { api: TuiPluginApi }) {
             {(shortcut) => (
               <text fg={theme().text}>
                 {shortcut()} <span style={{ fg: theme().textMuted }}>mark reviewed</span>
+              </text>
+            )}
+          </Show>
+          <Show when={acceptHunkShortcut()}>
+            {(shortcut) => (
+              <text fg={theme().text}>
+                {shortcut()} <span style={{ fg: theme().textMuted }}>accept hunk</span>
+              </text>
+            )}
+          </Show>
+          <Show when={rejectHunkShortcut()}>
+            {(shortcut) => (
+              <text fg={theme().text}>
+                {shortcut()} <span style={{ fg: theme().textMuted }}>reject hunk</span>
+              </text>
+            )}
+          </Show>
+          <Show when={applyShortcut()}>
+            {(shortcut) => (
+              <text fg={theme().text}>
+                {shortcut()} <span style={{ fg: theme().textMuted }}>apply accepted</span>
               </text>
             )}
           </Show>
@@ -989,6 +1299,41 @@ function DiffViewerHelpDialog() {
       shortcut: useCommandShortcut("diff.mark_reviewed"),
       action: "Mark reviewed",
       description: "Toggle reviewed state for the selected file",
+    },
+    {
+      shortcut: useCommandShortcut("diff.accept_hunk"),
+      action: "Accept hunk",
+      description: "Accept the hunk under the cursor, or the first hunk",
+    },
+    {
+      shortcut: useCommandShortcut("diff.reject_hunk"),
+      action: "Reject hunk",
+      description: "Reject the hunk under the cursor, or the first hunk",
+    },
+    {
+      shortcut: useCommandShortcut("diff.accept_file"),
+      action: "Accept file",
+      description: "Accept every hunk in the current file",
+    },
+    {
+      shortcut: useCommandShortcut("diff.reject_file"),
+      action: "Reject file",
+      description: "Reject every hunk in the current file",
+    },
+    {
+      shortcut: useCommandShortcut("diff.apply"),
+      action: "Apply accepted",
+      description: "Apply accepted hunks to the working tree",
+    },
+    {
+      shortcut: useCommandShortcut("diff.add_comment"),
+      action: "Comment",
+      description: "Add a comment to the current file",
+    },
+    {
+      shortcut: useCommandShortcut("diff.toggle_comments"),
+      action: "Toggle comments",
+      description: "Show or hide file comments",
     },
   ]
 

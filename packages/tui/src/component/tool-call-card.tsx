@@ -1,6 +1,6 @@
-import { createMemo, Show, type JSX } from "solid-js"
+import { createMemo, createSignal, Show, type JSX } from "solid-js"
 import { BoxRenderable, RGBA, TextAttributes } from "@opentui/core"
-import { useRenderer, type RGBA as _RGBA } from "@opentui/solid"
+import { useRenderer } from "@opentui/solid"
 import { useTheme } from "../context/theme"
 import { Spinner } from "./spinner"
 import { SplitBorder } from "../ui/border"
@@ -37,7 +37,7 @@ export function ToolCallCard(props: {
   collapsible?: boolean
   spinner?: boolean
   subagent?: boolean
-  statusText?: () => string
+  statusText?: () => string | undefined
   separateAfter?: (id: string | undefined) => boolean
   onActivate?: () => void
   children?: JSX.Element

@@ -5,8 +5,8 @@ import { createSignal } from "solid-js"
 // keyboard interactions can drive the same card without threading signals
 // through the session context.
 
-const [expanded, setExpanded] = createSignal<Record<string, boolean>>({})
-const [errorExpanded, setErrorExpanded] = createSignal<Record<string, boolean>>({})
+const [expanded, setExpandedSignal] = createSignal<Record<string, boolean>>({})
+const [errorExpanded, setErrorExpandedSignal] = createSignal<Record<string, boolean>>({})
 const [activeCard, setActiveCard] = createSignal<string | null>(null)
 
 // Ordered registry of mounted card ids (insertion order). Used as a fallback
@@ -26,11 +26,11 @@ export function getExpanded(id: string): boolean | undefined {
 }
 
 export function setExpanded(id: string, value: boolean) {
-  setExpanded((prev) => ({ ...prev, [id]: value }))
+  setExpandedSignal((prev) => ({ ...prev, [id]: value }))
 }
 
 export function toggleExpanded(id: string) {
-  setExpanded((prev) => ({ ...prev, [id]: !prev[id] }))
+  setExpandedSignal((prev) => ({ ...prev, [id]: !prev[id] }))
 }
 
 export function getErrorExpanded(id: string): boolean {
@@ -38,7 +38,7 @@ export function getErrorExpanded(id: string): boolean {
 }
 
 export function toggleErrorExpanded(id: string) {
-  setErrorExpanded((prev) => ({ ...prev, [id]: !prev[id] }))
+  setErrorExpandedSignal((prev) => ({ ...prev, [id]: !prev[id] }))
 }
 
 export function activeToolCard(): string | null {
