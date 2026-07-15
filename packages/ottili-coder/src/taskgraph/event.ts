@@ -24,6 +24,10 @@ export const TaskNode = Schema.Struct({
   agent: Schema.optional(Schema.String),
   resultPath: Schema.optional(Schema.String),
   error: Schema.optional(Schema.String),
+  attempts: Schema.optional(Schema.Number),
+  effectID: Schema.optional(Schema.String),
+  startedAt: Schema.optional(Schema.Number),
+  finishedAt: Schema.optional(Schema.Number),
 })
 export type TaskNode = Schema.Schema.Type<typeof TaskNode>
 

@@ -782,14 +782,15 @@ export const RunCommand = effectCmd({
               }
             }
 
-            if (event.type.startsWith("taskgraph.")) {
+            const eventType = event.type as string
+            if (eventType.startsWith("taskgraph.")) {
               if (event.properties.sessionID !== sessionID) continue
-              if (event.type === "taskgraph.complete") {
+              if (eventType === "taskgraph.complete") {
                 const status = event.properties.status as string
                 if (status === "failed") taskGraphFailed = true
               }
-              if (event.type === "taskgraph.error") taskGraphFailed = true
-              emit(event.type, { ...event.properties })
+              if (eventType === "taskgraph.error") taskGraphFailed = true
+              emit(eventType, { ...event.properties })
               continue
             }
 
