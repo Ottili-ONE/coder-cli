@@ -55,6 +55,13 @@ export const Flag = {
     return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_CHECKPOINT_TIMELINE")
   },
 
+  // Background jobs view (T-CLI-0173): unified local + cloud background jobs
+  // surface. The redesigned cloud surface is always active; local
+  // process-local background jobs are merged in only when this is enabled.
+  get OTTILI_CODER_EXPERIMENTAL_BACKGROUND_JOBS() {
+    return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_BACKGROUND_JOBS")
+  },
+
   // Evaluated at access time (not module load) because tests, the CLI, and
   // external tooling set these env vars at runtime.
   get OTTILI_CODER_DISABLE_PROJECT_CONFIG() {
