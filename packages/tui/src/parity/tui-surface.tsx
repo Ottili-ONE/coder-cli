@@ -47,8 +47,9 @@ export function useTuiParitySurface(): ParitySurface {
     widths: widths(),
     state: state(),
     toast: (message, tone = "info") => {
-      const prefix = tone === "error" ? "error" : tone === "warning" ? "warn" : tone === "success" ? "ok" : "info"
-      toast(`${prefix}: ${message}`)
+      const variant =
+        tone === "error" ? "error" : tone === "warning" ? "warning" : tone === "success" ? "success" : "info"
+      toast.show({ variant, message })
     },
     navigate: () => {},
     commands: {

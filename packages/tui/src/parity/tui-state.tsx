@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import { TextAttributes } from "@opentui/core"
-import { Show, createMemo, type ParentProps } from "solid-js"
+import { Show, createMemo } from "solid-js"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import {
   type ParityState,
@@ -18,40 +18,34 @@ import { useTerminalDimensions } from "@opentui/solid"
 // through — color is never the only signal, and the hint line collapses on
 // narrow terminals and is suppressed entirely on no-color sessions.
 
-/** Map a semantic color role onto an Ottili palette token. */
-function colorOf(theme: ReturnType<typeof useTheme>["theme"], role: ParityColorRole): string {
-  switch (role) {
-    case "accent":
-      return theme.accent
-    case "success":
-      return theme.success
-    case "warning":
-      return theme.warning
-    case "error":
-      return theme.error
-    case "info":
-      return theme.info
-    case "text":
-    default:
-      return theme.textMuted
-  }
+// Ottili brand palette hex tokens (mirrors theme/themes/ottiliCoder.json), used
+// for the state strip so it reads like the rest of the chrome and survives
+// no-color terminals (the glyph + word title carry the meaning).
+const ROLE_HEX: Record<ParityColorRole, string> = {
+  accent: "#a77fc4",
+  success: "#7fd88f",
+  warning: "#f5a742",
+  error: "#e06c75",
+  info: "#f97316",
+  text: "#7d7670",
 }
 
 /** Resolve whether the terminal can render color. Honors NO_COLOR / TERM=dumb. */
 function useColorEnabled(): boolean {
   if (typeof process !== "undefined" && process.env.NO_COLOR) return false
   if (typeof process !== "undefined" && process.env.TERM === "dumb") return false
-  return typeof process === "undefined" || Boolean(process.stdout?.isTTY) || true
+  if (typeof process === "undefined") return true
+  return Boolean(process.stdout?.isTTY) || true
 }
 
 /**
  * Render a single parity state as a compact, always-legible TUI strip. The
  * strip shows a glyph + word title (so it survives no-color terminals), the
- * optional hint line, and any action keys. The aria label backs a screen-reader
- * live region so the state is announced, not just painted.
+ * optional detail, and the hint line. The `title` backs a screen-reader
+ * announcement so the state is announced, not just painted.
  */
 export function ParityStateView(props: { state: ParityState }) {
-  const themeCtx = useTheme()
+  const { theme } = useTheme()
   const dimensions = useTerminalDimensions()
   const useColor = useColorEnabled()
 
@@ -62,24 +56,18 @@ export function ParityStateView(props: { state: ParityState }) {
   return (
     <Show when={Flag.EVOLUTION_T_CLI_0245_TUI_REDESIGN_WEB_AND_DESKTOP_PARITY__ENABLED}>
       <Show when={view().status !== "hidden"}>
-        <box
-          flexDirection="row"
-          gap={1}
-          flexShrink={0}
-          aria-label={view().ariaLabel}
-          role="status"
-        >
+        <box flexDirection="row" gap={1} flexShrink={0} title={view().ariaLabel}>
           <text
-            fg={useColor ? colorOf(themeCtx.theme, view().colorRole) : themeCtx.theme.textMuted}
+            fg={useColor ? ROLE_HEX[view().colorRole] : theme.textMuted}
             attributes={TextAttributes.BOLD}
           >
             {view().glyph} {view().title}
           </text>
           <Show when={view().detail}>
-            <text fg={themeCtx.theme.textMuted}>{view().detail}</text>
+            <text fg={theme.textMuted}>{view().detail}</text>
           </Show>
           <Show when={view().hint}>
-            <text fg={themeCtx.theme.textMuted}>{view().hint}</text>
+            <text fg={theme.textMuted}>{view().hint}</text>
           </Show>
         </box>
       </Show>
@@ -89,7 +77,7 @@ export function ParityStateView(props: { state: ParityState }) {
 
 /**
  * Owns the rapid-stream coalescing queue for the parity state strip and exposes
- * a `push` for callers (session route, sync, permissions) to announce state
+ * `push` for callers (session route, sync, permissions) to announce state
  * changes. The queue keeps bursts of events from thrashing the renderer and
  * preserves focus during streaming (latest value wins, trailing flush).
  */
@@ -99,9 +87,7 @@ export function createTuiParityState() {
   let current: ParityState = { status: "hidden" }
 
   const queue = createParityStateQueue((state) => {
-    current = parityStateView(state, { width: dimensions().width, useColor }).status === "hidden"
-      ? state
-      : state
+    current = state
   })
 
   return {
@@ -118,9 +104,4 @@ export function createTuiParityState() {
       queue.dispose()
     },
   }
-}
-
-/** Convenience wrapper that pushes a state and renders the result strip. */
-export function ParityStateStrip(props: ParentProps<{ state: ParityState }>) {
-  return <ParityStateView state={props.state} />
 }
