@@ -35,7 +35,7 @@ export class CrashResumeError extends Schema.TaggedErrorClass<CrashResumeError>(
 export class ToolResult extends Schema.Class<ToolResult>("CrashResumeToolResult")({
   tool: Schema.String,
   callId: Schema.String,
-  status: Schema.Literals("ok", "error", "cancelled"),
+  status: Schema.Literals(["ok", "error", "cancelled"]),
   summary: Schema.String,
   durationMs: Schema.optional(Schema.Number),
   recordedAt: Schema.String,
@@ -43,21 +43,21 @@ export class ToolResult extends Schema.Class<ToolResult>("CrashResumeToolResult"
 
 export class FileEdit extends Schema.Class<FileEdit>("CrashResumeFileEdit")({
   path: Schema.String,
-  kind: Schema.Literals("create", "update", "delete", "rename"),
+  kind: Schema.Literals(["create", "update", "delete", "rename"]),
   description: Schema.String,
   recordedAt: Schema.String,
 }) {}
 
 export class ValidationRun extends Schema.Class<ValidationRun>("CrashResumeValidationRun")({
   command: Schema.String,
-  status: Schema.Literals("pass", "fail", "skip", "timeout"),
+  status: Schema.Literals(["pass", "fail", "skip", "timeout"]),
   summary: Schema.String,
   recordedAt: Schema.String,
 }) {}
 
 export class Milestone extends Schema.Class<Milestone>("CrashResumeMilestone")({
   title: Schema.String,
-  status: Schema.Literals("pending", "in_progress", "completed", "blocked"),
+  status: Schema.Literals(["pending", "in_progress", "completed", "blocked"]),
   notes: Schema.optional(Schema.String),
 }) {}
 
