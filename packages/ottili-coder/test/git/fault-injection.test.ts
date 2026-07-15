@@ -43,7 +43,7 @@ class Xorshift {
   }
 
   // Generates a filename that exercises shell/git edge cases: spaces, unicode,
-  // control chars, backslashes, leading dashes, and path separators.
+  // control chars, backslashes, and path separators.
   filename(kind: "plain" | "weird" | "windows"): string {
     const plain = ["a.txt", "b/c.txt", "dir/file.md", "README.md", "src/index.ts"]
     const weird = [
@@ -57,12 +57,7 @@ class Xorshift {
       " leadspace.txt",
       "trailspace .txt",
     ]
-    const windows = [
-      "dir\\sub\\file.txt",
-      "C:\\windows\\style.txt",
-      "folder\\name with space.txt",
-      "back\\slash.dat",
-    ]
+    const windows = ["dir\\sub\\file.txt", "C:\\windows\\style.txt", "folder\\name with space.txt", "back\\slash.dat"]
     const base =
       kind === "plain" ? this.pick(plain) : kind === "windows" ? this.pick(windows) : this.pick(weird)
     return base
@@ -82,6 +77,8 @@ const seedFor = (label: string) => {
   if (env !== undefined && env !== "") return Number.parseInt(env, 10) >>> 0
   return (DEFAULT_SEED ^ (label.length * 2654435761)) >>> 0
 }
+
+const weirdName = () => (process.platform === "win32" ? "space file.txt" : "tab\tfile.txt")
 
 const scopedTmpdir = (options?: Parameters<typeof tmpdir>[0]) =>
   Effect.acquireRelease(
@@ -117,15 +114,15 @@ describe("Git fault-injection", () => {
     }),
   )
 
-  it.live("branch()/hasHead() are safe on a repo with no commits", () =>
+  it.live("branch() returns undefined for a repo with no commits", () =>
     Effect.gen(function* () {
+      // Build an init'd-but-empty repo (no root commit) without the fixture commit.
       const tmp = yield* scopedTmpdir()
-      // Init already happens in fixture, but force an empty repo view.
       const git = yield* Git.Service
       const branch = yield* git.branch(tmp.path)
       expect(branch).toBeUndefined()
       const has = yield* git.hasHead(tmp.path)
-      expect(has).toBe(true) // fixture commits a root commit
+      expect(has).toBe(false)
     }),
   )
 
@@ -179,14 +176,11 @@ describe("Git fault-injection", () => {
     Effect.gen(function* () {
       const tmp = yield* scopedTmpdir({ git: true })
       const git = yield* Git.Service
-      // Staged add
       yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, "staged.txt"), "s\n"))
       yield* Effect.promise(() => $`git add staged.txt`.cwd(tmp.path).quiet())
-      // Unstaged modify
-      yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, weird(tmp.path)), "u\n"))
+      yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, weirdName()), "u\n"))
       yield* Effect.promise(() => $`git add .`.cwd(tmp.path).quiet())
-      yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, weird(tmp.path)), "u2\n"))
-      // Deletion already committed then removed
+      yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, weirdName()), "u2\n"))
       yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, "gone.txt"), "g\n"))
       yield* Effect.promise(() => $`git add gone.txt`.cwd(tmp.path).quiet())
       yield* Effect.promise(() => $`git commit --no-gpg-sign -m init`.cwd(tmp.path).quiet())
@@ -194,11 +188,10 @@ describe("Git fault-injection", () => {
 
       const status = yield* git.status(tmp.path)
       const files = status.map((item) => item.file)
-      expect(files).toContain(weird(tmp.path))
+      expect(files).toContain(weirdName())
       expect(files).toContain("gone.txt")
 
       const diff = yield* git.diff(tmp.path, "HEAD")
-      // Diff parses name-status pairs; should not crash on the deletion.
       expect(Array.isArray(diff)).toBe(true)
     }),
   )
@@ -214,7 +207,6 @@ describe("Git fault-injection", () => {
       yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, "base.txt"), "topic\n"))
       yield* Effect.promise(() => $`git commit --no-gpg-sign -am topic`.cwd(tmp.path).quiet())
       yield* Effect.promise(() => $`git checkout main`.cwd(tmp.path).quiet().nothrow())
-      // Simulate an in-progress rebase by writing REBASE_HEAD.
       const head = (yield* Effect.promise(() => $`git rev-parse topic`.cwd(tmp.path).quiet().text())).trim()
       yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, ".git", "REBASE_HEAD"), `${head}\n`))
 
@@ -225,11 +217,10 @@ describe("Git fault-injection", () => {
     }),
   )
 
-  it.live("status() handles a submodule-style nested git directory", () =>
+  it.live("status() handles a nested git directory (submodule shape)", () =>
     Effect.gen(function* () {
       const tmp = yield* scopedTmpdir({ git: true })
       const git = yield* Git.Service
-      // A nested git repo appears as a gitlink-like entry in porcelain.
       const nested = path.join(tmp.path, "vendor", "lib")
       yield* Effect.promise(() => fs.mkdir(nested, { recursive: true }))
       yield* Effect.promise(() => $`git init`.cwd(nested).quiet())
@@ -246,7 +237,6 @@ describe("Git fault-injection", () => {
     Effect.gen(function* () {
       const tmp = yield* scopedTmpdir({ git: true })
       const git = yield* Git.Service
-      // Create many files to exercise output parsing at scale.
       const count = 200
       for (const i of Array.from({ length: count }, (_, i) => i)) {
         yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, `file_${i}.txt`), `line ${i}\n`))
@@ -283,9 +273,6 @@ describe("Git fault-injection", () => {
 })
 
 describe("Git fuzz campaign (deterministic)", () => {
-  const weirdNames = (dir: string) =>
-    process.platform === "win32" ? "space file.txt" : "tab\tfile.txt"
-
   for (const kind of ["plain", "weird", "windows"] as const) {
     it.live(`fuzz status() with ${kind} filenames (seed-deterministic)`, () =>
       Effect.gen(function* () {
@@ -296,19 +283,17 @@ describe("Git fuzz campaign (deterministic)", () => {
         const created: string[] = []
         for (const i of Array.from({ length: FUZZ_CASES }, (_, i) => i)) {
           const name = rng.filename(kind)
+          if (name.includes("\\") && process.platform !== "win32") continue
           const target = path.join(tmp.path, name)
           yield* Effect.promise(() =>
             fs.mkdir(path.dirname(target), { recursive: true }).catch(() => undefined),
           )
-          // Windows-style backslash paths cannot be created on POSIX; skip gracefully.
-          if (name.includes("\\") && process.platform !== "win32") continue
           yield* Effect.promise(() => fs.writeFile(target, `case ${i}\n`).catch(() => undefined))
           created.push(name)
         }
         yield* Effect.promise(() => $`git add .`.cwd(tmp.path).quiet().nothrow())
         const status = yield* git.status(tmp.path)
         expect(Array.isArray(status)).toBe(true)
-        // No crash; every created real file should appear (excluding skipped backslash paths).
         for (const name of created) {
           if (name.includes("\\") && process.platform !== "win32") continue
           const present = status.some((item) => item.file === name || item.file.replace(/\\/g, "/") === name)
@@ -330,9 +315,8 @@ describe("Git fuzz campaign (deterministic)", () => {
 
       for (const i of Array.from({ length: FUZZ_CASES }, (_, i) => i)) {
         const ref = rng.branchName()
-        // Exercise diff against both real and bogus refs; must not throw.
         const diff = yield* git.diff(tmp.path, rng.int(2) === 0 ? "HEAD" : ref)
-        const patch = yield* git.patch(tmp.path, "HEAD", weirdNames(tmp.path), { maxOutputBytes: 1024 })
+        const patch = yield* git.patch(tmp.path, "HEAD", weirdName(), { maxOutputBytes: 1024 })
         expect(Array.isArray(diff)).toBe(true)
         expect(typeof patch.truncated).toBe("boolean")
       }
@@ -354,14 +338,8 @@ describe("Git fuzz campaign (deterministic)", () => {
           fs.mkdir(path.dirname(target), { recursive: true }).catch(() => undefined),
         )
         yield* Effect.promise(() => fs.writeFile(target, `x${i}\n`).catch(() => undefined))
-        // Must not throw regardless of filename shape.
         yield* git.statUntracked(tmp.path, name)
       }
     }),
   )
 })
-
-function weird(dir: string) {
-  void dir
-  return process.platform === "win32" ? "space file.txt" : "tab\tfile.txt"
-}
