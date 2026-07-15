@@ -4,7 +4,9 @@ import { useSync } from "../../context/sync"
 import { useLocal } from "../../context/local"
 import { useTheme } from "../../context/theme"
 import { Locale } from "../../util/locale"
+import { Flag } from "@opencode-ai/core/flag/flag"
 import { CostUsageMeter } from "../cost-usage"
+import { CheckpointStatusIndicator } from "../checkpoint-timeline/indicator"
 
 export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: string }) {
   const sync = useSync()
@@ -46,6 +48,9 @@ export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: 
         </Show>
         <Show when={model().model}>
           <CostUsageMeter sessionID={props.sessionID} />
+        </Show>
+        <Show when={Flag.OTTILI_CODER_EXPERIMENTAL_CHECKPOINT_TIMELINE}>
+          <CheckpointStatusIndicator sessionID={props.sessionID} />
         </Show>
       </box>
       <text fg={theme.textMuted} flexShrink={0}>

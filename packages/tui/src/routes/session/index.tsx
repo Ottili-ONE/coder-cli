@@ -53,14 +53,16 @@ import { ToolCallCard } from "../../component/tool-call-card"
 import { toggleActiveOrLastToolCard } from "../../component/tool-call-store"
 import { DialogMessage } from "./dialog-message"
 import { DialogCostUsage } from "../../component/cost-usage"
-import { DialogCostUsage } from "../../component/cost-usage"
 import type { PromptInfo } from "../../component/prompt/history"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
 import { DialogContextMeter } from "../../component/context-meter/dialog"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
+import { CheckpointTimelineDialog } from "../../component/checkpoint-timeline/dialog"
+import { Flag } from "@opencode-ai/core/flag/flag"
 import { Sidebar } from "./sidebar"
+import { useSessionSidebarOpenRequest } from "./session-sidebar/controller"
 import { SessionHeaderStrip } from "./header-strip"
 import { SubagentFooter } from "./subagent-footer.tsx"
 import { filetype } from "../../util/filetype"
@@ -275,6 +277,13 @@ export function Session() {
     if (sidebar() === "auto" && wide()) return true
     return false
   })
+
+  // `session.list` (defined in app.tsx) requests the sidebar to open.
+  createEffect(
+    on(useSessionSidebarOpenRequest(), () => {
+      setSidebarOpen(true)
+    }),
+  )
   const showTimestamps = createMemo(() => timestamps() === "show")
   const contentWidth = createMemo(() => dimensions().width - (sidebarVisible() ? 42 : 0) - 4)
   const providers = createMemo(() => Model.index(sync.data.provider))
@@ -1138,6 +1147,17 @@ export function Session() {
       },
     },
     {
+      title: "Show checkpoint timeline",
+      value: "session.checkpoint",
+      category: "Session",
+      slash: { name: "/checkpoint" },
+      enabled: Flag.OTTILI_CODER_EXPERIMENTAL_CHECKPOINT_TIMELINE,
+      run: () => {
+        dialog.clear()
+        dialog.replace(() => <CheckpointTimelineDialog sessionID={route.sessionID} />)
+      },
+    },
+    {
       title: "Show session status",
       value: "session.status",
       category: "Session",
@@ -1608,7 +1628,7 @@ export function Session() {
                   alignItems="flex-end"
                   backgroundColor={RGBA.fromValues(theme.background.r, theme.background.g, theme.background.b, 180)}
                 >
-                  <Sidebar sessionID={route.sessionID} overlay />
+                  <Sidebar sessionID={route.sessionID} overlay onClose={() => setSidebarOpen(false)} />
                 </box>
               </Match>
             </Switch>
@@ -1807,7 +1827,11 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
           customBorderChars={SplitBorder.customBorderChars}
           borderColor={theme.error}
         >
-          <text fg={theme.textMuted}>{props.message.error?.data.message}</text>
+          <text fg={theme.textMuted}>
+            {typeof props.message.error === "object" && props.message.error !== null
+              ? String((props.message.error as { data?: { message?: unknown } }).data?.message ?? "")
+              : ""}
+          </text>
         </box>
       </Show>
       <Switch>

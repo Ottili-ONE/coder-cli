@@ -49,6 +49,12 @@ export const Flag = {
   OTTILI_CODER_WORKSPACE_ID: process.env["OTTILI_CODER_WORKSPACE_ID"],
   OTTILI_CODER_EXPERIMENTAL_WORKSPACES: enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_WORKSPACES"),
 
+  // Checkpoint timeline (T-CLI-0166): surface Cairn checkpoint state as a
+  // user-navigable timeline. Off until staged validation passes.
+  get OTTILI_CODER_EXPERIMENTAL_CHECKPOINT_TIMELINE() {
+    return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_CHECKPOINT_TIMELINE")
+  },
+
   // Evaluated at access time (not module load) because tests, the CLI, and
   // external tooling set these env vars at runtime.
   get OTTILI_CODER_DISABLE_PROJECT_CONFIG() {

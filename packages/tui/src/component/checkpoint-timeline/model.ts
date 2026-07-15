@@ -52,7 +52,15 @@ export interface CheckpointEvent {
   severity?: CheckpointEventSeverity
 }
 
-export type CheckpointTimelineStatus = "empty" | "populated" | "loading" | "degraded" | "failure"
+export type CheckpointTimelineStatus =
+  | "empty"
+  | "populated"
+  | "loading"
+  | "degraded"
+  | "failure"
+  | "denied"
+  | "offline"
+  | "long-content"
 
 /** Harness-level concerns lifted above the raw file contents. */
 export interface CheckpointTimelineContext {
@@ -62,6 +70,8 @@ export interface CheckpointTimelineContext {
   error?: string
   /** The session/backend is unreachable; keep last-known timeline. */
   offline?: boolean
+  /** The caller is not permitted to read these files. */
+  denied?: boolean
 }
 
 export interface CheckpointTimelineState {
@@ -88,6 +98,14 @@ export interface CheckpointTimelineState {
   stale: boolean
   /** One-line header summary for the indicator. */
   summaryText: string
+  /** Banner text for the active lifecycle state (loading / empty / error / …). */
+  statusText: string
+  /** Events after the performance cap (largest-first, last-known retained). */
+  visible: CheckpointEvent[]
+  /** Number of events dropped by the cap. */
+  truncated: number
+  /** True when any title/detail was redacted while parsing. */
+  redacted: boolean
   /** Full, screen-reader oriented description of the current state. */
   accessibleSummary: string
 }
@@ -109,24 +127,122 @@ export function isMinimalTerminal(width: number): boolean {
   return width < MINIMAL_WIDTH
 }
 
+// --- hardening constants & helpers -------------------------------------
+
+/** Maximum number of events rendered before the tail is merged into "and N more". */
+export const CHECKPOINT_TIMELINE_MAX_EVENTS = 200
+
+/** Maximum cadence (ms) at which a live, streaming timeline re-samples its source. */
+export const RENDER_BUDGET_MS = 400
+
+/** Maximum length of a redacted harness error / diagnostic. */
+export const ERROR_MAX = 240
+
+/** True when the environment cannot render color (NO_COLOR or a dumb terminal). */
+export function detectNoColor(): boolean {
+  if (typeof process !== "undefined" && process.env.NO_COLOR) return true
+  if (typeof process !== "undefined" && process.env.TERM === "dumb") return true
+  return false
+}
+
+/** Redact secret material from an arbitrary user-visible string. */
+export function redactText(text: string): string {
+  if (!text) return text
+  return text.replace(
+    /(sk|AKIA|gh[pousr]_|Bearer|pk|api|token|secret|key|password)([-_]?)[A-Za-z0-9_-]{6,}/gi,
+    (match, scheme: string, sep: string) => `${scheme}${sep}••••`,
+  )
+}
+
+function truncateError(text: string): string {
+  const cleaned = text.replace(/\t/g, "  ").trim()
+  if (cleaned.length <= ERROR_MAX) return cleaned
+  return cleaned.slice(0, ERROR_MAX - 1) + "…"
+}
+
+/** Redact and bound a harness error for safe display and diagnostics. */
+export function redactError(text: string): string {
+  return redactText(truncateError(text))
+}
+
+/** Map a raw read error to a friendly, redacted lifecycle status. */
+export function classifyCheckpointError(raw: string | undefined): CheckpointTimelineStatus | undefined {
+  if (!raw) return undefined
+  const text = redactError(raw)
+  if (/econnrefused|timed? ?out|503|service unavailable|network|offline|enotfound|enoent/i.test(text))
+    return "offline"
+  if (/403|forbidden|401|unauthorized|permission|access denied|eacces/i.test(text)) return "denied"
+  return "failure"
+}
+
+/** Glyph for a lifecycle status (Claude Code-like density, Ottili palette). */
+export const STATUS_GLYPH: Record<CheckpointTimelineStatus, string> = {
+  empty: "·",
+  populated: "▮",
+  loading: "↻",
+  degraded: "≈",
+  failure: "⚠",
+  denied: "⊘",
+  offlline: "≈",
+  "long-content": "▤",
+}
+
+/** Theme palette token name for a lifecycle status (component maps token → color). */
+export function statusColorToken(status: CheckpointTimelineStatus): string {
+  switch (status) {
+    case "failure":
+    case "denied":
+      return "error"
+    case "offline":
+    case "degraded":
+      return "warning"
+    case "long-content":
+      return "info"
+    case "populated":
+      return "success"
+    default:
+      return "text"
+  }
+}
+
+/** Whether the status shows the event list (vs. a bare banner). */
+export function checkpointStatusIsEventful(status: CheckpointTimelineStatus): boolean {
+  return (
+    status === "populated" ||
+    status === "long-content" ||
+    status === "degraded" ||
+    status === "offline"
+  )
+}
+
+
 // --- glyph & color projection ----------------------------------------------
 
 /** Glyph for an event kind/status (Claude Code-like density, Ottili palette). */
-export function glyphFor(event: CheckpointEvent): string {
+export function glyphFor(event: CheckpointEvent, noColor: boolean = false): string {
   switch (event.kind) {
     case "decision":
-      return "◆"
+      return noColor ? "*" : "◆"
     case "validation":
-      return "⌁"
+      return noColor ? "~" : "⌁"
     case "failure":
-      return "⊘"
+      return noColor ? "!" : "⊘"
     case "resume":
-      return "↩"
+      return noColor ? "<-" : "↩"
     case "milestone":
-      if (event.status === "completed") return "✓"
-      if (event.status === "blocked") return "⊘"
-      return "▸"
+      if (event.status === "completed") return noColor ? "[x]" : "✓"
+      if (event.status === "blocked") return noColor ? "[!]" : "⊘"
+      return noColor ? ">" : "▸"
   }
+}
+
+/** ASCII fallback glyphs for no-color terminals. */
+export const ASCII_GLYPH: Record<CheckpointEventKind, string> = {
+  milestone: ">",
+  decision: "*",
+  validation: "~",
+  failure: "!",
+  resume: "<-",
 }
 
 /** Theme palette token name for an event (component maps token → color). */
@@ -441,7 +557,7 @@ export function parseCheckpointTimeline(
   const problems = parseKnownProblems(args.knownProblems)
   const exists = !!(checkpoint || decisions.length || validations.length || problems.length)
 
-  const events = sortEvents([
+  const rawEvents = sortEvents([
     ...milestoneEvents(checkpoint),
     ...decisionEvents(decisions),
     ...validationEvents(validations),
@@ -449,20 +565,38 @@ export function parseCheckpointTimeline(
     ...resumeEvent(checkpoint),
   ])
 
+  // Redact any secrets from user-visible text before projection.
+  let redacted = false
+  const events = rawEvents.map((event) => {
+    const title = redactText(event.title)
+    const detail = event.detail ? redactText(event.detail) : event.detail
+    if (title !== event.title || detail !== event.detail) redacted = true
+    return { ...event, title, detail }
+  })
+
   const milestoneTotal = checkpoint?.milestones.length ?? 0
   const milestoneDone = checkpoint?.milestones.filter((m) => m.status === "completed").length ?? 0
   const decisionCount = decisions.length
   const failureCount = problems.length
-  const resume = checkpoint?.nextAction
+  const resume = checkpoint?.nextAction ? redactText(checkpoint.nextAction) : checkpoint?.nextAction
 
   let status: CheckpointTimelineStatus
-  if (ctx.error) status = "failure"
-  else if (ctx.offline) status = "degraded"
+  if (ctx.denied) status = "denied"
+  else if (ctx.offline) status = "offline"
+  else if (ctx.error) status = "failure"
   else if (ctx.loading && !exists) status = "loading"
+  else if (ctx.loading && exists) status = "degraded"
   else if (!exists) status = "empty"
+  else if (events.length > CHECKPOINT_TIMELINE_MAX_EVENTS) status = "long-content"
   else status = "populated"
 
-  const stale = !!ctx.loading && status === "populated"
+  const stale = status === "degraded"
+  const visible = events.length > CHECKPOINT_TIMELINE_MAX_EVENTS
+    ? events.slice(0, CHECKPOINT_TIMELINE_MAX_EVENTS)
+    : events
+  const truncated = Math.max(0, events.length - visible.length)
+
+  const noColor = detectNoColor()
   const accessibleSummary = buildAccessibleSummary({
     exists,
     milestoneDone,
@@ -472,9 +606,11 @@ export function parseCheckpointTimeline(
     resume,
   })
 
+  const statusText = statusBanner(status, ctx.error)
+
   return {
     exists,
-    goal: checkpoint?.goal ?? "",
+    goal: redactText(checkpoint?.goal ?? ""),
     mode: checkpoint?.mode ?? "build",
     currentMilestone: checkpoint?.currentMilestone,
     nextAction: checkpoint?.nextAction,
@@ -492,7 +628,12 @@ export function parseCheckpointTimeline(
     summaryText: renderIndicatorText(
       { milestoneDone, milestoneTotal, decisionCount, failureCount, resume, exists },
       overrides.width ?? WIDE_WIDTH,
+      noColor,
     ),
+    statusText,
+    visible,
+    truncated,
+    redacted,
     accessibleSummary,
   }
 }
@@ -531,17 +672,21 @@ export interface IndicatorCounts {
  *  - >= STANDARD_WIDTH: full line with truncated resume point
  * When there is no checkpoint, renders `· no checkpoint` (never a "clean" badge).
  */
-export function renderIndicatorText(counts: IndicatorCounts, width: number = WIDE_WIDTH): string {
+export function renderIndicatorText(
+  counts: IndicatorCounts,
+  width: number = WIDE_WIDTH,
+  noColor: boolean = false,
+): string {
   if (!counts.exists) return "· no checkpoint"
   const segments: string[] = []
-  const anyBlocked = false // reserved for future milestone.status === blocked signal
-  segments.push(`✓ ${counts.milestoneDone}/${counts.milestoneTotal}`)
-  if (anyBlocked) segments.push("⚠ blocked")
+  const check = noColor ? "[x]" : "✓"
+  const resumeGlyph = noColor ? "resume" : "↩"
+  segments.push(`${check} ${counts.milestoneDone}/${counts.milestoneTotal}`)
   if (counts.decisionCount > 0) segments.push(`${counts.decisionCount} decisions`)
   if (counts.failureCount > 0) segments.push(`${counts.failureCount} failure${counts.failureCount === 1 ? "" : "s"}`)
   if (counts.resume && width >= STANDARD_WIDTH) {
-    const resume = counts.resume.length > 32 ? counts.resume.slice(0, 31) + "…" : counts.resume
-    segments.push(`↩ resume: ${resume}`)
+    const resume = counts.resume.length > 32 ? redactText(counts.resume).slice(0, 31) + "…" : redactText(counts.resume)
+    segments.push(`${resumeGlyph} resume: ${resume}`)
   }
   if (width < MINIMAL_WIDTH) {
     return segments[0]
@@ -558,9 +703,9 @@ export function renderIndicatorText(counts: IndicatorCounts, width: number = WID
 export function formatEventLine(
   event: CheckpointEvent,
   width: number,
-  opts: { now?: number } = {},
+  opts: { now?: number; noColor?: boolean } = {},
 ): string {
-  const glyph = glyphFor(event)
+  const glyph = glyphFor(event, opts.noColor)
   const summary = event.title
   if (width < MINIMAL_WIDTH) {
     return `${glyph} ${summary}`.slice(0, Math.max(1, width))
@@ -570,11 +715,33 @@ export function formatEventLine(
   }
   const kindLabel = event.kind
   const time = event.timestamp ? formatTime(event.timestamp, opts.now) : ""
-  const detail = event.detail ? ` → ${truncate(event.detail.replace(/\s+/g, " ").trim(), 40)}` : ""
+  const detail = event.detail ? ` → ${truncate(redactText(event.detail).replace(/\s+/g, " ").trim(), 40)}` : ""
   if (width >= WIDE_WIDTH) {
     return `${glyph} ${time} ${kindLabel} ${summary}${detail}`.trim()
   }
   return `${glyph} ${time} ${kindLabel} ${summary}`.trim()
+}
+
+/** Banner text for the active lifecycle state (redacts diagnostics). */
+export function statusBanner(status: CheckpointTimelineStatus, error?: string): string {
+  switch (status) {
+    case "loading":
+      return "↻ loading checkpoint…"
+    case "empty":
+      return "· no checkpoint yet"
+    case "failure":
+      return `⚠ checkpoint unavailable — ${redactError(error ?? "unknown error")}`
+    case "denied":
+      return "⊘ checkpoint access denied"
+    case "offline":
+      return "≈ checkpoint offline — showing last known"
+    case "degraded":
+      return "≈ checkpoint stale — showing last known"
+    case "long-content":
+      return "▤ checkpoint — large history, showing recent"
+    case "populated":
+      return "▮ checkpoint"
+  }
 }
 
 /** Compact HH:MM (wide) or relative "12m ago" (standard) timestamp. */
