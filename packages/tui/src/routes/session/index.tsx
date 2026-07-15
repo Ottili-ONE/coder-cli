@@ -48,6 +48,7 @@ import { useDialog, Dialog } from "../../ui/dialog"
 import { DialogAlert } from "../../ui/dialog-alert"
 import { DialogModel } from "../../component/dialog-model"
 import { DialogThemeList } from "../../component/dialog-theme-list"
+import { DialogSettings } from "../../component/dialog-settings"
 import { TodoItem } from "../../component/todo-item"
 import { ToolCallCard } from "../../component/tool-call-card"
 import { toggleActiveOrLastToolCard } from "../../component/tool-call-store"
@@ -1512,6 +1513,17 @@ export function Session() {
       run: () => {
         dialog.clear()
         dialog.replace(() => <DialogModel />)
+      },
+    },
+    {
+      title: "Open settings",
+      value: "session.settings",
+      category: "Settings",
+      slash: { name: "/settings" },
+      enabled: true,
+      run: () => {
+        dialog.clear()
+        dialog.replace(() => <DialogSettings />)
       },
     },
   ])
