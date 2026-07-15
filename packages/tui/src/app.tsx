@@ -40,12 +40,12 @@ import { DialogModel } from "./component/dialog-model"
 import { useConnected } from "./component/use-connected"
 import { DialogMcp } from "./component/dialog-mcp"
 import { DialogStatus } from "./component/dialog-status"
+import { DialogGitStatus } from "./component/dialog-git-status"
 import { DialogUsageLimits } from "./component/dialog-usage-limits"
 import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogAgent } from "./component/dialog-agent"
-import { DialogSessionList } from "./component/dialog-session-list"
-import { DialogWorkspaceList } from "./component/dialog-workspace-list"
+import { DialogProjectSwitcher } from "./component/project-switcher"
 import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { DialogAccountLogin } from "./component/dialog-account-login"
 import { DialogAccountLogout } from "./component/dialog-account-logout"
@@ -87,6 +87,7 @@ import { createTuiAttention } from "./attention"
 import * as TuiAudio from "./audio"
 import { win32DisableProcessedInput, win32FlushInputBuffer } from "./terminal-win32"
 import { destroyRenderer } from "./util/renderer"
+import { requestSessionSidebarOpen } from "./routes/session/session-sidebar/controller"
 import { cliErrorMessage, errorFormat } from "./util/error"
 
 const appGlobalBindingCommands = [
@@ -569,7 +570,16 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         slashName: "sessions",
         slashAliases: ["resume", "continue"],
         run: () => {
-          dialog.replace(() => <DialogSessionList />)
+          if (route.data.type === "session") {
+            requestSessionSidebarOpen(true)
+            return
+          }
+          const match = sync.data.session
+            .toSorted((a, b) => b.time.updated - a.time.updated)
+            .find((x) => x.parentID === undefined)?.id
+          if (!match) return
+          route.navigate({ type: "session", sessionID: match })
+          requestSessionSidebarOpen(true)
         },
       },
       {
@@ -608,7 +618,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         hidden: !Flag.OTTILI_CODER_EXPERIMENTAL_WORKSPACES,
         slashName: "workspaces",
         run: () => {
-          dialog.replace(() => <DialogWorkspaceList />)
+          dialog.replace(() => <DialogProjectSwitcher />)
         },
       },
       ...Array.from({ length: 9 }, (_, i) => ({
@@ -822,6 +832,15 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         slashName: "status",
         run: () => {
           dialog.replace(() => <DialogStatus />)
+        },
+        category: "System",
+      },
+      {
+        name: "ottiliCoder.git",
+        title: "View git status",
+        slashName: "git",
+        run: () => {
+          dialog.replace(() => <DialogGitStatus />)
         },
         category: "System",
       },
