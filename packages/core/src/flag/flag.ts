@@ -71,6 +71,19 @@ export const Flag = {
     return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_TUI_TOAST_REDESIGN")
   },
 
+  // Search across session (T-CLI-0185): unified full-session search surface
+  // over messages, tool calls, files, tasks, errors and decisions. The
+  // redesigned surface is always active; this flag additionally exposes the
+  // "/search" slash command and the <leader>/ binding. On by default;
+  // set to false to hide the entry points until staging validation passes.
+  get EVOLUTION_T_CLI_0185_TUI_REDESIGN_SEARCH_ACROSS_SESSION__ENABLED() {
+    return (
+      process.env["EVOLUTION_T_CLI_0185_TUI_REDESIGN_SEARCH_ACROSS_SESSION__ENABLED"] === undefined
+        ? true
+        : truthy("EVOLUTION_T_CLI_0185_TUI_REDESIGN_SEARCH_ACROSS_SESSION__ENABLED")
+    )
+  },
+
   // Evaluated at access time (not module load) because tests, the CLI, and
   // external tooling set these env vars at runtime.
   get OTTILI_CODER_DISABLE_PROJECT_CONFIG() {

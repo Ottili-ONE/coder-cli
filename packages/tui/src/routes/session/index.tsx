@@ -437,6 +437,19 @@ export function Session() {
     }, 50)
   }
 
+  // Jump to a specific message when the route carries a messageID (used by
+  // Search across session so a selected result lands on its source).
+  createEffect(() => {
+    const targetID = route.messageID
+    if (!targetID || route.type !== "session") return
+    if (route.sessionID !== session()?.id) return
+    setTimeout(() => {
+      if (!scroll || scroll.isDestroyed) return
+      const child = scroll.getChildren().find((c) => c.id === targetID)
+      if (child) scroll.scrollBy(child.y - scroll.y - 1)
+    }, 60)
+  })
+
   const local = useLocal()
 
   function enterChild(sessionID: string) {
