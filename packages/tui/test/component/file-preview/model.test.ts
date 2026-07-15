@@ -170,7 +170,7 @@ describe("visibleIds", () => {
     const many = Array.from({ length: 30 }, (_, i) => line(i, `line ${i}`))
     const state = buildState(many, ctx())
     const ids = visibleIds(state)
-    expect(ids).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29])
+    expect(ids).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 24, 25, 26, 27, 28, 29])
     expect(ids).not.toContain(-1)
   })
 })
@@ -188,11 +188,11 @@ describe("capLines", () => {
     const huge = Array.from({ length: 6000 }, (_, i) => line(i, `l${i}`))
     const capped = capLines(huge)
     expect(capped.capped).toBe(true)
-    expect(capped.dropped).toBe(1000)
-    expect(capped.lines.length).toBe(PREVIEW_MAX_LINES_DEFAULT + 1)
+    expect(capped.dropped).toBe(1001)
+    expect(capped.lines.length).toBe(PREVIEW_MAX_LINES_DEFAULT)
     expect(capped.lines[0]!.id).toBe(0)
     expect(capped.lines.at(-1)!.id).toBe(5999)
-    expect(capped.lines.some((l) => l.isFoldMarker)).toBe(true)
+    expect(capped.lines.filter((l) => l.isFoldMarker)).toHaveLength(1)
   })
 })
 
@@ -265,8 +265,8 @@ describe("isNarrow + truncateLine", () => {
 
 describe("redactMessage", () => {
   test("masks bearer tokens and key=value secrets", () => {
-    expect(redactMessage("Bearer abcdefghijklmnopqrstuvwxyz").text).toContain("••••")
-    expect(redactMessage("api_key = supersecretvalue123").text).toContain("••••")
+    expect(redactMessage("Bearer abcdefghijklmnopqrstuvwxyz")).toContain("••••")
+    expect(redactMessage("api_key = supersecretvalue123")).toContain("••••")
     expect(redactMessage("just a path")).toBe("just a path")
   })
 })

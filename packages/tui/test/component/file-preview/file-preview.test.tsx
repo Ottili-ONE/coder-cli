@@ -2,11 +2,11 @@
 import { createSignal, type Accessor } from "solid-js"
 import { testRender } from "@opentui/solid"
 import { expect, test } from "bun:test"
-import { KVProvider } from "../../src/context/kv"
-import { ThemeProvider } from "../../src/context/theme"
-import { TuiConfigProvider, resolve } from "../../src/config"
-import { TestTuiContexts } from "../fixture/tui-environment"
-import { FilePreview } from "../../src/component/file-preview/index"
+import { KVProvider } from "../../../src/context/kv"
+import { ThemeProvider } from "../../../src/context/theme"
+import { TuiConfigProvider, resolve } from "../../../src/config"
+import { TestTuiContexts } from "../../fixture/tui-environment"
+import { FilePreview } from "../../../src/component/file-preview/index"
 
 function accessor<T>(value: T): Accessor<T> {
   return () => value

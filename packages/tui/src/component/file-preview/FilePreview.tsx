@@ -25,6 +25,7 @@ import {
 
 const GUTTER_PAD = 1
 const REFERENCE_MARKER = "●"
+const REFERENCES_PREVIEW_LIMIT = 8
 
 export type FilePreviewProps = {
   readonly width: number
@@ -175,7 +176,6 @@ export function FilePreview(props: FilePreviewProps) {
                   (hasRefs() ? REFERENCE_MARKER + " " : "  ") + formatGutter(lineNumber(), gw())
                 const gutterColor = () =>
                   hasRefs() ? props.theme.primary : useColor() ? props.theme.diffLineNumber : props.theme.textMuted
-                const lineColor = () => (hasRefs() ? props.theme.primary : props.theme.textMuted)
                 const rowBg = () => (selected() && useColor() ? props.theme.primary : undefined)
                 const tokenFg = (kind: FilePreviewTokenKind) =>
                   selected() && useColor() ? selectedForeground(props.theme, props.theme.primary) : tokenColor(props.theme, kind)
@@ -206,14 +206,25 @@ export function FilePreview(props: FilePreviewProps) {
                 )
               }}
             </For>
-            <Show when={(props.references?.length ?? 0) > 0}>
-              <text id="file-preview-references" fg={props.theme.textMuted} wrapMode="none">
-                {`${props.references!.length} reference${props.references!.length === 1 ? "" : "s"}`}
-              </text>
-            </Show>
           </scrollbox>
         </Match>
       </Switch>
+      <Show when={(props.references?.length ?? 0) > 0}>
+        <box border={["top"]} borderColor={props.theme.borderSubtle} flexShrink={0}>
+          <For each={props.references!.slice(0, REFERENCES_PREVIEW_LIMIT)}>
+            {(reference) => (
+              <text id="file-preview-reference" fg={props.theme.textMuted} wrapMode="none">
+                {`${reference.line}: ${reference.label}${reference.detail ? "  " + reference.detail : ""}`}
+              </text>
+            )}
+          </For>
+          <Show when={(props.references?.length ?? 0) > REFERENCES_PREVIEW_LIMIT}>
+            <text fg={props.theme.textMuted} wrapMode="none">
+              {`${props.references!.length - REFERENCES_PREVIEW_LIMIT} more reference(s)…`}
+            </text>
+          </Show>
+        </box>
+      </Show>
     </box>
   )
 
