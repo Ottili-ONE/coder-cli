@@ -119,13 +119,6 @@ export function CheckpointTimeline(props: CheckpointTimelineProps) {
         break
     }
   })
-        break
-      case "c":
-        props.onCopyResume?.()
-        props.onAction?.({ type: "copyResume" })
-        break
-    }
-  })
 
   return (
     <box flexDirection="column" id="checkpoint-timeline" width={width()}>

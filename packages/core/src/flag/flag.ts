@@ -84,6 +84,24 @@ export const Flag = {
     )
   },
 
+  // Code block renderer redesign (T-CLI-0193): the redesigned, Ottili-palette
+  // controlled code block surface (syntax highlighting, line-number gutter,
+  // header with language + line count, copy / line-select / wrap / run
+  // affordances). Off until staging validation passes; when off the shipped
+  // engine markdown renderer and the planned markdown path's legacy bordered
+  // text fall back unchanged (zero regression).
+  get EVOLUTION_T_CLI_0193_TUI_REDESIGN_CODE_BLOCK_RENDERER__C_ENABLED() {
+    return truthy("EVOLUTION_T_CLI_0193_TUI_REDESIGN_CODE_BLOCK_RENDERER__C_ENABLED")
+  },
+
+  // Focus mode (T-CLI-0205): minimal transcript/composer surface that drops
+  // the sidebar, header strip, and status chrome behind a single keystroke.
+  // Off until staging validation passes; when off `focused()` is forced false
+  // so the session renders exactly as today (zero regression).
+  get EVOLUTION_T_CLI_0205_TUI_REDESIGN_FOCUS_MODE__CORE_IMPLE_ENABLED() {
+    return truthy("EVOLUTION_T_CLI_0205_TUI_REDESIGN_FOCUS_MODE__CORE_IMPLE_ENABLED")
+  },
+
   // Evaluated at access time (not module load) because tests, the CLI, and
   // external tooling set these env vars at runtime.
   get OTTILI_CODER_DISABLE_PROJECT_CONFIG() {

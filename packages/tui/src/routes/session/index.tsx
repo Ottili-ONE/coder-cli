@@ -61,7 +61,10 @@ import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { CheckpointTimelineDialog } from "../../component/checkpoint-timeline/dialog"
 import { Flag } from "@opencode-ai/core/flag/flag"
+import { MarkdownStateView } from "../../component/markdown"
+import { usePromptRef } from "../../context/prompt"
 import { Sidebar } from "./sidebar"
+import { computeFocusChrome, computeSidebarVisible } from "./focus"
 import { useSessionSidebarOpenRequest } from "./session-sidebar/controller"
 import { SessionHeaderStrip } from "./header-strip"
 import { SubagentFooter } from "./subagent-footer.tsx"
@@ -71,7 +74,6 @@ import { errorMessage } from "../../util/error"
 import { Toast, useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv.tsx"
 import stripAnsi from "strip-ansi"
-import { usePromptRef } from "../../context/prompt"
 import { useEpilogue } from "../../context/epilogue"
 import { normalizePath } from "../../util/path"
 import { PermissionPrompt } from "./permission"
@@ -129,6 +131,7 @@ const sessionBindingCommands = [
   "session.undo",
   "session.redo",
   "session.sidebar.toggle",
+  "session.focus.toggle",
   "session.toggle.conceal",
   "session.toggle.timestamps",
   "session.toggle.thinking",
@@ -270,17 +273,36 @@ export function Session() {
   const [_animationsEnabled, _setAnimationsEnabled] = kv.signal("animations_enabled", true)
   const [showGenericToolOutput, setShowGenericToolOutput] = kv.signal("generic_tool_output_visibility", false)
 
+  // Focus mode (T-CLI-0205): minimal transcript/composer surface. The
+  // preference persists like `sidebar`; the flag forces it off (zero
+  // regression) when disabled.
+  const [focus, setFocus] = kv.signal<boolean>("focus_mode", false)
+  const focused = () => focus() && Flag.EVOLUTION_T_CLI_0205_TUI_REDESIGN_FOCUS_MODE__CORE_IMPLE_ENABLED
+
   const wide = createMemo(() => dimensions().width > 120)
-  const sidebarVisible = createMemo(() => {
-    if (session()?.parentID) return false
-    if (sidebarOpen()) return true
-    if (sidebar() === "auto" && wide()) return true
-    return false
-  })
+  const sidebarVisible = createMemo(() =>
+    computeSidebarVisible({
+      parentID: session()?.parentID !== undefined,
+      focused: focused(),
+      sidebarOpen: sidebarOpen(),
+      sidebarAuto: sidebar() === "auto",
+      wide: wide(),
+    }),
+  )
+  const chrome = createMemo(() =>
+    computeFocusChrome({
+      focused: focused(),
+      sessionExists: session() !== undefined,
+      sidebarVisible: sidebarVisible(),
+    }),
+  )
 
   // `session.list` (defined in app.tsx) requests the sidebar to open.
+  // Focus mode forces the sidebar off, so an inbound open request is ignored
+  // while focused() is true (the overlay cannot re-open until Focus mode exits).
   createEffect(
     on(useSessionSidebarOpenRequest(), () => {
+      if (focused()) return
       setSidebarOpen(true)
     }),
   )
@@ -720,6 +742,15 @@ export function Session() {
           setSidebar(() => (isVisible ? "hide" : "auto"))
           setSidebarOpen(!isVisible)
         })
+        dialog.clear()
+      },
+    },
+    {
+      title: focused() ? "Exit focus mode" : "Enter focus mode",
+      value: "session.focus.toggle",
+      category: "Session",
+      run: () => {
+        setFocus((prev) => !prev)
         dialog.clear()
       },
     },
@@ -1432,6 +1463,7 @@ export function Session() {
   })
 
   const sidebarShortcut = useCommandShortcut("session.sidebar.toggle")
+  const focusShortcut = useCommandShortcut("session.focus.toggle")
 
   // snap to bottom when session changes
   createEffect(on(() => route.sessionID, toBottom))
@@ -1459,7 +1491,7 @@ export function Session() {
       >
         <box flexDirection="row" flexGrow={1} minHeight={0}>
           <box flexGrow={1} minHeight={0} paddingBottom={1} paddingLeft={2} paddingRight={2} gap={1}>
-            <Show when={session() && !sidebarVisible()}>
+            <Show when={chrome().headerVisible}>
               <SessionHeaderStrip sessionID={route.sessionID} sidebarShortcut={sidebarShortcut()} />
             </Show>
             <Show when={session()}>
@@ -1622,6 +1654,12 @@ export function Session() {
                     />
                   </pluginRuntime.Slot>
                 </Show>
+              </box>
+            </Show>
+            <Show when={chrome().focusHintVisible}>
+              <box flexDirection="row" flexShrink={0} paddingTop={1} aria-label="Focus mode. Press leader-f to return to the full view.">
+                <text fg={theme.info}>focus</text>
+                <text fg={theme.textMuted}> · {focusShortcut()} exit</text>
               </box>
             </Show>
             <Toast />
@@ -1989,19 +2027,37 @@ function ReasoningHeader(props: {
 function TextPart(props: { last: boolean; part: TextPart; message: AssistantMessage }) {
   const ctx = use()
   const { theme, syntax } = useTheme()
+  const promptRef = usePromptRef()
+  // Route a shell-eligible block to the prompt box (prefilled) so the normal
+  // send → permission flow applies. Never auto-runs.
+  const runCode = (code: string) => {
+    promptRef.current?.set({ input: code, parts: [] })
+  }
+  const useRedesign = () => Flag.EVOLUTION_T_CLI_0193_TUI_REDESIGN_CODE_BLOCK_RENDERER__C_ENABLED
   return (
     <Show when={props.part.text.trim()}>
       <box id={"text-" + props.part.id} paddingLeft={3} marginTop={1} flexShrink={0}>
-        <markdown
-          syntaxStyle={syntax()}
-          streaming={true}
-          internalBlockMode="top-level"
-          content={props.part.text.trim()}
-          tableOptions={{ style: "grid" }}
-          conceal={ctx.conceal()}
-          fg={theme.markdownText}
-          bg={theme.background}
-        />
+        <Show
+          when={useRedesign()}
+          fallback={
+            <markdown
+              syntaxStyle={syntax()}
+              streaming={true}
+              internalBlockMode="top-level"
+              content={props.part.text.trim()}
+              tableOptions={{ style: "grid" }}
+              conceal={ctx.conceal()}
+              fg={theme.markdownText}
+              bg={theme.background}
+            />
+          }
+        >
+          <MarkdownStateView
+            content={props.part.text.trim()}
+            conceal={ctx.conceal()}
+            onExecuteCode={runCode}
+          />
+        </Show>
       </box>
     </Show>
   )

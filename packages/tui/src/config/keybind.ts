@@ -84,6 +84,7 @@ export const Definitions = {
   theme_list: keybind("<leader>t", "List available themes"),
   account_usage: keybind("<leader>u", "View Ottili ONE usage limits"),
   sidebar_toggle: keybind("<leader>b", "Toggle sidebar"),
+  focus_toggle: keybind("<leader>f", "Toggle focus mode"),
   scrollbar_toggle: keybind("none", "Toggle session scrollbar"),
   status_view: keybind("<leader>s", "View status"),
 
@@ -297,6 +298,7 @@ export const CommandMap = {
   theme_list: "theme.switch",
   account_usage: "account.usage",
   sidebar_toggle: "session.sidebar.toggle",
+  focus_toggle: "session.focus.toggle",
   scrollbar_toggle: "session.toggle.scrollbar",
   status_view: "ottiliCoder.status",
   session_export: "session.export",
