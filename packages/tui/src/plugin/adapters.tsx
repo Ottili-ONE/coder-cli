@@ -272,6 +272,9 @@ export function createTuiApiAdapters(input: Input): Omit<TuiPluginApi, "lifecycl
           message: inputToast.message,
           variant: inputToast.variant ?? "info",
           duration: inputToast.duration,
+          action: inputToast.action
+            ? { label: inputToast.action.label, command: inputToast.action.command, onClick: inputToast.action.onClick }
+            : undefined,
         })
       },
       dialog: {

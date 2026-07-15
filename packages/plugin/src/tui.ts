@@ -223,11 +223,20 @@ export type TuiPromptProps = {
   }
 }
 
+export type TuiToastAction = {
+  label: string
+  // Wire-safe (core→TUI event / HTTP): a keymap command or route the TUI executes.
+  command?: string
+  // In-process only (plugin/runtime): a direct callback. NEVER serialized.
+  onClick?: () => void
+}
+
 export type TuiToast = {
   variant?: "info" | "success" | "warning" | "error"
   title?: string
   message: string
   duration?: number
+  action?: TuiToastAction
 }
 
 export type TuiAttentionWhen = "always" | "focused" | "blurred"

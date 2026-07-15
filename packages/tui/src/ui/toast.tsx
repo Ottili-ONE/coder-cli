@@ -49,12 +49,6 @@ function glyph(variant: ToastVariant): string {
   return g ? `${g} ` : ""
 }
 
-function ariaLabel(toast: ToastOptions): string {
-  const parts = [toast.variant, toast.title, toast.message].filter(Boolean)
-  if (toast.action) parts.push(`Press ${ACTION_KEY} to ${toast.action.label.toLowerCase()}`)
-  return parts.join(". ")
-}
-
 function layoutFor(width: number) {
   if (width >= 110) return { maxWidth: 60, stack: MAX_VISIBLE_TOASTS, actionLabel: true, compact: false }
   if (width >= 80) return { maxWidth: width - 6, stack: MAX_VISIBLE_TOASTS, actionLabel: true, compact: false }
@@ -70,7 +64,6 @@ function renderAction(action: ToastAction, actionLabel: boolean): JSX.Element {
       attributes={TextAttributes.BOLD}
       flexShrink={0}
       onMouseUp={() => action.onClick?.()}
-      aria-label={`Activate: ${action.label}`}
     >
       {actionLabel ? `  ${key} ${action.label}` : `  ${key}`}
     </text>
@@ -109,7 +102,7 @@ export function Toast() {
 
   const width = () => dimensions().width
   const layout = () => layoutFor(width())
-  const window = () => {
+  const toastWindow = () => {
     const view = visibleToasts(toast.current())
     return { visible: view.visible.slice(-layout().stack), hidden: Math.max(0, view.hidden + (view.visible.length - layout().stack)) }
   }
@@ -117,7 +110,7 @@ export function Toast() {
   return (
     <Show when={toast.current().length > 0}>
       <box position="absolute" top={2} right={2} flexDirection="column" alignItems="flex-end">
-        <For each={window().visible}>
+        <For each={toastWindow().visible}>
           {(current) => (
             <Show
               when={!layout().compact}
@@ -127,7 +120,6 @@ export function Toast() {
                   backgroundColor={theme.backgroundPanel}
                   marginBottom={1}
                   width={layout().maxWidth}
-                  aria-label={ariaLabel(current)}
                 >
                   {`${glyph(current.variant)}${truncate(current.message, layout().maxWidth)}`}
                 </text>
@@ -146,7 +138,6 @@ export function Toast() {
                 borderColor={theme[current.variant]}
                 border={["left", "right"]}
                 customBorderChars={SplitBorder.customBorderChars}
-                aria-label={ariaLabel(current)}
               >
                 <Show when={current.title}>
                   <text attributes={TextAttributes.BOLD} marginBottom={1} fg={theme.text}>
@@ -166,9 +157,9 @@ export function Toast() {
             </Show>
           )}
         </For>
-        <Show when={window().hidden > 0}>
+        <Show when={toastWindow().hidden > 0}>
           <text fg={theme.textMuted} backgroundColor={theme.backgroundPanel} paddingLeft={2} paddingRight={2} marginBottom={1}>
-            {`+${window().hidden} more`}
+            {`+${toastWindow().hidden} more`}
           </text>
         </Show>
       </box>

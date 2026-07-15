@@ -42,6 +42,14 @@ export const TuiEvent = {
       duration: PositiveInt.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_TOAST_DURATION))).annotate({
         description: "Duration in milliseconds",
       }),
+      action: Schema.optional(
+        Schema.Struct({
+          label: Schema.String,
+          command: Schema.String,
+        }),
+      ).annotate({
+        description: "Wire-safe action: a keymap command or route the TUI executes. Never carries a callback.",
+      }),
     },
   }),
   SessionSelect: EventV2.define({

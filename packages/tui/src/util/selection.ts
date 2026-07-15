@@ -1,9 +1,7 @@
 import type { ClipboardService } from "../context/clipboard"
+import type { useToast } from "../ui/toast"
 
-type Toast = {
-  show: (input: { message: string; variant: "info" | "success" | "warning" | "error" }) => void
-  error: (err: unknown) => void
-}
+type Toast = ReturnType<typeof useToast>
 
 type FocusableSelectionTarget = {
   hasSelection: () => boolean

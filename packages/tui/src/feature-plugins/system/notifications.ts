@@ -75,6 +75,11 @@ const tui: TuiPlugin = async (api) => {
 
     const session = api.state.session.get(sessionID)
     notify(api, sessionID, "Session done", session?.parentID ? "subagent_done" : "done")
+    api.ui.toast({
+      variant: "success",
+      title: session?.title,
+      message: session?.parentID ? "Subagent done" : "Session done",
+    })
   })
 
   api.event.on("session.error", (event) => {
@@ -82,7 +87,10 @@ const tui: TuiPlugin = async (api) => {
     if (!sessionID) return
     if (!active.has(sessionID)) return
     errored.add(sessionID)
-    notify(api, sessionID, sessionErrorMessage(event.properties.error), "error")
+    const message = sessionErrorMessage(event.properties.error)
+    notify(api, sessionID, message, "error")
+    const session = api.state.session.get(sessionID)
+    api.ui.toast({ variant: "error", title: session?.title, message })
   })
 }
 

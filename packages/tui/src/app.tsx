@@ -1031,6 +1031,9 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       message: evt.properties.message,
       variant: evt.properties.variant,
       duration: evt.properties.duration,
+      action: evt.properties.action
+        ? { label: evt.properties.action.label, command: evt.properties.action.command }
+        : undefined,
     })
   })
 

@@ -62,6 +62,15 @@ export const Flag = {
     return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_BACKGROUND_JOBS")
   },
 
+  // Notifications and toasts redesign (T-CLI-0177): stacked toasts with
+  // action/retry affordances and keyboard interaction. The redesigned render
+  // surface is always active; this flag additionally enables the toast
+  // keyboard layer (a = activate action, ] = dismiss all, esc = dismiss top).
+  // Off until staging validation passes.
+  get OTTILI_CODER_EXPERIMENTAL_TUI_TOAST_REDESIGN() {
+    return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_TUI_TOAST_REDESIGN")
+  },
+
   // Evaluated at access time (not module load) because tests, the CLI, and
   // external tooling set these env vars at runtime.
   get OTTILI_CODER_DISABLE_PROJECT_CONFIG() {
