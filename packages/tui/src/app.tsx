@@ -27,6 +27,8 @@ import { TuiPathsProvider, TuiStartupProvider, TuiTerminalEnvironmentProvider, u
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { DialogProvider as DialogProviderList } from "./component/dialog-provider"
 import { ErrorComponent } from "./component/error-component"
+import { DegradedStateProvider, DegradedStates, useDegradedState } from "./component/error-state"
+import { classifyError, toDegradedState } from "./component/error-state/model"
 import { PluginRouteMissing } from "./component/plugin-route-missing"
 import { ProjectProvider, useProject } from "./context/project"
 import { EditorContextProvider } from "./context/editor"
@@ -41,6 +43,7 @@ import { useConnected } from "./component/use-connected"
 import { DialogMcp } from "./component/dialog-mcp"
 import { DialogStatus } from "./component/dialog-status"
 import { DialogGitStatus } from "./component/dialog-git-status"
+import { DialogConflictResolution } from "./component/conflict-resolution/dialog"
 import { DialogUsageLimits } from "./component/dialog-usage-limits"
 import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
@@ -312,10 +315,12 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                           <PromptHistoryProvider>
                                                             <PromptRefProvider>
                                                               <EditorContextProvider>
-                                                                <App
-                                                                  onSnapshot={input.onSnapshot}
-                                                                  pluginHost={input.pluginHost}
-                                                                />
+                                                                <DegradedStateProvider>
+                                                                  <App
+                                                                    onSnapshot={input.onSnapshot}
+                                                                    pluginHost={input.pluginHost}
+                                                                  />
+                                                                </DegradedStateProvider>
                                                               </EditorContextProvider>
                                                             </PromptRefProvider>
                                                           </PromptHistoryProvider>
@@ -367,6 +372,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const local = useLocal()
   const kv = useKV()
   const keymap = useOttiliCoderKeymap()
+  const degraded = useDegradedState()
   const event = useEvent()
   const sdk = useSDK()
   const toast = useToast()
@@ -845,6 +851,15 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         category: "System",
       },
       {
+        name: "ottiliCoder.git.resolve",
+        title: "Resolve conflicts",
+        slashName: "resolve",
+        run: () => {
+          dialog.replace(() => <DialogConflictResolution api={api} />)
+        },
+        category: "System",
+      },
+      {
         name: "theme.switch",
         title: "Switch theme",
         slashName: "themes",
@@ -1060,12 +1075,19 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     const error = evt.properties.error
     if (error && typeof error === "object" && error.name === "MessageAbortedError") return
     const message = errorMessage(error)
-
-    toast.show({
-      variant: "error",
-      message,
-      duration: 5000,
-    })
+    if (!message) return
+    const category = classifyError(message)
+    const isConnection = category === "provider" || category === "network"
+    degraded.push(
+      toDegradedState(error, {
+        id: `session-error:${message.slice(0, 120)}`,
+        category,
+        title: "Session error",
+        actionLabel: isConnection ? "Connect" : undefined,
+        actionCommand: isConnection ? "connect" : undefined,
+        dismissible: true,
+      }),
+    )
   })
 
   event.on("installation.update-available", async (evt) => {
@@ -1149,6 +1171,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       </Show>
       <Show when={ready()}>
         <box flexGrow={1} minHeight={0} flexDirection="column">
+          <DegradedStates />
           <Switch>
             <Match when={route.data.type === "home"}>
               <Home />

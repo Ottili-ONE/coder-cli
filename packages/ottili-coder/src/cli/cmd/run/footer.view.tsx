@@ -11,7 +11,7 @@
 import { useTerminalDimensions } from "@opentui/solid"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import "opentui-spinner/solid"
-import { createColors, createFrames } from "@opencode-ai/tui/ui/spinner"
+import { createStreamingColors, createStreamingFrames } from "@opencode-ai/tui/ui/spinner"
 import {
   RUN_SUBAGENT_PANEL_ROWS,
   RunCommandMenuBody,
@@ -254,17 +254,15 @@ export function RunFooterView(props: RunFooterViewProps) {
   const block = createMemo(() => runTheme().block)
   const spin = createMemo(() => {
     return {
-      frames: createFrames({
+      frames: createStreamingFrames({
         color: theme().highlight,
-        style: "blocks",
+        width: 10,
         inactiveFactor: 0.6,
-        minAlpha: 0.3,
       }),
-      color: createColors({
+      color: createStreamingColors({
         color: theme().highlight,
-        style: "blocks",
+        width: 10,
         inactiveFactor: 0.6,
-        minAlpha: 0.3,
       }),
     }
   })
