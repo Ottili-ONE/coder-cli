@@ -3,6 +3,7 @@ import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, Match, Show, Switch } from "solid-js"
 import { BrandLabel } from "../../component/brand-label"
 import { ThemeModeLabel } from "../../component/theme-mode-label"
+import { GitStatusBar } from "../../component/git-status-bar"
 import { abbreviateHome } from "../../runtime"
 import { useTuiPaths } from "../../context/runtime"
 import { useHomeSessionDestination } from "../../routes/home/session-destination"
@@ -10,18 +11,13 @@ import { useHomeSessionDestination } from "../../routes/home/session-destination
 const id = "internal:home-footer"
 
 function Directory(props: { api: TuiPluginApi }) {
-  const theme = () => props.api.theme.current
   const destination = useHomeSessionDestination()
   const paths = useTuiPaths()
   const dir = createMemo(() => {
     const selected = destination?.destination()
     const directory =
       selected?.type === "directory" ? selected.directory : props.api.state.path.directory || paths.cwd
-    const out = abbreviateHome(directory, paths.home)
-    const branch =
-      directory === (props.api.state.path.directory || paths.cwd) ? props.api.state.vcs?.branch : undefined
-    if (branch) return out + ":" + branch
-    return out
+    return abbreviateHome(directory, paths.home)
   })
 
   return <text fg={theme().textMuted}>{dir()}</text>
@@ -135,6 +131,7 @@ function View(props: { api: TuiPluginApi }) {
       borderColor={theme().borderSubtle}
     >
       <Directory api={props.api} />
+      <GitStatusBar api={props.api} />
       <box flexDirection="row" flexShrink={0} gap={2} alignItems="center">
         <Mcp api={props.api} />
         <Setup api={props.api} />
