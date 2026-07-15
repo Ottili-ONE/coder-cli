@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import { createMemo, onMount } from "solid-js"
+import { createMemo, createSignal, onMount } from "solid-js"
 import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
 import { useTheme } from "../context/theme"
 import { useSync } from "../context/sync"
@@ -38,7 +38,8 @@ import { DialogReleasePreview } from "./dialog-release-preview"
  * through the shared `DialogSelect` component.
  */
 export function DialogSettings() {
-  const theme = useTheme()
+  const themeCtx = useTheme()
+  const theme = themeCtx.theme
   const sync = useSync()
   const local = useLocal()
   const tuiConfig = useTuiConfig()
@@ -49,30 +50,34 @@ export function DialogSettings() {
 
   // One-shot sources that require filesystem / subprocess access. Read once on
   // mount so rapid render cycles stay cheap and stable during streaming.
-  const [git, setGit] = createMemo(() => {
+  const [git, setGit] = createSignal<SettingsSources["git"]>({ available: false })
+  onMount(() => {
     try {
       const branchProc = Bun.spawnSync(["git", "rev-parse", "--abbrev-ref", "HEAD"], { cwd })
       const statusProc = Bun.spawnSync(["git", "status", "--porcelain"], { cwd })
       const rootProc = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], { cwd })
       const branch = branchProc.stdout.toString().trim()
       if (branchProc.success && branch) {
-        return {
-          available: true as const,
+        setGit({
+          available: true,
           branch,
           root: rootProc.stdout.toString().trim() || undefined,
           dirty: statusProc.stdout.toString().trim().length > 0,
-        }
+        })
+      } else {
+        setGit({ available: false })
       }
-    } catch {}
-    return { available: false as const }
+    } catch {
+      setGit({ available: false })
+    }
   })
 
-  const [hooks, setHooks] = createMemo<string[]>(() => [])
-  const [privacy, setPrivacy] = createMemo<SettingsSources["privacy"]>(() => ({
+  const [hooks, setHooks] = createSignal<string[]>([])
+  const [privacy, setPrivacy] = createSignal<SettingsSources["privacy"]>({
     telemetry: false,
     crashReports: false,
     clipboardHistory: true,
-  }))
+  })
 
   // ottiliCoder.json: hooks + privacy live here. Read once; honest defaults if absent.
   onMount(() => {
@@ -108,7 +113,7 @@ export function DialogSettings() {
     const version = session?.version ?? "unknown"
     const permissionRules = (session?.permission ?? []) as unknown as SettingsSources["permissionRules"]
     const mcp = sync.data.mcp as unknown as Record<string, SettingsSources["mcp"][string]>
-    const themeNames = Object.keys(theme.all())
+    const themeNames = Object.keys(themeCtx.all())
 
     return {
       version,
@@ -119,7 +124,7 @@ export function DialogSettings() {
       mcp,
       hooks: hooks(),
       git: git(),
-      theme: { selected: theme.selected, count: themeNames.length, mode: "dark" },
+      theme: { selected: themeCtx.selected, count: themeNames.length, mode: "dark" },
       tui: {
         mouse: tuiConfig.mouse,
         attentionSound: tuiConfig.attention?.sound ?? true,
@@ -208,7 +213,6 @@ export function DialogSettings() {
             category: section.title,
             categoryView: <span style={{ fg: sectionColor }}>{settingsStatusGlyph(section.status)}</span>,
             description: "",
-            disabled: true,
           },
         ]
       }
@@ -221,7 +225,6 @@ export function DialogSettings() {
       title="Settings"
       options={options()}
       skipFilter={false}
-      onSelect={(option) => option.onSelect?.()}
     />
   )
 }

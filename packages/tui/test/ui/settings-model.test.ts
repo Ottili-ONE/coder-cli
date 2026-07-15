@@ -15,7 +15,7 @@ import {
   withinSettingsBudget,
   worstSettingsStatus,
   type SettingsSources,
-} from "../../../src/ui/settings-model"
+} from "../../src/ui/settings-model"
 
 function baseSources(overrides: Partial<SettingsSources> = {}): SettingsSources {
   return {
