@@ -41,7 +41,7 @@ export const Event = {
 // consumers can detect and adapt to wire-shape changes without breaking.
 export const CompactionOutputVersion = "1" as const
 
-export const CompactionReason = Schema.Literals("auto", "manual", "overflow", "command")
+export const CompactionReason = Schema.Literals(["auto", "manual", "overflow", "command"])
 export type CompactionReason = Schema.Schema.Type<typeof CompactionReason>
 
 export const CompactionKeep = Schema.Struct({
