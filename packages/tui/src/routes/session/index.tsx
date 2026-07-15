@@ -2138,37 +2138,32 @@ function Shell(props: ToolProps) {
 function Write(props: ToolProps) {
   const { theme, syntax } = useTheme()
   const pathFormatter = usePathFormatter()
-  const code = createMemo(() => {
-    return stringValue(props.input.content) ?? ""
-  })
-
+  const code = createMemo(() => stringValue(props.input.content) ?? "")
+  const hasDiagnostics = props.metadata.diagnostics !== undefined
   return (
-    <Switch>
-      <Match when={props.metadata.diagnostics !== undefined}>
-        <BlockTool title={"# Wrote " + pathFormatter.format(stringValue(props.input.filePath))} part={props.part}>
-          <line_number fg={theme.textMuted} minWidth={3} paddingRight={1}>
-            <code
-              conceal={false}
-              fg={theme.text}
-              filetype={filetype(stringValue(props.input.filePath))}
-              syntaxStyle={syntax()}
-              content={code()}
-            />
-          </line_number>
-          <Diagnostics diagnostics={props.metadata.diagnostics} filePath={stringValue(props.input.filePath) ?? ""} />
-        </BlockTool>
-      </Match>
-      <Match when={true}>
-        <InlineTool
-          icon="←"
-          pending="Preparing write..."
-          complete={stringValue(props.input.filePath)}
-          part={props.part}
-        >
-          Write {pathFormatter.format(stringValue(props.input.filePath))}
-        </InlineTool>
-      </Match>
-    </Switch>
+    <ToolCallCard
+      part={props.part}
+      icon="←"
+      title={`Write ${pathFormatter.format(stringValue(props.input.filePath))}`}
+      pending="Preparing write..."
+      complete={stringValue(props.input.filePath)}
+      collapsible={hasDiagnostics}
+      statusText={() => toolDurationText(props.part)}
+      separateAfter={props.separateAfter}
+    >
+      <box marginTop={1}>
+        <line_number fg={theme.textMuted} minWidth={3} paddingRight={1}>
+          <code
+            conceal={false}
+            fg={theme.text}
+            filetype={filetype(stringValue(props.input.filePath))}
+            syntaxStyle={syntax()}
+            content={code()}
+          />
+        </line_number>
+        <Diagnostics diagnostics={props.metadata.diagnostics} filePath={stringValue(props.input.filePath) ?? ""} />
+      </box>
+    </ToolCallCard>
   )
 }
 
