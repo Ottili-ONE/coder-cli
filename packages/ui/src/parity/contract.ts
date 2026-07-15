@@ -193,6 +193,8 @@ export interface ParitySurface {
   commands: Partial<Record<ParityCommand, () => void>>
   capabilities: PlatformCapabilities
   widths: LayoutTier
+  /** Current rendered lifecycle state (loading/empty/populated/…/degraded). */
+  state: ParityState
   toast(message: string, tone?: "info" | "success" | "warning" | "error"): void
   navigate(route: string): void
 }
