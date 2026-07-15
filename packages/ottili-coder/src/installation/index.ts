@@ -29,6 +29,10 @@ export const Event = {
     type: "installation.update-available",
     schema: {
       version: Schema.String,
+      // Optional stability channel so the TUI can label Beta/Nightly/Stable
+      // without re-deriving it (T-CLI-0234). Absent on older emitters; the
+      // TUI falls back to InstallationChannel. Wire-safe, non-breaking.
+      channel: Schema.optional(Schema.String),
     },
   }),
 }

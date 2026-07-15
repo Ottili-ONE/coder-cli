@@ -2,7 +2,7 @@ import { Config } from "@/config/config"
 import { AppRuntime } from "@/effect/app-runtime"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { Installation } from "@/installation"
-import { InstallationVersion } from "@opencode-ai/core/installation/version"
+import { InstallationVersion, InstallationChannel } from "@opencode-ai/core/installation/version"
 import { GlobalBus } from "@/bus/global"
 
 export async function upgrade() {
@@ -17,7 +17,7 @@ export async function upgrade() {
       directory: "global",
       payload: {
         type: Installation.Event.UpdateAvailable.type,
-        properties: { version: latest },
+        properties: { version: latest, channel: InstallationChannel },
       },
     })
     return
@@ -32,7 +32,7 @@ export async function upgrade() {
       directory: "global",
       payload: {
         type: Installation.Event.UpdateAvailable.type,
-        properties: { version: latest },
+        properties: { version: latest, channel: InstallationChannel },
       },
     })
     return

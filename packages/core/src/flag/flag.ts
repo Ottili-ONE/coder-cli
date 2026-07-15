@@ -71,6 +71,18 @@ export const Flag = {
     return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_TUI_TOAST_REDESIGN")
   },
 
+  // Update & release banner (T-CLI-0234): non-blocking top strip that surfaces
+  // update/release state (loading, empty, populated, long-content, failure,
+  // denied, offline, degraded) above the degraded-state strip. Off until
+  // staging validation passes; when off `app.tsx` keeps the identical blocking
+  // DialogConfirm behavior (zero regression). The MEE flag
+  // EVOLUTION_T_CLI_0232_TUI_REDESIGN_UPDATE_AND_RELEASE_BANNER__ENABLED maps
+  // to this env var.
+  get OTTILI_CODER_EXPERIMENTAL_TUI_UPDATE_BANNER() {
+    if (truthy("EVOLUTION_T_CLI_0232_TUI_REDESIGN_UPDATE_AND_RELEASE_BANNER__ENABLED")) return true
+    return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_TUI_UPDATE_BANNER")
+  },
+
   // Search across session (T-CLI-0185): unified full-session search surface
   // over messages, tool calls, files, tasks, errors and decisions. The
   // redesigned surface is always active; this flag additionally exposes the
@@ -109,6 +121,17 @@ export const Flag = {
   // session renders exactly as today (zero regression).
   get EVOLUTION_T_CLI_0209_TUI_REDESIGN_COMPACT_MODE__CORE_IMP_ENABLED() {
     return truthy("EVOLUTION_T_CLI_0209_TUI_REDESIGN_COMPACT_MODE__CORE_IMP_ENABLED")
+  },
+
+  // Responsive terminal layout (T-CLI-0212): tiered, width-driven layout that
+  // replaces the single `width > 120` breakpoint with narrow/compact/standard/
+  // wide tiers, a docked-vs-overlay sidebar decision, a condensed header at
+  // small widths, and auto-compact density for small terminals. Off until
+  // staging validation passes; when off `computeResponsiveLayout` returns the
+  // exact legacy mapping (docked sidebar only at > 120) so the session renders
+  // exactly as today (zero regression).
+  get EVOLUTION_T_CLI_0212_TUI_REDESIGN_RESPONSIVE_TERMINAL_LAY_ENABLED() {
+    return truthy("EVOLUTION_T_CLI_0212_TUI_REDESIGN_RESPONSIVE_TERMINAL_LAY_ENABLED")
   },
 
   // Evaluated at access time (not module load) because tests, the CLI, and
