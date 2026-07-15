@@ -55,6 +55,7 @@ export function ParityProvider(props: ParentProps) {
   const surface: ParitySurface = {
     capabilities: capabilities(),
     widths: widths(),
+    state: { status: "populated", title: "Ottili Coder" },
     toast: (message, tone = "info") => {
       void platform.notify("Ottili Coder", `${tone}: ${message}`).catch(() => {})
     },

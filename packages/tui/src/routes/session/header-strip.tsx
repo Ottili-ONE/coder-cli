@@ -57,6 +57,7 @@ export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: 
         </Show>
       </box>
       <ParityStatusBar surface={parity} />
+      <ParityStateView state={parity.state} />
       <text fg={theme.textMuted} flexShrink={0}>
         {props.sidebarShortcut} sidebar
       </text>
