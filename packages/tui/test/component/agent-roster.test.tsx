@@ -2,10 +2,10 @@
 import { createSignal, type Accessor } from "solid-js"
 import { testRender } from "@opentui/solid"
 import { expect, test } from "bun:test"
-import { KVProvider } from "../src/context/kv"
-import { ThemeProvider } from "../src/context/theme"
-import { TuiConfigProvider, resolve } from "../src/config"
-import { AgentRoster, toRosterInput } from "../src/component/agent-roster/index"
+import { KVProvider } from "../../src/context/kv"
+import { ThemeProvider } from "../../src/context/theme"
+import { TuiConfigProvider, resolve } from "../../src/config"
+import { AgentRoster, toRosterInput } from "../../src/component/agent-roster/index"
 import type { Agent } from "@opencode-ai/sdk/v2"
 import {
   type RosterAgentInput,
@@ -24,7 +24,7 @@ import {
   statusGlyph,
   statusLabel,
   visibleAgents,
-} from "../src/component/agent-roster/model"
+} from "../../src/component/agent-roster/model"
 
 function agent(overrides: Partial<RosterAgentInput> = {}): RosterAgentInput {
   return {
