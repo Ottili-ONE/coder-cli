@@ -12,6 +12,7 @@ import { ConfigLayoutV1 } from "./layout"
 import { ConfigLSPV1 } from "./lsp"
 import { ConfigMCPV1 } from "./mcp"
 import { ConfigPermissionV1 } from "./permission"
+import { ConfigPermissionProfileV1 } from "./permission-profile"
 import { ConfigPluginV1 } from "./plugin"
 import { ConfigProviderV1 } from "./provider"
 import { ConfigServerV1 } from "./server"
@@ -123,6 +124,10 @@ export const Info = Schema.Struct({
   }),
   layout: Schema.optional(ConfigLayoutV1.Layout).annotate({ description: "@deprecated Always uses stretch layout." }),
   permission: Schema.optional(ConfigPermissionV1.Info),
+  permissionProfile: Schema.optional(ConfigPermissionProfileV1.Info).annotate({
+    description:
+      "Permission profile configuration. Defines named custom profiles and selects the active profile (read-only, standard, trusted, or a custom name). The active profile is resolved into the agent permission ruleset.",
+  }),
   tools: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
   attachment: Schema.optional(ConfigAttachmentV1.Info).annotate({
     description: "Attachment processing configuration, including image size limits and resizing behavior",

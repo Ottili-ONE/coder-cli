@@ -35,6 +35,7 @@ import { ConfigPaths } from "./paths"
 import { ConfigPlugin } from "./plugin"
 import { ConfigVariable } from "./variable"
 import { ConfigBuiltinMcp } from "./builtin-mcp"
+import { ConfigBrowser } from "./browser"
 import { Npm } from "@opencode-ai/core/npm"
 import { withTransientReadRetry } from "@/util/effect-http-client"
 

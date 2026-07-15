@@ -1,5 +1,7 @@
 export * from "./client.js"
 export * from "./server.js"
+export * from "./ci-debugger.js"
+export * from "./browser.js"
 
 import { createOttiliCoderClient } from "./client.js"
 import { createOttiliCoderServer } from "./server.js"
