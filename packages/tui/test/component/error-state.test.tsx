@@ -1,7 +1,8 @@
 /** @jsxImportSource @opentui/solid */
-import { testRender } from "@opentui/solid"
+import { testRender, useRenderer } from "@opentui/solid"
 import { describe, expect, test } from "bun:test"
-import { onMount, type JSX } from "solid-js"
+import { onCleanup, onMount, type JSX } from "solid-js"
+import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { KVProvider } from "../../src/context/kv"
 import { ThemeProvider } from "../../src/context/theme"
 import { TuiConfigProvider, resolve } from "../../src/config"
@@ -13,7 +14,9 @@ import { SyncProvider } from "../../src/context/sync"
 import { ClipboardProvider } from "../../src/context/clipboard"
 import { ToastProvider } from "../../src/ui/toast"
 import { DialogProvider } from "../../src/ui/dialog"
+import { OttiliCoderKeymapProvider, registerOttiliCoderKeymap } from "../../src/keymap"
 import { TestTuiContexts } from "../fixture/tui-environment"
+import { createTuiResolvedConfig } from "../fixture/tui-runtime"
 import { createEventSource, createFetch, directory, json } from "../fixture/tui-sdk"
 import {
   DegradedStateProvider,
@@ -40,8 +43,8 @@ function makeState(over: Partial<DegradedState> = {}): DegradedState {
   }
 }
 
-function render(width: number, state: DegradedState) {
-  return testRender(
+async function render(width: number, state: DegradedState) {
+  const app = await testRender(
     () => (
       <TestTuiContexts>
         <TuiConfigProvider config={resolve({}, { terminalSuspend: true })}>
@@ -55,10 +58,12 @@ function render(width: number, state: DegradedState) {
     ),
     { width, height: 40 },
   )
+  await app.renderOnce()
+  return app
 }
 
 test("paints severity word, category and title (never color-only)", async () => {
-  const app = render(120, makeState())
+  const app = await render(120, makeState())
   try {
     const frame = app.captureCharFrame()
     expect(frame).toContain("ERROR")
@@ -70,7 +75,7 @@ test("paints severity word, category and title (never color-only)", async () => 
 })
 
 test("redacts secrets from the painted message", async () => {
-  const app = render(120, makeState())
+  const app = await render(120, makeState())
   try {
     const frame = app.captureCharFrame()
     expect(frame).toContain("••••")
@@ -81,7 +86,7 @@ test("redacts secrets from the painted message", async () => {
 })
 
 test("stays usable on a narrow terminal", async () => {
-  const app = render(50, makeState())
+  const app = await render(50, makeState())
   try {
     const frame = app.captureCharFrame()
     expect(frame).toContain("Provider request failed")
@@ -93,7 +98,7 @@ test("stays usable on a narrow terminal", async () => {
 
 test("keeps long content within the render budget", async () => {
   const long = "START" + "x".repeat(2000) + "UNIQUETAIL"
-  const app = render(120, makeState({ message: long }))
+  const app = await render(120, makeState({ message: long }))
   try {
     const frame = app.captureCharFrame()
     expect(frame).toContain("START")
@@ -114,7 +119,7 @@ test("offline / denied derived states remain actionable", async () => {
     actionCommand: "connect",
     dismissible: false,
   })
-  const app = render(120, offline)
+  const app = await render(120, offline)
   try {
     const frame = app.captureCharFrame()
     expect(frame).toContain("WARNING")
@@ -130,7 +135,7 @@ test("offline / denied derived states remain actionable", async () => {
 
 test("renders Git, MCP, Tests and Server categories with their labels and ERROR severity", async () => {
   for (const cat of ["git", "mcp", "test", "server"] as const) {
-    const app = render(120, makeState({ id: `${cat}:1`, category: cat, severity: "error", title: `${cat} broke`, message: `${cat} detail message` }))
+    const app = await render(120, makeState({ id: `${cat}:1`, category: cat, severity: "error", title: `${cat} broke`, message: `${cat} detail message` }))
     try {
       const frame = app.captureCharFrame()
       expect(frame).toContain("ERROR")
@@ -143,7 +148,7 @@ test("renders Git, MCP, Tests and Server categories with their labels and ERROR 
 })
 
 test("renders an info-severity state with the INFO word marker", async () => {
-  const app = render(120, makeState({ id: "provider:info", category: "provider", severity: "info", title: "Rate limit notice", message: "You are approaching your quota." }))
+  const app = await render(120, makeState({ id: "provider:info", category: "provider", severity: "info", title: "Rate limit notice", message: "You are approaching your quota." }))
   try {
     const frame = app.captureCharFrame()
     expect(frame).toContain("INFO")
@@ -156,7 +161,7 @@ test("renders an info-severity state with the INFO word marker", async () => {
 
 test("narrow terminal keeps every category label and message readable", async () => {
   for (const cat of ["provider", "network", "git", "mcp", "test", "server"] as const) {
-    const app = render(50, makeState({ id: `${cat}:n`, category: cat, severity: "error", title: `${cat} broke`, message: `${cat} detail message` }))
+    const app = await render(50, makeState({ id: `${cat}:n`, category: cat, severity: "error", title: `${cat} broke`, message: `${cat} detail message` }))
     try {
       const frame = app.captureCharFrame()
       expect(frame).toContain(CATEGORY_LABEL[cat])
@@ -174,6 +179,14 @@ test("narrow terminal keeps every category label and message readable", async ()
 // ---------------------------------------------------------------------------
 
 type Panel = { app: Awaited<ReturnType<typeof testRender>>; api: ReturnType<typeof useDegradedState>; writes: string[] }
+
+function KeymapWrapper(props: { children: JSX.Element }) {
+  const renderer = useRenderer()
+  const keymap = createDefaultOpenTuiKeymap(renderer)
+  const resolvedConfig = createTuiResolvedConfig({ leader_timeout: 1000 })
+  onCleanup(registerOttiliCoderKeymap(keymap, renderer, resolvedConfig))
+  return <OttiliCoderKeymapProvider keymap={keymap}>{props.children}</OttiliCoderKeymapProvider>
+}
 
 function mountPanel(opts: { width?: number; height?: number; states?: DegradedState[] } = {}): Promise<Panel> {
   const writes: string[] = []
@@ -201,30 +214,34 @@ function mountPanel(opts: { width?: number; height?: number; states?: DegradedSt
 
   return testRender(() => (
     <TestTuiContexts>
-      <ArgsProvider>
-        <KVProvider>
-          <SDKProvider url="http://test" directory={directory} fetch={calls.fetch} events={events.source}>
-            <ProjectProvider>
-              <ExitProvider exit={() => {}}>
-                <SyncProvider>
-                  <ThemeProvider>
-                    <ClipboardProvider value={clipboard}>
-                      <ToastProvider>
-                        <DialogProvider>
-                          <DegradedStateProvider>
-                            <Probe />
-                            <DegradedStates />
-                          </DegradedStateProvider>
-                        </DialogProvider>
-                      </ToastProvider>
-                    </ClipboardProvider>
-                  </ThemeProvider>
-                </SyncProvider>
-              </ExitProvider>
-            </ProjectProvider>
-          </SDKProvider>
-        </KVProvider>
-      </ArgsProvider>
+      <TuiConfigProvider config={resolve({}, { terminalSuspend: true })}>
+        <KeymapWrapper>
+          <ArgsProvider>
+            <KVProvider>
+              <SDKProvider url="http://test" directory={directory} fetch={calls.fetch} events={events.source}>
+                <ProjectProvider>
+                  <ExitProvider exit={() => {}}>
+                    <SyncProvider>
+                      <ThemeProvider>
+                        <ClipboardProvider value={clipboard}>
+                          <ToastProvider>
+                            <DialogProvider>
+                              <DegradedStateProvider>
+                                <Probe />
+                                <DegradedStates />
+                              </DegradedStateProvider>
+                            </DialogProvider>
+                          </ToastProvider>
+                        </ClipboardProvider>
+                      </ThemeProvider>
+                    </SyncProvider>
+                  </ExitProvider>
+                </ProjectProvider>
+              </SDKProvider>
+            </KVProvider>
+          </ArgsProvider>
+        </KeymapWrapper>
+      </TuiConfigProvider>
     </TestTuiContexts>
   ), { width: opts.width ?? 120, height: opts.height ?? 40 }).then(async (app) => {
     await readyPromise
