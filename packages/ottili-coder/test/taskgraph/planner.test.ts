@@ -53,7 +53,7 @@ const runInput = (overrides: Partial<Parameters<TaskGraphPlanner.Interface["run"
     messageID: "msg_test",
     goal: "ship the feature",
     tasks: [node("a")],
-    executor: async () => ({ status: "success" }),
+    executor: () => Effect.succeed({ status: "success" }),
     ...overrides,
   }) as Parameters<TaskGraphPlanner.Interface["run"]>[0]
 
@@ -114,10 +114,11 @@ describe("TaskGraphPlanner.planWaves", () => {
       const out = yield* svc.run(
         runInput({
           tasks: [node("c", ["a", "b"]), node("a"), node("b")],
-          executor: async ({ task }) => {
-            order.push(task.id)
-            return { status: "success" }
-          },
+          executor: ({ task }) =>
+            Effect.sync(() => {
+              order.push(task.id)
+              return { status: "success" as const }
+            }),
         }),
       )
       expect(out.metrics.tasksSuccess).toBe(3)
@@ -153,9 +154,9 @@ describe("TaskGraphPlanner.failure and recovery", () => {
         runInput({
           config: { maxRetries: 1 },
           tasks: [node("a")],
-          executor: async () => {
+          executor: () => Effect.sync(() => {
             throw new Error("boom")
-          },
+          }),
         }),
       )
       expect(out.graph.status).toBe("partial")
@@ -172,9 +173,9 @@ describe("TaskGraphPlanner.failure and recovery", () => {
         runInput({
           config: { maxRetries: 0 },
           tasks: [node("a")],
-          executor: async () => {
+          executor: () => Effect.sync(() => {
             throw new Error("auth token sk-ABCDEFG1234567890secret leaked")
-          },
+          }),
         }),
       )
       expect(out.graph.tasks[0].error).not.toContain("sk-ABCDEFG1234567890secret")
@@ -190,7 +191,12 @@ describe("TaskGraphPlanner.failure and recovery", () => {
         runInput({
           config: { maxRetries: 0 },
           tasks: [node("done"), node("broken")],
-          executor: async ({ task }) => (task.id === "broken" ? (() => { throw new Error("nope") })() : { status: "success" }),
+          executor: ({ task }) =>
+            task.id === "broken"
+              ? Effect.sync(() => {
+                  throw new Error("nope")
+                })
+              : Effect.succeed({ status: "success" as const }),
         }),
       )
       expect(first.graph.status).toBe("partial")
@@ -200,13 +206,13 @@ describe("TaskGraphPlanner.failure and recovery", () => {
         runInput({
           resumeGraphID: first.graph.graphID,
           tasks: first.graph.tasks,
-          executor: async ({ task }) => {
-            if (task.id === "done") {
-              doneReRan = true
-              return { status: "success" }
-            }
-            return { status: "success" }
-          },
+          executor: ({ task }) =>
+            Effect.sync(() => {
+              if (task.id === "done") {
+                doneReRan = true
+              }
+              return { status: "success" as const }
+            }),
         }),
       )
       expect(doneReRan).toBe(false)
@@ -256,12 +262,14 @@ describe("TaskGraphPlanner.cancel (permission boundary)", () => {
           runInput({
             config: { graphTimeoutMs: 50 },
             tasks: [node("a")],
-            executor: async ({ signal }) =>
-              new Promise((resolve) => {
-                const t = setTimeout(() => resolve({ status: "success" }), 5000)
-                signal.addEventListener("abort", () => {
-                  clearTimeout(t)
-                  resolve({ status: "success" })
+            executor: ({ signal }) =>
+              Effect.promise(() => {
+                return new Promise<TaskGraphPlanner.TaskResult>((resolve) => {
+                  const t = setTimeout(() => resolve({ status: "success" }), 5000)
+                  signal.addEventListener("abort", () => {
+                    clearTimeout(t)
+                    resolve({ status: "success" })
+                  })
                 })
               }),
           }),
