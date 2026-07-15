@@ -116,8 +116,14 @@ describe("Git fault-injection", () => {
 
   it.live("branch() returns undefined for a repo with no commits", () =>
     Effect.gen(function* () {
-      // Build an init'd-but-empty repo (no root commit) without the fixture commit.
       const tmp = yield* scopedTmpdir()
+      yield* Effect.promise(() => $`git init`.cwd(tmp.path).quiet())
+      yield* Effect.promise(() => $`git config core.fsmonitor false`.cwd(tmp.path).quiet())
+      yield* Effect.promise(() => $`git config commit.gpgsign false`.cwd(tmp.path).quiet())
+      yield* Effect.promise(() =>
+        $`git config user.email "test@ottiliCoder.test"`.cwd(tmp.path).quiet(),
+      )
+      yield* Effect.promise(() => $`git config user.name "Test"`.cwd(tmp.path).quiet())
       const git = yield* Git.Service
       const branch = yield* git.branch(tmp.path)
       expect(branch).toBeUndefined()
