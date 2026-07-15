@@ -8,6 +8,7 @@ import { Flag } from "@opencode-ai/core/flag/flag"
 import { CostUsageMeter } from "../cost-usage"
 import { CheckpointStatusIndicator } from "../checkpoint-timeline/indicator"
 import { useTuiParitySurface, ParityStatusBar } from "../../parity/tui-surface"
+import { ParityStateView } from "../../parity/tui-state"
 
 export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: string; condensed?: boolean }) {
   const sync = useSync()
