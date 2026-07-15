@@ -4,6 +4,7 @@ import { I18nProvider } from "@opencode-ai/ui/context"
 import { DialogProvider } from "@opencode-ai/ui/context/dialog"
 import { FileComponentProvider } from "@opencode-ai/ui/context/file"
 import { MarkedProvider } from "@opencode-ai/ui/context/marked"
+import { ParityProvider } from "@/parity/app-surface"
 import { File } from "@opencode-ai/ui/file"
 import { Font } from "@opencode-ai/ui/font"
 import { Splash } from "@opencode-ai/ui/logo"
@@ -248,7 +249,9 @@ export function AppBaseProviders(props: ParentProps<{ locale?: Locale }>) {
                 <WslServersProvider>
                   <DialogProvider>
                     <MarkedProvider>
-                      <FileComponentProvider component={File}>{props.children}</FileComponentProvider>
+                      <FileComponentProvider component={File}>
+                        <ParityProvider>{props.children}</ParityProvider>
+                      </FileComponentProvider>
                     </MarkedProvider>
                   </DialogProvider>
                 </WslServersProvider>

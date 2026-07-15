@@ -144,6 +144,17 @@ export const Flag = {
     return truthy("EVOLUTION_T_CLI_0212_TUI_REDESIGN_RESPONSIVE_TERMINAL_LAY_ENABLED")
   },
 
+  // Web & Desktop parity (T-CLI-0244 / T-CLI-0245): single interaction
+  // vocabulary shared by the TUI, web app and desktop renderer behind one
+  // ParitySurface adapter. Off until staging validation passes; when off the
+  // surfaces render exactly as today (zero regression). The MEE flag
+  // EVOLUTION_T_CLI_0245_TUI_REDESIGN_WEB_AND_DESKTOP_PARITY__ENABLED maps to
+  // this env var.
+  get EVOLUTION_T_CLI_0245_TUI_REDESIGN_WEB_AND_DESKTOP_PARITY__ENABLED() {
+    if (truthy("EVOLUTION_T_CLI_0245_TUI_REDESIGN_WEB_AND_DESKTOP_PARITY__ENABLED")) return true
+    return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_TUI_WEB_DESKTOP_PARITY")
+  },
+
   // Evaluated at access time (not module load) because tests, the CLI, and
   // external tooling set these env vars at runtime.
   get OTTILI_CODER_DISABLE_PROJECT_CONFIG() {

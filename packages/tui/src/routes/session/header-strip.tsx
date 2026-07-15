@@ -7,11 +7,13 @@ import { Locale } from "../../util/locale"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { CostUsageMeter } from "../cost-usage"
 import { CheckpointStatusIndicator } from "../checkpoint-timeline/indicator"
+import { useTuiParitySurface, ParityStatusBar } from "../../parity/tui-surface"
 
 export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: string; condensed?: boolean }) {
   const sync = useSync()
   const local = useLocal()
   const { theme } = useTheme()
+  const parity = useTuiParitySurface()
   const session = createMemo(() => sync.session.get(props.sessionID))
   const title = createMemo(() => {
     const value = session()?.title ?? "Session"
@@ -53,6 +55,7 @@ export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: 
           <CheckpointStatusIndicator sessionID={props.sessionID} />
         </Show>
       </box>
+      <ParityStatusBar surface={parity} />
       <text fg={theme.textMuted} flexShrink={0}>
         {props.sidebarShortcut} sidebar
       </text>

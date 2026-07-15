@@ -126,7 +126,7 @@ export interface SettingsPrivacyLike {
 }
 
 export interface SettingsUpdateLike {
-  status: "hidden" | "loading" | "empty" | "available" | "failure" | "denied" | "offline" | "degraded" | "installing"
+  status: "hidden" | "loading" | "empty" | "available" | "failure" | "denied" | "offline" | "degraded" | "installing" | "unknown"
   channel?: "local" | "latest" | "beta" | "nightly"
   target?: string
   current?: string
@@ -321,7 +321,7 @@ export function buildMcpSection(mcp: Record<string, SettingsMcpLike>): SettingsS
   if (rows.length === 0) {
     return { id: "mcp", title: "MCP", status: "ok", rows, note: "No MCP servers configured." }
   }
-  return { id: "mcp", title: "MCP", status: worstSettingsStatus(rows.map((r) => r.status)), rows }
+  return { id: "mcp", title: "MCP", status: worstSettingsStatus(rows.map((r) => r.status ?? "ok")), rows }
 }
 
 /** Hooks: configured hook commands and a deep-link to the config editor. */
