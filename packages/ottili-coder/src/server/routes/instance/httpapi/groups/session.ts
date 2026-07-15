@@ -63,12 +63,6 @@ export const InitPayload = Schema.Struct({
   providerID: ProviderV2.ID,
   messageID: MessageID,
 })
-export const SummarizePayload = Schema.Struct({
-  providerID: ProviderV2.ID,
-  modelID: ModelV2.ID,
-  auto: Schema.optional(Schema.Boolean),
-})
-
 export const CompactionPayload = Schema.Struct({
   providerID: ProviderV2.ID,
   modelID: ModelV2.ID,
