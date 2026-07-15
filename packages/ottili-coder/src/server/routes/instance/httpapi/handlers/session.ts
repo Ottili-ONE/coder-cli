@@ -305,15 +305,15 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       if (admitted.error || inFlight) {
         return admitted
       }
-      const result = yield* promptSvc.loop({ sessionID }).pipe(Effect.either)
+      const result = yield* promptSvc.loop({ sessionID }).pipe(Effect.fromResult)
       const finished = yield* result.pipe(
         Effect.match({
-          onLeft: (cause) =>
+          onFailure: (cause) =>
             compactSvc.complete({
               sessionID,
               error: Cause.isCause(cause) ? Cause.pretty(cause) : String(cause),
             }),
-          onRight: () => compactSvc.complete({ sessionID, summaryMessageID: admitted.messageID }),
+          onSuccess: () => compactSvc.complete({ sessionID, summaryMessageID: admitted.messageID }),
         }),
       )
       return finished
@@ -461,7 +461,6 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("init", init)
       .handle("share", share)
       .handle("unshare", unshare)
-      .handle("summarize", compact)
       .handle("compact", compact)
       .handle("compactionStatus", compactionStatus)
       .handle("prompt", prompt)
