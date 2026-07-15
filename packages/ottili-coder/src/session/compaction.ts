@@ -266,6 +266,11 @@ export interface Interface {
     auto: boolean
     overflow?: boolean
   }) => Effect.Effect<void>
+  // Admission + status contract for explicit compaction requests. Tracks
+  // in-flight requests per session for idempotency and cancellation, and
+  // reports versioned headless status.
+  readonly request: (input: CompactionInput) => Effect.Effect<CompactionStatus>
+  readonly status: (input: { sessionID: SessionID }) => Effect.Effect<CompactionStatus>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode-ai/SessionCompaction") {}
