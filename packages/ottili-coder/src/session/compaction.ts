@@ -27,6 +27,9 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { EventV2 } from "@opencode-ai/core/event"
 import { buildPrompt } from "@opencode-ai/core/session/compaction"
+import { SessionPrompt } from "@/session/prompt"
+import { SessionRunState } from "@/session/run-state"
+import { MutableHashMap } from "effect"
 
 export const Event = {
   Compacted: EventV2.define({
@@ -727,11 +730,124 @@ export const layer = Layer.effect(
       }
     })
 
+    // Per-session in-flight status registry. Drives idempotency,
+    // cancellation (busy) and headless status reporting.
+    const registry = MutableHashMap.empty<SessionID, CompactionStatus>()
+
+    const store = Effect.fnUntraced(function store(status: CompactionStatus) {
+      MutableHashMap.set(registry, status.sessionID, status)
+      return status
+    })
+
+    const current = Effect.fnUntraced(function current(sessionID: SessionID) {
+      return MutableHashMap.get(registry, sessionID)
+    })
+
+    const request = Effect.fn("SessionCompaction.request")(function* (input: CompactionInput) {
+      const now = Date.now()
+      // Cancellation / conflict: refuse to start a second compaction while one
+      // owns the session unless explicitly forced (recovery/operator use).
+      const existing = yield* current(input.sessionID)
+      if (existing && (existing.state === "running" || existing.state === "pending")) {
+        if (input.force) {
+          yield* Effect.logWarning("compaction conflict overridden by force", { sessionID: input.sessionID })
+        } else if (input.idempotencyKey && existing.idempotencyKey === input.idempotencyKey) {
+          return existing
+        } else {
+          return store({
+            ...existing,
+            error: "session already has an in-flight compaction",
+            updatedAt: now,
+          })
+        }
+      }
+      // Idempotency: replays of a completed key are no-ops.
+      if (input.idempotencyKey && existing?.idempotencyKey === input.idempotencyKey) {
+        return existing
+      }
+
+      const message = yield* session.updateMessage({
+        id: MessageID.ascending(),
+        role: "user",
+        model: input.model,
+        sessionID: input.sessionID,
+        agent: input.agent,
+        time: { created: now },
+      })
+      yield* session.updatePart({
+        id: PartID.ascending(),
+        messageID: message.id,
+        sessionID: input.sessionID,
+        type: "compaction",
+        auto: input.auto ?? false,
+        overflow: input.reason === "overflow",
+      })
+      const admitted = store({
+        version: CompactionOutputVersion,
+        sessionID: input.sessionID,
+        state: "pending",
+        reason: input.reason,
+        messageID: message.id,
+        idempotencyKey: input.idempotencyKey,
+        updatedAt: now,
+      })
+      if (flags.experimentalEventSystem) {
+        yield* events.publish(SessionEvent.Compaction.Started, {
+          sessionID: input.sessionID,
+          messageID: SessionMessage.ID.make(message.id),
+          timestamp: DateTime.makeUnsafe(now),
+          reason: (input.reason ?? (input.auto ? "auto" : "manual")) as "auto" | "manual",
+        })
+      }
+
+      yield* store({ ...admitted, state: "running", updatedAt: Date.now() })
+      const result = yield* SessionPrompt.Service.use((prompt) =>
+        prompt
+          .loop({ sessionID: input.sessionID })
+          .pipe(Effect.either),
+      )
+      const finished = yield* result.pipe(
+        Effect.match({
+          onLeft: (cause) =>
+            store({
+              ...admitted,
+              state: "failed",
+              error: Cause.isCause(cause) ? Cause.pretty(cause) : String(cause),
+              updatedAt: Date.now(),
+            }),
+          onRight: () =>
+            store({
+              ...admitted,
+              state: "completed",
+              summaryMessageID: message.id,
+              updatedAt: Date.now(),
+            }),
+        }),
+      )
+      if (finished.state === "completed") {
+        yield* events.publish(Event.Compacted, { sessionID: input.sessionID })
+      }
+      return finished
+    })
+
+    const status = Effect.fn("SessionCompaction.status")(function* (input: { sessionID: SessionID }) {
+      return (
+        (yield* current(input.sessionID)) ?? {
+          version: CompactionOutputVersion,
+          sessionID: input.sessionID,
+          state: "idle" as const,
+          updatedAt: Date.now(),
+        }
+      )
+    })
+
     return Service.of({
       isOverflow,
       prune,
       process: processCompaction,
       create,
+      request,
+      status,
     })
   }),
 )
@@ -741,6 +857,8 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(Provider.defaultLayer),
     Layer.provide(Session.defaultLayer),
     Layer.provide(SessionProcessor.defaultLayer),
+    Layer.provide(SessionPrompt.defaultLayer),
+    Layer.provide(SessionRunState.defaultLayer),
     Layer.provide(Agent.defaultLayer),
     Layer.provide(Plugin.defaultLayer),
     Layer.provide(Config.defaultLayer),
@@ -755,6 +873,8 @@ export const node = LayerNode.make(layer, [
   Agent.node,
   Plugin.node,
   SessionProcessor.node,
+  SessionPrompt.node,
+  SessionRunState.node,
   Provider.node,
   EventV2Bridge.node,
   RuntimeFlags.node,
