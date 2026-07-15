@@ -8,7 +8,7 @@ import { Flag } from "@opencode-ai/core/flag/flag"
 import { CostUsageMeter } from "../cost-usage"
 import { CheckpointStatusIndicator } from "../checkpoint-timeline/indicator"
 
-export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: string }) {
+export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: string; condensed?: boolean }) {
   const sync = useSync()
   const local = useLocal()
   const { theme } = useTheme()
@@ -27,8 +27,8 @@ export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: 
       flexDirection="row"
       justifyContent="space-between"
       gap={2}
-      paddingTop={1}
-      paddingBottom={1}
+      paddingTop={props.condensed ? 0 : 1}
+      paddingBottom={props.condensed ? 0 : 1}
       border={["bottom"]}
       borderColor={theme.borderSubtle}
     >

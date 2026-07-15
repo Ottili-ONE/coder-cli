@@ -64,8 +64,9 @@ import { Flag } from "@opencode-ai/core/flag/flag"
 import { MarkdownStateView } from "../../component/markdown"
 import { usePromptRef } from "../../context/prompt"
 import { Sidebar } from "./sidebar"
-import { computeFocusChrome, computeSidebarVisible } from "./focus"
+import { computeFocusChrome } from "./focus"
 import { computeCompactChrome, computeCompactSpacing } from "./compact"
+import { computeResponsiveLayout, type ToolDiffView } from "../../component/responsive-layout/model"
 import {
   compactViewState,
   windowMessages,
@@ -177,6 +178,7 @@ const sessionGlobalUnfocusedBindingCommands = ["session.first", "session.last"] 
 
 const context = createContext<{
   width: number
+  toolDiffView: ToolDiffView
   sessionID: string
   conceal: () => boolean
   thinkingMode: () => ThinkingMode
@@ -362,16 +364,26 @@ export function Session() {
     return windowMessages(messages(), compactView().renderBudget.maxMessages, true)
   })
 
-  const wide = createMemo(() => dimensions().width > 120)
-  const sidebarVisible = createMemo(() =>
-    computeSidebarVisible({
+  // Responsive terminal layout (T-CLI-0212 / T-CLI-0213): a single pure model
+  // now owns every width-driven layout decision, replacing the ad-hoc
+  // `dimensions().width > 120` check and the duplicated sidebar-visibility
+  // logic. When the redesign flag is off `computeResponsiveLayout` returns the
+  // exact legacy mapping, so the session renders identically to today (zero
+  // regression); when on, it stages the tier-based degradation (narrow →
+  // compact → standard → wide) the legacy binary breakpoint lacked.
+  const layout = createMemo(() =>
+    computeResponsiveLayout({
+      width: dimensions().width,
+      height: dimensions().height,
       parentID: session()?.parentID !== undefined,
       focused: focused(),
       sidebarOpen: sidebarOpen(),
       sidebarAuto: sidebar() === "auto",
-      wide: wide(),
+      compactMode: compact(),
+      redesignEnabled: Flag.EVOLUTION_T_CLI_0212_TUI_REDESIGN_RESPONSIVE_TERMINAL_LAY_ENABLED,
     }),
   )
+  const sidebarVisible = createMemo(() => layout().sidebarMode !== "hidden")
   const chrome = createMemo(() => {
     const focusChrome = computeFocusChrome({
       focused: focused(),
@@ -382,10 +394,14 @@ export function Session() {
       compact: compact(),
       headerVisible: focusChrome.headerVisible,
     })
+    // Responsive tier condenses the header at narrow/compact widths on top of
+    // the existing Compact-mode condensation. When the redesign flag is off the
+    // model reports `headerDensity: "full"`, so this is a no-op for today's UI.
+    const headerCondensed = compactChrome.headerCondensed || layout().headerDensity !== "full"
     return {
       headerVisible: focusChrome.headerVisible,
       focusHintVisible: focusChrome.focusHintVisible,
-      headerCondensed: compactChrome.headerCondensed,
+      headerCondensed,
     }
   })
   const spacing = createMemo(() => computeCompactSpacing({ compact: compact() }))
@@ -401,7 +417,7 @@ export function Session() {
   )
   const showTimestamps = createMemo(() => timestamps() === "show")
   const contentWidth = createMemo(
-    () => dimensions().width - (sidebarVisible() ? 42 : 0) - spacing().paddingLeft - spacing().paddingRight,
+    () => dimensions().width - layout().sidebarWidth - spacing().paddingLeft - spacing().paddingRight,
   )
   const providers = createMemo(() => Model.index(sync.data.provider))
 
@@ -1567,12 +1583,15 @@ export function Session() {
 
   return (
     <PathFormatterProvider path={session()?.directory}>
-      <context.Provider
-        value={{
-          get width() {
-            return contentWidth()
-          },
-          sessionID: route.sessionID,
+        <context.Provider
+          value={{
+            get width() {
+              return contentWidth()
+            },
+            get toolDiffView() {
+              return layout().toolDiffView
+            },
+            sessionID: route.sessionID,
           conceal,
           thinkingMode,
           showThinking,
@@ -1587,9 +1606,9 @@ export function Session() {
         }}
       >
         <box flexDirection="row" flexGrow={1} minHeight={0}>
-          <box flexGrow={1} minHeight={0} paddingBottom={1} paddingLeft={2} paddingRight={2} gap={1}>
+          <box flexGrow={1} minHeight={0} paddingBottom={1} paddingLeft={layout().contentPadding} paddingRight={layout().contentPadding} gap={1}>
             <Show when={chrome().headerVisible}>
-              <SessionHeaderStrip sessionID={route.sessionID} sidebarShortcut={sidebarShortcut()} />
+              <SessionHeaderStrip sessionID={route.sessionID} sidebarShortcut={sidebarShortcut()} condensed={chrome().headerCondensed} />
             </Show>
             <Show when={compact()}>
               <CompactStatusLine state={compactView()} colors={compactStatusColors()} />
@@ -1764,26 +1783,26 @@ export function Session() {
             </Show>
             <Toast />
           </box>
-          <Show when={sidebarVisible()}>
-            <Switch>
-              <Match when={wide()}>
-                <Sidebar sessionID={route.sessionID} />
-              </Match>
-              <Match when={!wide()}>
-                <box
-                  position="absolute"
-                  top={0}
-                  left={0}
-                  right={0}
-                  bottom={0}
-                  alignItems="flex-end"
-                  backgroundColor={RGBA.fromValues(theme.background.r, theme.background.g, theme.background.b, 180)}
-                >
-                  <Sidebar sessionID={route.sessionID} overlay onClose={() => setSidebarOpen(false)} />
-                </box>
-              </Match>
-            </Switch>
-          </Show>
+            <Show when={layout().sidebarMode !== "hidden"}>
+              <Switch>
+                <Match when={layout().sidebarMode === "docked"}>
+                  <Sidebar sessionID={route.sessionID} />
+                </Match>
+                <Match when={layout().sidebarMode === "overlay"}>
+                  <box
+                    position="absolute"
+                    top={0}
+                    left={0}
+                    right={0}
+                    bottom={0}
+                    alignItems="flex-end"
+                    backgroundColor={RGBA.fromValues(theme.background.r, theme.background.g, theme.background.b, 180)}
+                  >
+                    <Sidebar sessionID={route.sessionID} overlay onClose={() => setSidebarOpen(false)} />
+                  </box>
+                </Match>
+              </Switch>
+            </Show>
         </box>
       </context.Provider>
     </PathFormatterProvider>
@@ -2599,8 +2618,9 @@ function Edit(props: ToolProps) {
   const view = createMemo(() => {
     const diffStyle = ctx.tui.diff_style
     if (diffStyle === "stacked") return "unified"
-    // Default to "auto" behavior
-    return ctx.width > 120 ? "split" : "unified"
+    // Default to "auto": the responsive layout picks split only at the wide
+    // tier, unified everywhere else (replaces the legacy `ctx.width > 120`).
+    return ctx.toolDiffView === "split" ? "split" : "unified"
   })
 
   const ft = createMemo(() => filetype(stringValue(props.input.filePath)))
@@ -2654,7 +2674,7 @@ function ApplyPatch(props: ToolProps) {
   const view = createMemo(() => {
     const diffStyle = ctx.tui.diff_style
     if (diffStyle === "stacked") return "unified"
-    return ctx.width > 120 ? "split" : "unified"
+    return ctx.toolDiffView === "split" ? "split" : "unified"
   })
 
   function Diff(p: { diff: string; filePath: string }) {
