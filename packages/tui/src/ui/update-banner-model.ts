@@ -31,7 +31,7 @@ export type UpdateReleaseType = "major" | "minor" | "patch"
 export type UpdateBannerState =
   | { status: "hidden" }
   | { status: "loading"; channel: UpdateChannel }
-  | { status: "empty"; channel: UpdateChannel }
+  | { status: "empty"; channel: UpdateChannel; current: string }
   | {
       status: "available"
       channel: UpdateChannel
@@ -284,7 +284,7 @@ export function bannerViewModel(
       return {
         ...base,
         glyph: "✓",
-        title: `Ottili Coder is up to date (v${(safe as { current: string }).current})`,
+        title: `Ottili Coder is up to date (v${safe.current})`,
         detail: "",
         hint: tier === "wide" ? "no new release available" : "",
         colorRole: "success",

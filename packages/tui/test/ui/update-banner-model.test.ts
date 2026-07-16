@@ -14,7 +14,7 @@ import {
   withinBannerBudget,
   type UpdateBannerState,
   type UpdateChannel,
-} from "../../../src/ui/update-banner-model"
+} from "../../src/ui/update-banner-model"
 
 function available(channel: UpdateChannel, target = "1.2.3", current = "1.2.0"): UpdateBannerState {
   return { status: "available", channel, target, current, releaseType: releaseTypeOf(current, target) }

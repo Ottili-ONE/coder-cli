@@ -14,7 +14,7 @@ function mk(over: Parameters<typeof makeTask>[0]): Task {
   return makeTask(over)
 }
 
-type Actions = TaskQueueProps["onAction"] extends (a: infer A) => void ? A : never
+type Actions = NonNullable<TaskQueueProps["onAction"]> extends (a: infer A) => void ? A : never
 
 async function renderQueue(width: number, props: TaskQueueProps) {
   const app = await testRender(

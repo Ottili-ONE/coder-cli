@@ -1,5 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import { createSignal, type Accessor } from "solid-js"
+import type { JSX } from "solid-js"
 import { test } from "bun:test"
 import { testRender } from "@opentui/solid"
 import { KVProvider } from "../../../src/context/kv"
@@ -19,7 +20,7 @@ const errs: string[] = []
 const origErr = console.error
 console.error = (...a: unknown[]) => { errs.push(a.map(String).join(" ")); }
 
-async function wrap(node: () => unknown) {
+async function wrap(node: () => JSX.Element) {
   const app = await testRender(
     () => (
       <TestTuiContexts>

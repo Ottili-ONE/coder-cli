@@ -30,7 +30,7 @@ function baseSources(overrides: Partial<SettingsSources> = {}): SettingsSources 
     theme: { selected: "ottili-dark", count: 5, mode: "dark" },
     tui: { mouse: true, attentionSound: true, scrollAcceleration: false, diffStyle: "auto" },
     privacy: { telemetry: false, crashReports: true, clipboardHistory: true },
-    update: { status: "empty", channel: "latest" },
+    update: { status: "empty", channel: "latest", current: "1.0.0" },
     ...overrides,
   }
 }
