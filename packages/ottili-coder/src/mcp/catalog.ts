@@ -85,7 +85,11 @@ export function fetch<T extends { name: string }>(
     Effect.map((items) => {
       const sanitizedClient = sanitize(clientName)
       return Object.fromEntries(
-        items.map((item) => [sanitizedClient + ":" + sanitize(item.name), { ...item, client: clientName }]),
+        // Servers can return schema-drift entries with a missing/non-string name;
+        // skip them instead of crashing the whole fetch (fault isolation).
+        items
+          .filter((item) => typeof item.name === "string")
+          .map((item) => [sanitizedClient + ":" + sanitize(item.name), { ...item, client: clientName }]),
       )
     }),
     Effect.orElseSucceed(() => undefined),

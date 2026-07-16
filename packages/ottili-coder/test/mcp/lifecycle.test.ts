@@ -2,6 +2,7 @@ import { expect, mock, beforeEach } from "bun:test"
 import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js"
 import { Cause, Effect, Exit } from "effect"
 import type { MCP as MCPNS } from "../../src/mcp/index"
+import { McpCatalog } from "../../src/mcp/catalog"
 import { testEffect } from "../lib/effect"
 
 // --- Mock infrastructure ---
@@ -226,6 +227,11 @@ void mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
 }))
 
 beforeEach(() => {
+  // The built-in Playwright MCP server merges into config by default and pollutes
+  // tool/status assertions for the controlled server set below. Disable it so the
+  // lifecycle suite exercises only the servers it registers. (Regression: builtin
+  // MCPs were leaking into every exact-key assertion, see builtin-mcp.test.ts.)
+  process.env.OTTILI_CODER_DISABLE_BUILTIN_MCP = "1"
   clientStates.clear()
   lastCreatedClientName = undefined
   connectShouldFail = false
@@ -1156,6 +1162,180 @@ it.instance(
         expect(serverStatus.status).toBe("failed")
         // Both StreamableHTTP and SSE transports should be closed
         expect(transportCloseCount).toBeGreaterThanOrEqual(2)
+      }),
+    ),
+  { config: { mcp: {} } },
+)
+
+// ========================================================================
+// BUG HUNT (T-CLI-0487): schema drift — malformed tool/input schemas
+// A server returning tools with missing/garbage inputSchema must not crash
+// tools() nor corrupt the tool cache for well-formed siblings.
+// ========================================================================
+
+it.instance(
+  "tolerates schema drift: malformed inputSchema does not break tools()",
+  () =>
+    MCP.Service.use((mcp: MCPNS.Interface) =>
+      Effect.gen(function* () {
+        lastCreatedClientName = "drift-server"
+        const serverState = getOrCreateClientState("drift-server")
+        serverState.tools = [
+          { name: "good_tool", description: "ok", inputSchema: { type: "object", properties: {} } },
+          // missing inputSchema entirely
+          { name: "no_schema", description: "no schema" } as any,
+          // non-object inputSchema (schema drift)
+          { name: "bad_schema", description: "bad", inputSchema: "not-an-object" } as any,
+          // inputSchema claims properties but is shaped wrong
+          { name: "weird_schema", description: "weird", inputSchema: { type: "string", properties: "x" } } as any,
+        ]
+
+        yield* mcp.add("drift-server", {
+          type: "local",
+          command: ["echo", "test"],
+        })
+
+        const tools = yield* mcp.tools()
+        const keys = Object.keys(tools)
+        expect(keys).toContain("drift-server_good_tool")
+        expect(keys).toContain("drift-server_no_schema")
+        expect(keys).toContain("drift-server_bad_schema")
+        expect(keys).toContain("drift-server_weird_schema")
+        // The well-formed tool is still usable with a coerced object schema.
+        const good = tools["drift-server_good_tool"]
+        expect(good).toBeDefined()
+        expect(good.execute).toBeTypeOf("function")
+      }),
+    ),
+  { config: { mcp: {} } },
+)
+
+it.instance(
+  "tolerates schema drift: prompts with malformed schema are still listed",
+  () =>
+    MCP.Service.use((mcp: MCPNS.Interface) =>
+      Effect.gen(function* () {
+        lastCreatedClientName = "prompt-drift"
+        const serverState = getOrCreateClientState("prompt-drift")
+        serverState.capabilities = { prompts: {} }
+        serverState.prompts = [
+          { name: "ok-prompt", description: "fine" },
+          // prompt entry missing name field (schema drift)
+          { description: "nameless" } as any,
+        ]
+
+        yield* mcp.add("prompt-drift", {
+          type: "local",
+          command: ["echo", "test"],
+        })
+
+        const prompts = yield* mcp.prompts()
+        // Every prompt from the server is surfaced; the drift entry is still keyed.
+        expect(Object.keys(prompts).some((k) => k.includes("ok-prompt"))).toBe(true)
+        expect(Object.keys(prompts).length).toBe(2)
+      }),
+    ),
+  { config: { mcp: {} } },
+)
+
+// ========================================================================
+// BUG HUNT (T-CLI-0487): duplicate registration — re-adding a server with
+// the same name must fully replace state without stale clients, double
+// registration, or leaked tool keys.
+// ========================================================================
+
+it.instance(
+  "duplicate registration replaces state and does not leak old tool keys",
+  () =>
+    MCP.Service.use((mcp: MCPNS.Interface) =>
+      Effect.gen(function* () {
+        lastCreatedClientName = "dup-server"
+        const firstState = getOrCreateClientState("dup-server")
+        firstState.tools = [
+          { name: "v1_tool", description: "first", inputSchema: { type: "object", properties: {} } },
+        ]
+
+        yield* mcp.add("dup-server", { type: "local", command: ["echo", "v1"] })
+        expect(Object.keys(yield* mcp.tools())).toContain("dup-server_v1_tool")
+
+        // Swap server state to a second generation with different tools.
+        clientStates.delete("dup-server")
+        const secondState = getOrCreateClientState("dup-server")
+        secondState.tools = [
+          { name: "v2_tool", description: "second", inputSchema: { type: "object", properties: {} } },
+        ]
+
+        yield* mcp.add("dup-server", { type: "local", command: ["echo", "v2"] })
+
+        expect(firstState.closed).toBe(true)
+        expect(secondState.closed).toBe(false)
+
+        const keys = Object.keys(yield* mcp.tools())
+        expect(keys).toContain("dup-server_v2_tool")
+        expect(keys).not.toContain("dup-server_v1_tool")
+        // Exactly one client should own the server after replacement.
+        const clients = yield* mcp.clients()
+        expect(Object.keys(clients)).toContain("dup-server")
+      }),
+    ),
+  { config: { mcp: {} } },
+)
+
+it.instance(
+  "duplicate registration keeps status stable across repeated identical adds",
+  () =>
+    MCP.Service.use((mcp: MCPNS.Interface) =>
+      Effect.gen(function* () {
+        lastCreatedClientName = "idempotent-server"
+        getOrCreateClientState("idempotent-server")
+
+        yield* mcp.add("idempotent-server", { type: "local", command: ["echo", "test"] })
+        yield* mcp.add("idempotent-server", { type: "local", command: ["echo", "test"] })
+        yield* mcp.add("idempotent-server", { type: "local", command: ["echo", "test"] })
+
+        const status = yield* mcp.status()
+        expect(status["idempotent-server"]?.status).toBe("connected")
+        const clients = yield* mcp.clients()
+        expect(Object.keys(clients)).toEqual(["idempotent-server"])
+      }),
+    ),
+  { config: { mcp: {} } },
+)
+
+// ========================================================================
+// BUG HUNT (T-CLI-0487): resource pressure — many servers initialized
+// concurrently must each report correct status and not cross-contaminate
+// tool namespaces or leak clients.
+// ========================================================================
+
+it.instance(
+  "resource pressure: many servers initialize concurrently with isolated namespaces",
+  () =>
+    MCP.Service.use((mcp: MCPNS.Interface) =>
+      Effect.gen(function* () {
+        const count = 50
+        const prefix = "press-"
+        const added: string[] = []
+        for (let i = 0; i < count; i++) {
+          const name = `${prefix}${i}`
+          lastCreatedClientName = name
+          const state = getOrCreateClientState(name)
+          state.tools = [{ name: `tool_${i}`, description: "t", inputSchema: { type: "object", properties: {} } }]
+          yield* mcp.add(name, { type: "local", command: ["echo", String(i)] })
+          added.push(name)
+        }
+
+        const status = yield* mcp.status()
+        for (const name of added) expect(status[name]?.status).toBe("connected")
+
+        const tools = yield* mcp.tools()
+        // Each server contributes exactly one uniquely-namespaced tool.
+        expect(Object.keys(tools).sort()).toEqual(
+          added.map((name) => `${McpCatalog.sanitize(name)}_tool_${name.slice(prefix.length)}`).sort(),
+        )
+
+        const clients = yield* mcp.clients()
+        expect(Object.keys(clients).length).toBe(count)
       }),
     ),
   { config: { mcp: {} } },
