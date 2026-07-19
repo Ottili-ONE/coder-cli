@@ -26,14 +26,18 @@ export function redactSecrets(input: string): string {
   let text = input
   // Long token-shaped runs (base64/hex, ≥ 32 chars). Normal words stay intact.
   text = text.replace(/[A-Za-z0-9+/_=-]{32,}/g, () => REDACTION_MARKER)
-  // OpenAI-style secret keys.
+  // OpenAI-style secret keys (sk-...).
   text = text.replace(/\bsk-[A-Za-z0-9_-]{12,}/g, () => REDACTION_MARKER)
+  // Anthropic-style secret keys (sk-ant-...).
+  text = text.replace(/\bsk-ant-[A-Za-z0-9_-]{12,}/g, () => REDACTION_MARKER)
   // Bearer tokens: keep the scheme, redact the credential.
   text = text.replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/g, (match) => {
     return `${match.split(/\s+/)[0]} ${REDACTION_MARKER}`
   })
   // JWT-style tokens (header.payload.signature — any base64url-encoded segment ≥ 20 chars).
   text = text.replace(/\b[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/g, () => REDACTION_MARKER)
+  // AWS access key IDs (AKIA... / ASIA...).
+  text = text.replace(/\b(AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}\b/g, (_match) => `AKIA${REDACTION_MARKER}`)
   // OAuth session / refresh tokens that start with a known prefix.
   text = text.replace(/\b(gh[osu]_|ghp_|ghr_|github_pat_|ya29\.|eyJ|tok_|f04_|sess_)[A-Za-z0-9_-]{8,}/g, (_match, prefix: string) => `${prefix}${REDACTION_MARKER}`)
   // session_id / sid = value assignments (common in diagnostics).

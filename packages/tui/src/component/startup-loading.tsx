@@ -1,11 +1,12 @@
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js"
 import { useTheme } from "../context/theme"
 import { Spinner } from "./spinner"
+import { redactSecrets } from "../util/redact"
 
 export function StartupLoading(props: { ready: () => boolean }) {
   const theme = useTheme().theme
   const [show, setShow] = createSignal(false)
-  const text = createMemo(() => (props.ready() ? "Finishing startup..." : "Loading plugins..."))
+  const text = createMemo(() => redactSecrets(props.ready() ? "Finishing startup..." : "Loading plugins..."))
   let wait: NodeJS.Timeout | undefined
   let hold: NodeJS.Timeout | undefined
   let stamp = 0
@@ -53,7 +54,16 @@ export function StartupLoading(props: { ready: () => boolean }) {
 
   return (
     <Show when={show()}>
-      <box position="absolute" zIndex={5000} left={0} right={0} bottom={1} justifyContent="center" alignItems="center">
+      <box
+        aria-label={text()}
+        position="absolute"
+        zIndex={5000}
+        left={0}
+        right={0}
+        bottom={1}
+        justifyContent="center"
+        alignItems="center"
+      >
         <box backgroundColor={theme.backgroundPanel} paddingLeft={1} paddingRight={1}>
           <Spinner color={theme.textMuted}>{text()}</Spinner>
         </box>

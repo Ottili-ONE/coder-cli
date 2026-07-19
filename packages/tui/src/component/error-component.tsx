@@ -7,6 +7,7 @@ import { useExit } from "../context/exit"
 import { useTheme } from "../context/theme"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 import { CATEGORY_LABEL, SEVERITY_GLYPH, severityColor, type DegradedState } from "./error-state/model"
+import { redactSecrets } from "../util/redact"
 
 export function ErrorComponent(props: { error: Error; reset: () => void }) {
   const term = useTerminalDimensions()
@@ -28,19 +29,21 @@ export function ErrorComponent(props: { error: Error; reset: () => void }) {
     category: "unknown",
     severity: "error",
     title: "A fatal error occurred",
-    message: props.error.message || "Unknown error",
+    message: redactSecrets(props.error.message || "Unknown error"),
     dismissible: false,
     createdAt: 0,
   }
 
-  if (props.error.message) {
-    issueURL.searchParams.set("title", `opentui: fatal: ${props.error.message}`)
+  const safeMessage = redactSecrets(props.error.message || "")
+  if (safeMessage) {
+    issueURL.searchParams.set("title", `opentui: fatal: ${safeMessage}`)
   }
 
-  if (props.error.stack) {
+  const safeStack = redactSecrets(props.error.stack || "")
+  if (safeStack) {
     issueURL.searchParams.set(
       "description",
-      "```\n" + props.error.stack.substring(0, 6000 - issueURL.toString().length) + "...\n```",
+      "```\n" + safeStack.substring(0, 6000 - issueURL.toString().length) + "...\n```",
     )
   }
 
@@ -55,7 +58,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void }) {
   }
 
   return (
-    <box flexDirection="column" gap={1} backgroundColor={theme.background}>
+    <box aria-label={`Fatal error: ${state.message}`} flexDirection="column" gap={1} backgroundColor={theme.background}>
       <box
         flexDirection="column"
         gap={0}

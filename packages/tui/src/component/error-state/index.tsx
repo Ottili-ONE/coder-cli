@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import { createContext, useContext, type JSX, Show, For, createMemo } from "solid-js"
+import { createContext, useContext, type JSX, Show, For, createMemo, createSignal } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { InputRenderable, TextareaRenderable, TextAttributes } from "@opentui/core"
@@ -290,7 +290,13 @@ export function DegradedStates(props: { max?: number }) {
 
   return (
     <Show when={all().length > 0}>
-      <box flexDirection="column" gap={1} flexShrink={0} paddingBottom={1}>
+      <box
+        aria-label={`${all().length} degraded state${all().length === 1 ? "" : "s"}`}
+        flexDirection="column"
+        gap={1}
+        flexShrink={0}
+        paddingBottom={1}
+      >
         <For each={all()}>
           {(state) => (
             <DegradedStateView

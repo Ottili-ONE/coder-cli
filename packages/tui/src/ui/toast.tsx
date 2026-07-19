@@ -107,9 +107,22 @@ export function Toast() {
     return { visible: view.visible.slice(-layout().stack), hidden: Math.max(0, view.hidden + (view.visible.length - layout().stack)) }
   }
 
+  const ariaLiveText = () => {
+    const last = toast.current().at(-1)
+    if (!last) return ""
+    return `${last.variant}: ${last.title ? `${last.title} — ` : ""}${last.message}`
+  }
+
   return (
     <Show when={toast.current().length > 0}>
-      <box position="absolute" top={2} right={2} flexDirection="column" alignItems="flex-end">
+      <box
+        aria-label={ariaLiveText()}
+        position="absolute"
+        top={2}
+        right={2}
+        flexDirection="column"
+        alignItems="flex-end"
+      >
         <For each={toastWindow().visible}>
           {(current) => (
             <Show
