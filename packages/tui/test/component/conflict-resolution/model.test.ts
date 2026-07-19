@@ -4,16 +4,20 @@ import {
   abortAction,
   conflictResolutionState,
   continueAction,
+  filterFiles,
   focusIndexForPath,
   isNarrowTerminal,
   makeConflict,
   mergeConflicts,
   moveFocus,
   normalizeConflictType,
+  previewFocusTab,
   resolutionBadge,
   resolveAction,
   resolveFile,
   selectAction,
+  togglePreview,
+  totalConflictRegions,
   unresolveFile,
   validateResolution,
   type ConflictContext,
@@ -251,5 +255,107 @@ describe("failure path classifies and redacts errors", () => {
   test("an error hides the file list and actions", () => {
     const state = conflictResolutionState(files(), ctx({ error: "boom" }), { width: 120 })
     expect(state.focusedPath).toBeNull()
+  })
+})
+
+describe("filterFiles narrows the file list by path substring", () => {
+  test("empty query returns the original list", () => {
+    const list = files()
+    const result = filterFiles(list, "")
+    expect(result).toBe(list)
+  })
+  test("case-insensitive substring match", () => {
+    const result = filterFiles(files(), "src")
+    expect(result.length).toBe(3)
+    expect(result.map((f) => f.path)).toEqual(["src/a.ts", "src/b.ts", "src/c.ts"])
+  })
+  test("no match returns empty array", () => {
+    expect(filterFiles(files(), "nonexistent").length).toBe(0)
+  })
+  test("partial path match works", () => {
+    const result = filterFiles(files(), "README")
+    expect(result.length).toBe(1)
+    expect(result[0].path).toBe("docs/README.md")
+  })
+})
+
+describe("togglePreview opens and closes with file index tracking", () => {
+  test("opening preview sets previewOpen true and records the file index", () => {
+    const state = conflictResolutionState(files(), ctx(), { width: 120 })
+    const next = togglePreview(state, 2)
+    expect(next.previewOpen).toBe(true)
+    expect(next.previewFileIndex).toBe(2)
+    expect(next.previewFocus).toBe("list")
+  })
+  test("toggling the same file index closes preview", () => {
+    const state = { ...conflictResolutionState(files(), ctx(), { width: 120 }), previewOpen: true, previewFileIndex: 2 }
+    const next = togglePreview(state as any, 2)
+    expect(next.previewOpen).toBe(false)
+  })
+  test("toggling a different file index switches the preview file", () => {
+    const state = { ...conflictResolutionState(files(), ctx(), { width: 120 }), previewOpen: true, previewFileIndex: 0 }
+    const next = togglePreview(state as any, 3)
+    expect(next.previewOpen).toBe(true)
+    expect(next.previewFileIndex).toBe(3)
+  })
+})
+
+describe("previewFocusTab cycles the focus zone", () => {
+  test("from list to regions", () => {
+    const state = { ...conflictResolutionState(files(), ctx(), { width: 120 }), previewFocus: "list" as const }
+    expect(previewFocusTab(state as any)).toBe("regions")
+  })
+  test("from regions to list", () => {
+    const state = { ...conflictResolutionState(files(), ctx(), { width: 120 }), previewFocus: "regions" as const }
+    expect(previewFocusTab(state as any)).toBe("list")
+  })
+})
+
+describe("totalConflictRegions sums across files", () => {
+  test("zero when no file has conflict regions", () => {
+    expect(totalConflictRegions(files())).toBe(0)
+  })
+  test("counts conflictRegions from all files", () => {
+    const list = [
+      makeConflict("a.ts", "merge", { conflictRegions: 3 }),
+      makeConflict("b.ts", "merge", { conflictRegions: 5 }),
+      makeConflict("c.ts", "merge"),
+    ]
+    expect(totalConflictRegions(list)).toBe(8)
+  })
+})
+
+describe("conflictResolutionState includes preview and filter fields", () => {
+  test("preview state defaults to closed with no file", () => {
+    const state = conflictResolutionState(files(), ctx(), { width: 120 })
+    expect(state.previewOpen).toBe(false)
+    expect(state.previewFileIndex).toBe(0)
+    expect(state.previewFocus).toBe("list")
+  })
+  test("preview overrides are reflected in state", () => {
+    const state = conflictResolutionState(files(), ctx(), {
+      width: 120,
+      previewOpen: true,
+      previewFileIndex: 1,
+      previewFocus: "regions",
+    })
+    expect(state.previewOpen).toBe(true)
+    expect(state.previewFileIndex).toBe(1)
+    expect(state.previewFocus).toBe("regions")
+  })
+  test("filter query defaults to empty and filteredFiles equals files", () => {
+    const state = conflictResolutionState(files(), ctx(), { width: 120 })
+    expect(state.filterQuery).toBe("")
+    expect(state.filteredFiles).toBe(state.files)
+  })
+  test("filter query filters the file list", () => {
+    const state = conflictResolutionState(files(), ctx(), { width: 120, filterQuery: "src" })
+    expect(state.filterQuery).toBe("src")
+    expect(state.filteredFiles.length).toBe(3)
+  })
+  test("conflictRegionsTotal appears on the state", () => {
+    const list = [makeConflict("a.ts", "merge", { conflictRegions: 3 })]
+    const state = conflictResolutionState(list, ctx(), { width: 120 })
+    expect(state.conflictRegionsTotal).toBe(3)
   })
 })

@@ -326,7 +326,7 @@ export function conflictResolutionState(
   const narrowWidth = overrides.narrowWidth ?? NARROW_WIDTH_DEFAULT
   const width = overrides.width ?? narrowWidth
   const narrow = isNarrowTerminal(width, narrowWidth)
-  const operation = overrides.operation ?? files[0]?.type ?? "unknown"
+  const operation = overrides.operation ?? files[0]?.type ?? "merge"
   const report = validateResolution(files)
 
   let focusIndex: number
@@ -339,9 +339,6 @@ export function conflictResolutionState(
     focusIndex = files.length > 0 ? 0 : -1
   }
 
-  const focusedPath = focusIndex >= 0 && focusIndex < files.length ? files[focusIndex].path : null
-  const stale = ctx.loading && files.length > 0
-
   const status: ConflictResolutionStatus = ctx.error
     ? "error"
     : files.length === 0
@@ -349,6 +346,10 @@ export function conflictResolutionState(
       : ctx.loading
         ? "resolving"
         : "ready"
+
+  // When in error state, clear the focused path so the view shows no file details.
+  const focusedPath = status === "error" ? null : focusIndex >= 0 && focusIndex < files.length ? files[focusIndex].path : null
+  const stale = ctx.loading && files.length > 0
 
   const filterQuery = overrides.filterQuery ?? ""
   const filteredFiles = filterQuery ? filterFiles(files, filterQuery) : files

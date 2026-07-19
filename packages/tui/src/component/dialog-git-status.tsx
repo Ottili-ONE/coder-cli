@@ -4,6 +4,7 @@ import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { useSync } from "../context/sync"
 import { useSDK } from "../context/sdk"
+import { DialogConflictResolution } from "./conflict-resolution/dialog"
 
 type GitFile = {
   file: string
@@ -103,8 +104,12 @@ export function DialogGitStatus() {
             </Show>
 
             <Show when={info().conflict && info().conflict > 0}>
-              <text fg={theme.error} attributes={TextAttributes.BOLD}>
-                ⚠ {info().conflict} conflict{info().conflict === 1 ? "" : "s"}
+              <text
+                fg={theme.error}
+                attributes={TextAttributes.BOLD}
+                onMouseUp={() => dialog.replace(() => <DialogConflictResolution />)}
+              >
+                ⚠ {info().conflict} conflict{info().conflict === 1 ? "" : "s"} — resolve
               </text>
             </Show>
 
