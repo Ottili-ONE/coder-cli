@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test"
 import {
   NARROW_WIDTH_DEFAULT,
+  RENDER_BUDGET,
   abortAction,
+  buildAccessibleSummary,
+  capRenderBudget,
   conflictResolutionState,
   continueAction,
+  detectNoColor,
   filterFiles,
   focusIndexForPath,
+  isCollapsedActionWidth,
   isNarrowTerminal,
   makeConflict,
   mergeConflicts,
@@ -132,6 +137,33 @@ describe("conflictResolutionState derives a semantic summary", () => {
   })
 })
 
+describe("accessibleSummary provides screen-reader-friendly text", () => {
+  test("error state reflects error without file names", () => {
+    const state = conflictResolutionState(files(), ctx({ error: "fatal: bad object" }), { width: 120 })
+    expect(state.accessibleSummary).toContain("Conflict resolution failed")
+    expect(state.accessibleSummary).not.toContain("src/a.ts")
+  })
+  test("empty state returns just the base summary", () => {
+    const state = conflictResolutionState([], ctx(), { width: 120 })
+    expect(state.accessibleSummary).toBe("Merge conflicts — none")
+  })
+  test("few files (< 5) lists them explicitly", () => {
+    const list = files().slice(0, 3)
+    const state = conflictResolutionState(list, ctx(), { width: 120 })
+    expect(state.accessibleSummary).toContain("Files: src/a.ts, src/b.ts, src/c.ts")
+  })
+  test("many files (> 5) shows count only", () => {
+    const list = Array.from({ length: 10 }, (_, i) => makeConflict(`file-${i}.ts`, "merge"))
+    const state = conflictResolutionState(list, ctx(), { width: 120 })
+    expect(state.accessibleSummary).toContain("10 files total")
+    expect(state.accessibleSummary).not.toContain("file-0.ts")
+  })
+  test("accessibleSummary contains the summaryText prefix", () => {
+    const state = conflictResolutionState(files(), ctx(), { width: 120 })
+    expect(state.accessibleSummary).toContain(state.summaryText)
+  })
+})
+
 describe("terminal width drives narrow rendering", () => {
   test("standard width is not narrow", () => {
     expect(isNarrowTerminal(120)).toBe(false)
@@ -143,6 +175,33 @@ describe("terminal width drives narrow rendering", () => {
     expect(isNarrowTerminal(NARROW_WIDTH_DEFAULT)).toBe(false)
     const state = conflictResolutionState(files(), ctx(), { width: 40 })
     expect(state.narrow).toBe(true)
+  })
+})
+
+describe("collapsedActions detection", () => {
+  test("below 60 cols collapses action bar", () => {
+    const state = conflictResolutionState(files(), ctx(), { width: 50 })
+    expect(state.collapsedActions).toBe(true)
+  })
+  test("at 60 cols or above keeps full action bar", () => {
+    const state = conflictResolutionState(files(), ctx(), { width: 60 })
+    expect(state.collapsedActions).toBe(false)
+  })
+  test("explicit override works", () => {
+    const state = conflictResolutionState(files(), ctx(), { width: 120, collapsedActions: true })
+    expect(state.collapsedActions).toBe(true)
+  })
+})
+
+describe("no-color detection", () => {
+  test("defaults to false for auto detection", () => {
+    // Without NO_COLOR set, detectNoColor should return false.
+    // The state constructor uses detectNoColor() internally.
+    expect(detectNoColor()).toBe(false)
+  })
+  test("explicit override works", () => {
+    const state = conflictResolutionState(files(), ctx(), { width: 120, noColor: true })
+    expect(state.noColor).toBe(true)
   })
 })
 
@@ -262,7 +321,7 @@ describe("filterFiles narrows the file list by path substring", () => {
   test("empty query returns the original list", () => {
     const list = files()
     const result = filterFiles(list, "")
-    expect(result).toBe(list)
+    expect(result).toEqual(list)
   })
   test("case-insensitive substring match", () => {
     const result = filterFiles(files(), "src")
@@ -325,6 +384,42 @@ describe("totalConflictRegions sums across files", () => {
   })
 })
 
+describe("capRenderBudget limits display files", () => {
+  test("list within budget is not capped", () => {
+    const list = files()
+    const result = capRenderBudget(list, 50)
+    expect(result.capped).toBe(false)
+    expect(result.cappedCount).toBe(0)
+    expect(result.display).toEqual(list)
+  })
+  test("list exceeding budget is truncated", () => {
+    const large = Array.from({ length: 100 }, (_, i) => makeConflict(`f-${i}.ts`))
+    const result = capRenderBudget(large, 10)
+    expect(result.capped).toBe(true)
+    expect(result.cappedCount).toBe(90)
+    expect(result.display.length).toBe(10)
+    expect(result.display[0].path).toBe("f-0.ts")
+    expect(result.display[9].path).toBe("f-9.ts")
+  })
+  test("state includes displayFiles from capping", () => {
+    const large = Array.from({ length: RENDER_BUDGET + 10 }, (_, i) => makeConflict(`f-${i}.ts`, "merge"))
+    const state = conflictResolutionState(large, ctx(), { width: 120 })
+    expect(state.capped).toBe(true)
+    expect(state.cappedCount).toBe(10)
+    expect(state.displayFiles.length).toBe(RENDER_BUDGET)
+  })
+})
+
+describe("isCollapsedActionWidth", () => {
+  test("below 60 is collapsed", () => {
+    expect(isCollapsedActionWidth(59)).toBe(true)
+  })
+  test("at 60 or above is not collapsed", () => {
+    expect(isCollapsedActionWidth(60)).toBe(false)
+    expect(isCollapsedActionWidth(100)).toBe(false)
+  })
+})
+
 describe("conflictResolutionState includes preview and filter fields", () => {
   test("preview state defaults to closed with no file", () => {
     const state = conflictResolutionState(files(), ctx(), { width: 120 })
@@ -357,5 +452,14 @@ describe("conflictResolutionState includes preview and filter fields", () => {
     const list = [makeConflict("a.ts", "merge", { conflictRegions: 3 })]
     const state = conflictResolutionState(list, ctx(), { width: 120 })
     expect(state.conflictRegionsTotal).toBe(3)
+  })
+  test("new fields appear on state", () => {
+    const list = [makeConflict("a.ts", "merge", { conflictRegions: 3 })]
+    const state = conflictResolutionState(list, ctx(), { width: 50, noColor: true })
+    expect(state.capped).toBe(false)
+    expect(state.cappedCount).toBe(0)
+    expect(state.collapsedActions).toBe(true)
+    expect(state.noColor).toBe(true)
+    expect(state.accessibleSummary).toBeTruthy()
   })
 })

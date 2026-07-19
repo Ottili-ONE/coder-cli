@@ -12,6 +12,7 @@ import {
   type ConflictSide,
   type ConflictType,
   NARROW_WIDTH_DEFAULT,
+  RENDER_BUDGET,
   abortAction,
   conflictResolutionState,
   continueAction,
@@ -85,12 +86,25 @@ export function ConflictResolutionView(props: ConflictResolutionViewProps) {
     }),
   )
 
+  // Guard: clamp focusIndex to the current display file count so focus is never
+  // lost or trapped when the file list shrinks during streaming updates. The
+  // safeFocusIndex is the actual focus value used for rendering; focusIndex()
+  // tracks the user's last navigation intent.
+  const safeFocusIndex = createMemo(() => {
+    const files = filteredView()
+    const idx = focusIndex()
+    if (files.length === 0) return -1
+    if (idx >= files.length) return files.length - 1
+    if (idx < 0) return 0
+    return idx
+  })
+
   const showDetail = () => width() >= DETAIL_WIDTH && !state().narrow
   const displayFiles = () => filteredView()
   const hasFilterQuery = () => filterQuery() !== ""
 
   function applySide(side: ConflictSide) {
-    const f = displayFiles()[focusIndex()]
+    const f = displayFiles()[safeFocusIndex()]
     if (!f) return
     setResolutions({ ...resolutions(), [f.path]: side })
   }
@@ -103,7 +117,7 @@ export function ConflictResolutionView(props: ConflictResolutionViewProps) {
   }
 
   function openPreviewForFocused() {
-    const f = displayFiles()[focusIndex()]
+    const f = displayFiles()[safeFocusIndex()]
     if (!f) return
     const idx = resolvedFiles().findIndex((x) => x.path === f.path)
     if (idx >= 0) { setPreviewFileIndex(idx); setPreviewOpen(true); setPreviewFocus("list") }
@@ -153,7 +167,7 @@ export function ConflictResolutionView(props: ConflictResolutionViewProps) {
   }
 
   const getFileText = (file: ConflictFile, index: number): string => {
-    const isFocused = index === focusIndex()
+    const isFocused = index === safeFocusIndex()
     const prefix = isFocused ? "> " : "  "
     const icon = file.resolution ? "  " : "⚠ "
     const sep = state().narrow ? "" : "  "
@@ -209,12 +223,18 @@ export function ConflictResolutionView(props: ConflictResolutionViewProps) {
             </text>
           </Show>
           <Show when={displayFiles().length > 0 || !hasFilterQuery()}>
+            {/* Render budget cap notice — shown when the file list exceeds RENDER_BUDGET */}
+            <Show when={state().capped}>
+              <text id="conflict-capped-notice" fg={theme.warning} wrapMode="word">
+                Showing first {RENDER_BUDGET} files — {state().cappedCount} more not displayed
+              </text>
+            </Show>
             <box id="conflict-list" flexDirection="column" gap={0}>
               <For each={displayFiles()}>
                 {(file, index) => (
                   <text
                     id={`conflict-file-${file.path}`}
-                    fg={file.resolution ? theme.success : index() === focusIndex() ? theme.primary : theme.text}
+                    fg={file.resolution ? theme.success : index() === safeFocusIndex() ? theme.primary : theme.text}
                   >
                     {getFileText(file, index())}
                   </text>
@@ -237,6 +257,7 @@ export function ConflictResolutionView(props: ConflictResolutionViewProps) {
           width={width()}
           height={Math.max(5, Math.floor(height() * 0.35))}
           focusZone={previewFocus()}
+          noColor={state().noColor}
           onAction={(action) => {
             if (action.type === "accept" && action.side) {
               const file = resolvedFiles()[previewFileIndex()]
@@ -248,14 +269,25 @@ export function ConflictResolutionView(props: ConflictResolutionViewProps) {
       </Show>
 
       <Show when={state().status !== "error"}>
-        <box id="conflict-actions" flexDirection="row" gap={1} flexWrap="wrap">
-          <text fg={theme.textMuted}>[o]urs [t]heirs [u]nion [m]anual</text>
-          <text fg={state().allResolved ? theme.success : theme.textMuted}>[c]ontinue</text>
-          <text fg={theme.warning}>[a]bort</text>
-          <Show when={state().stale}>
-            <text fg={theme.textMuted}>⟳ scanning…</text>
-          </Show>
-        </box>
+        <Show when={!state().collapsedActions} fallback={
+          <box id="conflict-actions-collapsed" flexDirection="row" gap={0} flexWrap="wrap">
+            <text fg={theme.textMuted}>[o][t][u][m] </text>
+            <text fg={state().allResolved ? theme.success : theme.textMuted}>[c]</text>
+            <text fg={theme.warning}>[a]</text>
+            <Show when={state().stale}>
+              <text fg={theme.textMuted}> ⟳</text>
+            </Show>
+          </box>
+        }>
+          <box id="conflict-actions" flexDirection="row" gap={1} flexWrap="wrap">
+            <text fg={theme.textMuted}>[o]urs [t]heirs [u]nion [m]anual</text>
+            <text fg={state().allResolved ? theme.success : theme.textMuted}>[c]ontinue</text>
+            <text fg={theme.warning}>[a]bort</text>
+            <Show when={state().stale}>
+              <text fg={theme.textMuted}>⟳ scanning…</text>
+            </Show>
+          </box>
+        </Show>
       </Show>
     </box>
   )

@@ -12,6 +12,9 @@ import {
   normalizeConflictType,
 } from "./model"
 
+/** Minimum interval between manual refreshes (ms). Prevents rapid re-triggers. */
+const REFRESH_THROTTLE_MS = 500
+
 /** Read unmerged files and the in-progress operation from git. */
 async function loadGitConflicts(dir: string): Promise<ConflictFile[]> {
   const run = async (args: string[]): Promise<string> => {
@@ -77,6 +80,27 @@ async function loadGitConflicts(dir: string): Promise<ConflictFile[]> {
   return results
 }
 
+/** Classify a git-specific error into a friendly message. */
+function classifyGitError(raw: string): string {
+  const lower = raw.toLowerCase()
+  if (/not a git repository/i.test(lower) || /fatal: not a git repository/i.test(lower)) {
+    return "Not a git repository"
+  }
+  if (/detected dubious ownership/i.test(lower)) {
+    return "Dubious repository ownership — verify the directory is safe"
+  }
+  if (/permission denied|access is denied|fatal: could not/i.test(lower)) {
+    return "Git permission denied — check your access rights"
+  }
+  if (/could not resolve host|could not connect|connection refused|network is unreachable/i.test(lower)) {
+    return "Network unreachable — check your connection"
+  }
+  if (/repository corrupt|bad object|index corrupt/i.test(lower)) {
+    return "Git repository is corrupted — run git fsck"
+  }
+  return raw
+}
+
 export interface DialogConflictResolutionProps {
   /** Plugin API used to locate the working directory and load conflicts. */
   api?: TuiPluginApi
@@ -94,12 +118,18 @@ export function DialogConflictResolution(props: DialogConflictResolutionProps) {
   const [files, setFiles] = createSignal<ConflictFile[]>([])
   const [loading, setLoading] = createSignal(true)
   const [error, setError] = createSignal<string | undefined>(undefined)
+  const [lastRefresh, setLastRefresh] = createSignal(0)
 
   const operation = createMemo<ConflictType>(
     () => files().find((f) => f.type !== "unknown")?.type ?? "unknown",
   )
 
   const load = () => {
+    // Throttle rapid manual refreshes.
+    const now = Date.now()
+    if (now - lastRefresh() < REFRESH_THROTTLE_MS) return
+    setLastRefresh(now)
+
     setLoading(true)
     setError(undefined)
     const loader =
@@ -108,14 +138,19 @@ export function DialogConflictResolution(props: DialogConflictResolutionProps) {
         ? () => loadGitConflicts(props.api!.state.path.directory)
         : () => Promise.resolve<ConflictFile[]>([]))
     return loader()
-      .then((list) => setFiles(list.map((f) => ({ ...f, type: normalizeConflictType(f.type) }))))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+      .then((list) => {
+        setFiles(list.map((f) => ({ ...f, type: normalizeConflictType(f.type) })))
+      })
+      .catch((e: unknown) => {
+        const message = e instanceof Error ? e.message : String(e)
+        setError(classifyGitError(message))
+      })
       .finally(() => setLoading(false))
   }
 
   onMount(load)
 
-  // Auto-refresh timer.
+  // Auto-refresh timer (capped to allow user to see current state between polls).
   let refreshTimer: ReturnType<typeof setInterval> | undefined
   if (props.refreshInterval && props.refreshInterval > 0) {
     onMount(() => {
@@ -137,11 +172,19 @@ export function DialogConflictResolution(props: DialogConflictResolutionProps) {
       </text>
       <Show when={!loading() && !error()} fallback={
         <Show when={error()} fallback={
-          <text fg={theme.textMuted}>Scanning for conflicts…</text>
-        }>
-          <text id="conflict-dialog-error" fg={theme.error} wrapMode="word">
-            {error()}
+          <text id="conflict-dialog-loading" fg={theme.textMuted}>
+            Scanning for conflicts…
           </text>
+        }>
+          <box id="conflict-dialog-error" flexDirection="column" gap={1}>
+            <text fg={theme.error} attributes={TextAttributes.BOLD}>Failed to load conflicts</text>
+            <text fg={theme.textMuted} wrapMode="word">
+              {error()}
+            </text>
+            <text fg={theme.textMuted} onMouseUp={handleRefresh}>
+              [r]etry
+            </text>
+          </box>
         </Show>
       }>
         <ConflictResolutionView

@@ -21,6 +21,15 @@
 import stripAnsi from "strip-ansi"
 import { redactError } from "../git-status/model"
 
+// --- constants ---------------------------------------------------------------
+
+/** Maximum files to render in the conflict list before showing a truncation warning. */
+export const RENDER_BUDGET = 500
+/** Maximum conflict regions to render per file in the preview. */
+export const PREVIEW_REGION_BUDGET = 10
+/** Maximum summary text length before truncation. */
+export const SUMMARY_MAX = 160
+
 /** Whether the conflicts came from a merge, a rebase, or an unknown source. */
 export type ConflictType = "merge" | "rebase" | "unknown"
 
@@ -82,6 +91,8 @@ export interface ConflictResolutionState {
   readonly status: ConflictResolutionStatus
   /** One-line header summary, safe to render verbatim. */
   readonly summaryText: string
+  /** Extended accessible summary for screen readers / diagnostics (includes file names when few enough). */
+  readonly accessibleSummary: string
   /** Whether the conflict preview panel is open for the focused file. */
   readonly previewOpen: boolean
   /** Index of the file whose preview is open. */
@@ -94,6 +105,16 @@ export interface ConflictResolutionState {
   readonly filteredFiles: ReadonlyArray<ConflictFile>
   /** Total conflict regions across all files (for summary display). */
   readonly conflictRegionsTotal: number
+  /** True when the file list exceeds RENDER_BUDGET and is visually capped. */
+  readonly capped: boolean
+  /** Number of files not shown due to render budget capping. */
+  readonly cappedCount: number
+  /** Files after render budget capping applied. Always <= RENDER_BUDGET items. */
+  readonly displayFiles: ReadonlyArray<ConflictFile>
+  /** Whether the terminal supports color (respects NO_COLOR / dumb terminals). */
+  readonly noColor: boolean
+  /** Collapsed action bar for very narrow terminals (< 60 cols). */
+  readonly collapsedActions: boolean
 }
 
 export const NARROW_WIDTH_DEFAULT = 60
@@ -274,6 +295,55 @@ export function isNarrowTerminal(width: number, narrowWidth: number = NARROW_WID
   return width < narrowWidth
 }
 
+/** Detect whether color output is disabled (NO_COLOR / TERM=dumb / CI). */
+export function detectNoColor(): boolean {
+  if (typeof process === "undefined") return false
+  try {
+    if (process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== "") return true
+    if (process.env.TERM === "dumb") return true
+    if (process.env.CI && !process.env.FORCE_COLOR) return true
+  } catch {
+    // process.env may throw in sandboxed environments (test runners, etc.)
+  }
+  return false
+}
+
+/** Whether the terminal is narrow enough to require a collapsed action bar. */
+export function isCollapsedActionWidth(width: number): boolean {
+  return width < 60
+}
+
+function truncateSummary(text: string, max: number = SUMMARY_MAX): string {
+  if (text.length <= max) return text
+  return text.slice(0, max - 1) + "…"
+}
+
+/**
+ * Build an accessible summary for screen readers.
+ * Includes the basic summary plus file names when there are <= 5 files.
+ */
+export function buildAccessibleSummary(
+  status: ConflictResolutionStatus,
+  summaryText: string,
+  files: ReadonlyArray<ConflictFile>,
+): string {
+  const base = truncateSummary(summaryText)
+  if (status === "error" || status === "empty" || files.length === 0) return base
+  if (files.length <= 5) {
+    return `${base}. Files: ${files.map((f) => f.path).join(", ")}`
+  }
+  return `${base}. ${files.length} files total`
+}
+
+/** Apply render budget capping to the file list. Returns capped result and overage. */
+export function capRenderBudget(
+  files: ReadonlyArray<ConflictFile>,
+  budget: number = RENDER_BUDGET,
+): { display: ReadonlyArray<ConflictFile>; capped: boolean; cappedCount: number } {
+  if (files.length <= budget) return { display: files, capped: false, cappedCount: 0 }
+  return { display: files.slice(0, budget), capped: true, cappedCount: files.length - budget }
+}
+
 /** Short label for a resolution side, or a placeholder for unresolved. */
 export function resolutionBadge(file: ConflictFile): string {
   if (!file.resolution) return "[ ]"
@@ -287,20 +357,21 @@ function operationWord(operation: ConflictType): string {
   return "Conflict"
 }
 
-/** One-line header summary, mirroring the other panels' phrasing. */
+/** One-line header summary, mirroring the other panels' phrasing. Truncated to SUMMARY_MAX. */
 export function summary(
   operation: ConflictType,
   files: ReadonlyArray<ConflictFile>,
   ctx: ConflictContext,
 ): string {
-  if (ctx.error) return `Conflict resolution failed — ${redactError(ctx.error)}`
+  if (ctx.error) return truncateSummary(`Conflict resolution failed — ${redactError(ctx.error)}`)
   const word = operationWord(operation)
-  if (files.length === 0) return `${word} conflicts — none`
+  if (files.length === 0) return truncateSummary(`${word} conflicts — none`)
   const report = validateResolution(files)
   if (report.allResolved) {
-    return `${word} conflicts — ${report.resolved}/${report.total} resolved · ready to continue`
+    return truncateSummary(`${word} conflicts — ${report.resolved}/${report.total} resolved · ready to continue`)
   }
-  return `${word} conflicts — ${report.resolved}/${report.total} resolved · ${report.unresolved} to go`
+  const capNote = files.length > RENDER_BUDGET ? ` (${files.length} total)` : ""
+  return truncateSummary(`${word} conflicts — ${report.resolved}/${report.total} resolved · ${report.unresolved} to go${capNote}`)
 }
 
 // --- state construction -----------------------------------------------------
@@ -316,6 +387,12 @@ export interface ConflictOverrides {
   readonly previewOpen?: boolean
   readonly previewFileIndex?: number
   readonly previewFocus?: "list" | "regions"
+  /** Override render budget for file list (default: RENDER_BUDGET). */
+  readonly renderBudget?: number
+  /** Override no-color detection (default: auto-detect). */
+  readonly noColor?: boolean
+  /** Override collapsed action bar (default: auto-detect from width). */
+  readonly collapsedActions?: boolean
 }
 
 export function conflictResolutionState(
@@ -358,6 +435,11 @@ export function conflictResolutionState(
   const previewFileIndex = overrides.previewFileIndex ?? (focusIndex >= 0 ? focusIndex : -1)
 
   const conflictRegionsTotal = files.reduce((sum, f) => sum + (f.conflictRegions ?? 0), 0)
+  const summaryText = summary(operation, files, ctx)
+  const accessibleSummary = buildAccessibleSummary(status, summaryText, files)
+  const { display, capped, cappedCount } = capRenderBudget(files, overrides.renderBudget ?? RENDER_BUDGET)
+  const noColor = overrides.noColor ?? detectNoColor()
+  const collapsedActions = overrides.collapsedActions ?? isCollapsedActionWidth(width)
 
   return {
     operation,
@@ -370,12 +452,18 @@ export function conflictResolutionState(
     narrow,
     stale,
     status,
-    summaryText: summary(operation, files, ctx),
+    summaryText,
+    accessibleSummary,
     previewOpen,
     previewFileIndex,
     previewFocus: overrides.previewFocus ?? "list",
     filterQuery,
     filteredFiles,
     conflictRegionsTotal,
+    capped,
+    cappedCount,
+    displayFiles: display,
+    noColor,
+    collapsedActions,
   }
 }

@@ -3,6 +3,7 @@ import { TextAttributes } from "@opentui/core"
 import { createMemo, For, Show } from "solid-js"
 import { useTheme } from "../../context/theme"
 import type { ConflictFile, ConflictSide, ConflictAction } from "./model"
+import { PREVIEW_REGION_BUDGET } from "./model"
 
 export interface ConflictRegionAction {
   type: "accept" | "close" | "focus-list"
@@ -16,6 +17,7 @@ export interface ConflictPreviewProps {
   width: number
   height: number
   focusZone: "list" | "regions"
+  noColor?: boolean
   onAction?: (action: ConflictRegionAction) => void
 }
 
@@ -26,6 +28,7 @@ export function ConflictPreview(props: ConflictPreviewProps) {
   const isBinary = () => file().binary
   const conflictRegions = () => file().conflictRegions ?? 0
   const allResolved = () => file().resolution !== undefined
+  const noColor = () => props.noColor ?? false
   const resolvedText = () => {
     const f = file()
     if (!f.resolution) return undefined
@@ -45,7 +48,7 @@ export function ConflictPreview(props: ConflictPreviewProps) {
         border={["top"]}
         borderColor={theme.border}
       >
-        <text fg={theme.warning} attributes={TextAttributes.BOLD}>
+        <text fg={noColor() ? theme.text : theme.warning} attributes={TextAttributes.BOLD}>
           {file().path}
         </text>
         <text fg={theme.textMuted}>Binary file — resolve to a side</text>
@@ -98,6 +101,7 @@ export function ConflictPreview(props: ConflictPreviewProps) {
   const regionCount = conflictRegions()
   const additions = file().additions ?? 0
   const deletions = file().deletions ?? 0
+  const cappedRegions = Math.min(regionCount, PREVIEW_REGION_BUDGET)
 
   return (
     <box
@@ -115,8 +119,8 @@ export function ConflictPreview(props: ConflictPreviewProps) {
         <text id="preview-file-path" fg={theme.text} attributes={TextAttributes.BOLD}>
           {file().path}
         </text>
-        <text id="preview-status" fg={conflictRegions() > 0 ? theme.warning : theme.textMuted}>
-          {conflictRegions()} conflict region{conflictRegions() === 1 ? "" : "s"}
+        <text id="preview-status" fg={regionCount > 0 ? theme.warning : theme.textMuted}>
+          {regionCount} conflict region{regionCount === 1 ? "" : "s"}
         </text>
       </box>
 
@@ -132,7 +136,7 @@ export function ConflictPreview(props: ConflictPreviewProps) {
       </Show>
 
       <box id="preview-region-list" flexDirection="column" gap={0}>
-        <For each={Array.from({ length: Math.min(regionCount, 10) })}>
+        <For each={Array.from({ length: cappedRegions })}>
           {(_reg, idx) => {
             const regionIndex = idx()
             const isFocused = () => props.focusZone === "regions" && regionIndex === props.focusRegion
@@ -153,7 +157,7 @@ export function ConflictPreview(props: ConflictPreviewProps) {
                   <text fg={theme.textMuted}>[ ]</text>
                 </box>
                 <box flexDirection="row" gap={1} paddingLeft={1}>
-                  <text fg={theme.diffRemoved} wrapMode="char">
+                  <text fg={noColor() ? theme.text : theme.diffRemoved} wrapMode="char">
                     {"<<<<<<< ours"}
                   </text>
                 </box>
@@ -163,7 +167,7 @@ export function ConflictPreview(props: ConflictPreviewProps) {
                   </text>
                 </box>
                 <box flexDirection="row" gap={1} paddingLeft={1}>
-                  <text fg={theme.diffAdded} wrapMode="char">
+                  <text fg={noColor() ? theme.text : theme.diffAdded} wrapMode="char">
                     {">>>>>>> theirs"}
                   </text>
                 </box>
@@ -171,9 +175,13 @@ export function ConflictPreview(props: ConflictPreviewProps) {
             )
           }}
         </For>
-        <Show when={regionCount > 10}>
-          <text fg={theme.textMuted} paddingLeft={1}>
-            ...{regionCount - 10} more region{regionCount - 10 === 1 ? "" : "s"} (scroll to view all)
+        <Show when={regionCount > PREVIEW_REGION_BUDGET}>
+          <text
+            id="preview-more-regions"
+            fg={theme.textMuted}
+            paddingLeft={1}
+          >
+            ...{regionCount - PREVIEW_REGION_BUDGET} more region{regionCount - PREVIEW_REGION_BUDGET === 1 ? "" : "s"} (scroll to view all)
           </text>
         </Show>
       </box>
@@ -181,21 +189,21 @@ export function ConflictPreview(props: ConflictPreviewProps) {
       {/* File-level action bar */}
       <box id="preview-actions" flexDirection="row" gap={1} paddingTop={1}>
         <text
-          fg={theme.primary}
+          fg={noColor() ? theme.text : theme.primary}
           attributes={TextAttributes.BOLD}
           onMouseUp={() => props.onAction?.({ type: "accept", side: "ours" })}
         >
           [o]urs
         </text>
         <text
-          fg={theme.primary}
+          fg={noColor() ? theme.text : theme.primary}
           attributes={TextAttributes.BOLD}
           onMouseUp={() => props.onAction?.({ type: "accept", side: "theirs" })}
         >
           [t]heirs
         </text>
         <text
-          fg={theme.primary}
+          fg={noColor() ? theme.text : theme.primary}
           attributes={TextAttributes.BOLD}
           onMouseUp={() => props.onAction?.({ type: "accept", side: "union" })}
         >
