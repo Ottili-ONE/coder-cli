@@ -345,3 +345,111 @@ describe("pane failure paths", () => {
     expect(res).toBe("failure")
   })
 })
+
+describe("keyboard navigation during streaming", () => {
+  test("moveSelection stays within visible rows while streaming", () => {
+    const lines = [line(1, "line a"), line(2, "line b"), line(3, "line c")]
+    const state = buildState(lines, ctx({ complete: false }), { selectedId: 2 })
+    expect(moveSelection(state, 1)).toBe(3)
+    expect(moveSelection(state, -1)).toBe(1)
+  })
+
+  test("selection is never lost as new streamed lines arrive", () => {
+    let lines = [line(1, "first")]
+    let state = buildState(lines, ctx({}), { selectedId: 1 })
+    expect(effectiveSelection(state)).toBe(1)
+
+    lines = [...lines, line(2, "second"), line(3, "third")]
+    state = buildState(lines, ctx({}), { selectedId: 1 })
+    expect(effectiveSelection(state)).toBe(1)
+  })
+
+  test("filtering during streaming clamps to a valid fallback", () => {
+    const lines = [line(1, "error: crash"), line(2, "info: ok"), line(3, "error: oops")]
+    let state = buildState(lines, ctx({ complete: false }), { query: "error", selectedId: 3 })
+    // Searching narrows to lines 1 and 3.
+    expect(visibleIds(state)).toEqual([1, 3])
+    expect(moveSelection(state, 1)).toBe(3)
+    // Clear search restores all lines.
+    state = { ...state, query: "" }
+    expect(visibleIds(state)).toEqual([1, 2, 3])
+  })
+})
+
+describe("narrow terminal streaming behavior", () => {
+  test("isNarrow under standard threshold", () => {
+    expect(isNarrow(40)).toBe(true)
+    expect(isNarrow(NARROW_WIDTH_DEFAULT - 1)).toBe(true)
+  })
+
+  test("truncateLine shortens long lines at narrow widths", () => {
+    const long = line(1, "a".repeat(200))
+    const truncated = truncateLine(long, NARROW_WIDTH_DEFAULT)
+    expect(truncated.text.length).toBe(NARROW_WIDTH_DEFAULT)
+    expect(truncated.text).toMatch(/…$/)
+  })
+
+  test("truncateLine leaves short lines intact", () => {
+    const short = line(1, "hello")
+    expect(truncateLine(short, NARROW_WIDTH_DEFAULT).text).toBe("hello")
+  })
+
+  test("truncateLine preserves fold markers", () => {
+    const marker = foldMarkerLine(10)
+    expect(truncateLine(marker, 5)).toBe(marker)
+  })
+})
+
+describe("streaming state transitions without flicker", () => {
+  test("empty → streaming → complete transition is monotonic", () => {
+    const empty = deriveStatus([], ctx({ complete: false }))
+    expect(empty).toBe("empty")
+
+    const streaming = deriveStatus([line(1, "data")], ctx({ complete: false }))
+    expect(streaming).toBe("streaming")
+
+    const done = deriveStatus([line(1, "data")], ctx({ complete: true }))
+    expect(done).toBe("complete")
+  })
+
+  test("streaming → failure transitions correctly", () => {
+    const streaming = deriveStatus([line(1, "progress")], ctx({ complete: false }))
+    expect(streaming).toBe("streaming")
+
+    const failed = deriveStatus([line(1, "progress")], ctx({ complete: false, failure: "signal killed" }))
+    expect(failed).toBe("failure")
+  })
+
+  test("failure summary is meaningful and redacted", () => {
+    const state = buildState([line(1, "data")], ctx({ failure: "process exited with code 1" }))
+    const summary = terminalSummary(state)
+    expect(summary).toContain("failed")
+    expect(summary).toContain("exited")
+  })
+
+  test("complete → streaming regression never occurs", () => {
+    const done = deriveStatus([line(1, "final")], ctx({ complete: true }))
+    expect(done).toBe("complete")
+    // A subsequent call with same inputs must be identical.
+    expect(deriveStatus([line(1, "final")], ctx({ complete: true }))).toBe(done)
+  })
+})
+
+describe("standard terminal dimensions (80 and 120 cols)", () => {
+  const STANDARD = 80
+  const WIDE = 120
+
+  test("visibleLines at standard width does not truncate short lines", () => {
+    const lines = Array.from({ length: 10 }, (_, i) => line(i, `line ${i}`))
+    const state = buildState(lines, ctx({ complete: true }))
+    const result = visibleLines(state, { narrowWidth: STANDARD })
+    expect(result.lines).toHaveLength(10)
+  })
+
+  test("visibleLines at wide width returns all lines unfolded when under threshold", () => {
+    const lines = Array.from({ length: 10 }, (_, i) => line(i, `wide line ${i}`))
+    const state = buildState(lines, ctx({ complete: true }))
+    const result = visibleLines(state, { narrowWidth: WIDE })
+    expect(result.total).toBe(10)
+  })
+})

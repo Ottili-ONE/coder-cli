@@ -7,6 +7,8 @@ import {
   createFrames,
   DEFAULT_MOTION_COLOR,
   MIN_STREAM_WIDTH,
+  deriveTrailColors,
+  deriveInactiveColor,
 } from "./spinner"
 
 describe("motion streaming feedback", () => {
@@ -65,5 +67,78 @@ describe("motion streaming feedback", () => {
 
   it("MIN_STREAM_WIDTH is defined and greater than 1", () => {
     expect(MIN_STREAM_WIDTH).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe("motion streaming — resize and narrow-terminal behavior", () => {
+  it("width below MIN_STREAM_WIDTH automatically engages minimal mode", () => {
+    const frames = createStreamingFrames({ width: 2 })
+    // Below MIN_STREAM_WIDTH (4), automatically uses minimal mode with 1-char pulse frames.
+    for (const frame of frames) expect(frame.length).toBe(1)
+    expect(frames.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it("explicit width=20 produces frames of exactly 20 chars", () => {
+    const frames = createStreamingFrames({ width: 20, color: "#f97316" })
+    for (const frame of frames) expect(frame.length).toBe(20)
+  })
+
+  it("width=1 with minimal=false still yields at least 1-char frames", () => {
+    const frames = createStreamingFrames({ width: 1, minimal: false })
+    for (const frame of frames) expect(frame.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it("standard terminal width (80) and wide (120) produce proportional frames", () => {
+    const standard = createStreamingFrames({ width: 80, color: "#f97316" })
+    const wide = createStreamingFrames({ width: 120, color: "#f97316" })
+    for (const frame of standard) expect(frame.length).toBe(80)
+    for (const frame of wide) expect(frame.length).toBe(120)
+  })
+})
+
+describe("motion streaming — failure and edge-case paths", () => {
+  it("empty color input is handled without throwing", () => {
+    expect(() => createStreamingFrames({ width: 10 })).not.toThrow()
+    const frames = createStreamingFrames({ width: 10 })
+    expect(frames.length).toBeGreaterThan(0)
+  })
+
+  it("single-step trail does not underflow", () => {
+    const colors = deriveTrailColors("#f97316", 1)
+    expect(colors.length).toBe(1)
+    expect(colors[0].a).toBe(1.0)
+  })
+
+  it("zero-step trail returns empty array (caller handles gracefully)", () => {
+    const colors = deriveTrailColors("#f97316", 0)
+    expect(colors.length).toBe(0)
+  })
+
+  it("inactive factor of 0 yields zero-alpha", () => {
+    const inactive = deriveInactiveColor("#f97316", 0)
+    expect(inactive.a).toBe(0)
+  })
+
+  it("inactive factor of 1 yields full-alpha dim", () => {
+    const inactive = deriveInactiveColor("#f97316", 1)
+    expect(inactive.a).toBe(1)
+  })
+
+  it("color generator never returns an out-of-range char index", () => {
+    const gen = createStreamingColors({ width: 10, color: "#f97316" })
+    // charIndex beyond width should still return a valid RGBA.
+    const result = gen(5, 99, 100, 10) as RGBA
+    expect(result).toBeInstanceOf(RGBA)
+    expect(result.a).toBeLessThanOrEqual(1)
+  })
+
+  it("color generator with explicit colors array is deterministic", () => {
+    const hexColors = ["#ff0000", "#00ff00", "#0000ff"]
+    const gen = createStreamingColors({ width: 10, colors: hexColors })
+    const first = gen(0, 0, 100, 10) as RGBA
+    const again = gen(0, 0, 100, 10) as RGBA
+    expect(first.r).toBe(again.r)
+    expect(first.g).toBe(again.g)
+    expect(first.b).toBe(again.b)
   })
 })

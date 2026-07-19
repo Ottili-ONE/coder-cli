@@ -29,7 +29,7 @@ const tools: readonly ToolFixture[] = [
   {
     icon: "✱",
     label:
-      'Grep "OPENCODE.*DB|database|sqlite|drizzle|dev.*db|data.*dir|xdg|APPDATA" in packages/ottili-coder/src (151 matches)',
+      'Grep "OTTLI.*DB|database|sqlite|drizzle|dev.*db|data.*dir|xdg|APPDATA" in packages/ottili-coder/src (151 matches)',
   },
   {
     icon: "✱",

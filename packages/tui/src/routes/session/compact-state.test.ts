@@ -285,3 +285,74 @@ describe("truncateStreamPreview — bounds a single streaming message", () => {
     expect(out.endsWith("…")).toBe(true)
   })
 })
+
+describe("compact mode streaming state transitions without flicker", () => {
+  test("loading → empty → populated → streaming over budget transitions", () => {
+    expect(classifyCompactState(ctx({ isReady: false, loading: true }), data())).toBe("loading")
+    expect(classifyCompactState(ctx({ isReady: true }), data())).toBe("empty")
+    expect(classifyCompactState(ctx(), data({ messageCount: 2, hasContent: true }))).toBe("populated")
+    expect(
+      classifyCompactState(ctx(), data({ messageCount: 5, hasContent: true, runningCount: 3, totalChars: 99999 })),
+    ).toBe("long-content")
+  })
+
+  test("degraded status during streaming resolves correctly", () => {
+    const degradedLive = compactViewState({
+      ctx: ctx({ degraded: true }),
+      data: data({ messageCount: 2, hasContent: true, runningCount: 1 }),
+    })
+    expect(degradedLive.status).toBe("degraded")
+    expect(degradedLive.degradedRedirected).toBe(false)
+    expect(degradedLive.summaryText).toContain("limited")
+  })
+
+  test("streaming hazard fires when many messages stream concurrently", () => {
+    const safe = compactViewState({
+      ctx: ctx(),
+      data: data({ messageCount: 2, hasContent: true, runningCount: 2, totalChars: 1000 }),
+    })
+    expect(safe.streamingHazard).toBe(false)
+
+    const hazardous = compactViewState({
+      ctx: ctx(),
+      data: data({ messageCount: 10, hasContent: true, runningCount: 5, totalChars: 40000 }),
+    })
+    expect(hazardous.streamingHazard).toBe(true)
+  })
+
+  test("narrow compact view state is correctly flagged", () => {
+    const narrow = compactViewState({
+      ctx: ctx(),
+      data: data({ messageCount: 2, hasContent: true }),
+      opts: { width: 60 },
+    })
+    expect(narrow.narrow).toBe(true)
+    expect(narrow.meterText).toBe("live")
+
+    const wide = compactViewState({
+      ctx: ctx(),
+      data: data({ messageCount: 2, hasContent: true }),
+      opts: { width: 120 },
+    })
+    expect(wide.narrow).toBe(false)
+  })
+
+  test("stale indicator during streaming refresh", () => {
+    const state = compactViewState({
+      ctx: ctx({ loading: true }),
+      data: data({ messageCount: 5, hasContent: true }),
+    })
+    expect(state.stale).toBe(true)
+    expect(state.status).toBe("populated")
+  })
+
+  test("accessible summary includes streaming count", () => {
+    const summary = accessibleCompactSummary(
+      "populated",
+      ctx(),
+      data({ messageCount: 3, hasContent: true, runningCount: 2 }),
+    )
+    expect(summary).toContain("2 streaming")
+    expect(summary).toContain("3 messages")
+  })
+})
