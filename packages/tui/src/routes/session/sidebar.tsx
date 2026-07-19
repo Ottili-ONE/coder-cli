@@ -311,6 +311,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean; onClose?:
   return (
     <Show when={session()}>
       <box
+        aria-label="session sidebar"
         backgroundColor={theme.backgroundPanel}
         width={42}
         height="100%"

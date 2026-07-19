@@ -27,6 +27,7 @@ export function Dialog(
 
   return (
     <box
+      aria-label="dialog"
       onMouseDown={() => {
         dismiss = !!renderer.getSelection()
       }}
@@ -48,6 +49,7 @@ export function Dialog(
       backgroundColor={RGBA.fromValues(theme.background.r, theme.background.g, theme.background.b, 150)}
     >
       <box
+        aria-label="dialog content"
         onMouseUp={(e: { stopPropagation(): void }) => {
           dismiss = false
           e.stopPropagation()

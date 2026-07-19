@@ -73,7 +73,7 @@ export function DialogPrompt(props: DialogPromptProps) {
   })
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
+    <box paddingLeft={2} paddingRight={2} gap={1} aria-label={`Prompt: ${props.title}`}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {props.title}

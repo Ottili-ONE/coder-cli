@@ -54,7 +54,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
     ],
   }))
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
+    <box paddingLeft={2} paddingRight={2} gap={1} aria-label={`Confirm: ${props.title}`}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {props.title}
