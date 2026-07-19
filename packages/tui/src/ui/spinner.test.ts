@@ -6,6 +6,7 @@ import {
   createColors,
   createFrames,
   DEFAULT_MOTION_COLOR,
+  MIN_STREAM_WIDTH,
 } from "./spinner"
 
 describe("motion streaming feedback", () => {
@@ -40,5 +41,29 @@ describe("motion streaming feedback", () => {
     expect(frames.every((frame) => frame.length === 6)).toBe(true)
     const gen = createColors({ width: 6, color: "#a77fc4" })
     expect(typeof gen).toBe("function")
+  })
+
+  it("minimal mode produces pulse frames for narrow terminals", () => {
+    const frames = createStreamingFrames({ width: 2, minimal: true })
+    expect(frames.length).toBeGreaterThanOrEqual(4)
+    for (const frame of frames) expect(frame.length).toBe(1)
+    // Pulse characters are single-width.
+    expect(frames.every((f) => f.length === 1)).toBe(true)
+  })
+
+  it("color generator returns dim inactive color for additive mode", () => {
+    const gen = createStreamingColors({ width: 8, color: "#f97316", additive: true })
+    const active = gen(0, 0, 100, 8) as RGBA
+    const far = gen(20, 0, 100, 8) as RGBA
+    expect(active).toBeInstanceOf(RGBA)
+    expect(far).toBeInstanceOf(RGBA)
+    // Additive mode inactive alpha is higher than default.
+    const defaultGen = createStreamingColors({ width: 8, color: "#f97316" })
+    const defaultFar = defaultGen(20, 0, 100, 8) as RGBA
+    expect(far.a).toBeGreaterThan(defaultFar.a)
+  })
+
+  it("MIN_STREAM_WIDTH is defined and greater than 1", () => {
+    expect(MIN_STREAM_WIDTH).toBeGreaterThanOrEqual(2)
   })
 })

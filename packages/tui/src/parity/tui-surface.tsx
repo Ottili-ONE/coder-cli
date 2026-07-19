@@ -31,6 +31,8 @@ export function useTuiParitySurface(): ParitySurface {
 
   const widths = createMemo(() => resolveLayoutTier(dimensions().width))
 
+  // Detect no-color / dumb terminals so the surface never emits ANSI escape
+  // sequences that a limited terminal cannot render.
   // The TUI derives its current lifecycle state from connectivity: when the
   // host has no network the parity strip announces `offline`; otherwise it is
   // `populated` (a live session surface). The web/desktop hosts override this

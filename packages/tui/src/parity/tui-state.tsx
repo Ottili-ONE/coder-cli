@@ -43,6 +43,10 @@ function useColorEnabled(): boolean {
  * strip shows a glyph + word title (so it survives no-color terminals), the
  * optional detail, and the hint line. The `title` backs a screen-reader
  * announcement so the state is announced, not just painted.
+ *
+ * On narrow terminals (< 80 cols) the hint line is suppressed so the strip
+ * never crowds the available width. On no-color terminals every label renders
+ * in the muted text color.
  */
 export function ParityStateView(props: { state: ParityState }) {
   const { theme } = useTheme()
@@ -53,10 +57,13 @@ export function ParityStateView(props: { state: ParityState }) {
     parityStateView(props.state, { width: dimensions().width, useColor }),
   )
 
+  // Narrow terminal: suppress the hint so the strip stays compact.
+  const narrow = () => dimensions().width < 80
+
   return (
     <Show when={Flag.EVOLUTION_T_CLI_0245_TUI_REDESIGN_WEB_AND_DESKTOP_PARITY__ENABLED}>
       <Show when={view().status !== "hidden"}>
-        <box flexDirection="row" gap={1} flexShrink={0} title={view().ariaLabel}>
+        <box flexDirection="row" gap={1} flexShrink={0} aria-label={view().ariaLabel}>
           <text
             fg={useColor ? ROLE_HEX[view().colorRole] : theme.textMuted}
             attributes={TextAttributes.BOLD}
@@ -66,7 +73,7 @@ export function ParityStateView(props: { state: ParityState }) {
           <Show when={view().detail}>
             <text fg={theme.textMuted}>{view().detail}</text>
           </Show>
-          <Show when={view().hint}>
+          <Show when={!narrow() && view().hint}>
             <text fg={theme.textMuted}>{view().hint}</text>
           </Show>
         </box>

@@ -8,6 +8,7 @@ import {
   windowMessages,
   truncateStreamPreview,
   COMPACT_MAX_RENDERED_MESSAGES,
+  COMPACT_MAX_STREAM_PREVIEW,
   COMPACT_LONG_CONTENT_CHARS,
   COMPACT_LONG_CONTENT_TOTAL_CHARS,
   type CompactViewContext,
@@ -207,6 +208,50 @@ describe("compactViewState — derived view state", () => {
   test("function is pure and deterministic for identical inputs", () => {
     const input = { ctx: ctx(), data: data({ messageCount: 2, hasContent: true }) }
     expect(compactViewState(input)).toEqual(compactViewState(input))
+  })
+  test("streamingHazard is true when many running messages exceed total volume", () => {
+    const state = compactViewState({
+      ctx: ctx(),
+      data: data({ messageCount: 5, hasContent: true, runningCount: 5, totalChars: COMPACT_LONG_CONTENT_TOTAL_CHARS + 1 }),
+    })
+    expect(state.streamingHazard).toBe(true)
+  })
+  test("streamingHazard is false with few running messages", () => {
+    const state = compactViewState({
+      ctx: ctx(),
+      data: data({ messageCount: 2, hasContent: true, runningCount: 1, totalChars: 100 }),
+    })
+    expect(state.streamingHazard).toBe(false)
+  })
+  test("degradedRedirected is true when degraded with no messages", () => {
+    const state = compactViewState({
+      ctx: ctx({ degraded: true }),
+      data: data(),
+    })
+    expect(state.degradedRedirected).toBe(true)
+    expect(state.status).toBe("empty")
+  })
+  test("degradedRedirected is false when degraded with messages", () => {
+    const state = compactViewState({
+      ctx: ctx({ degraded: true }),
+      data: data({ messageCount: 2, hasContent: true }),
+    })
+    expect(state.degradedRedirected).toBe(false)
+    expect(state.status).toBe("degraded")
+  })
+  test("streamingOverBudget is true when running messages exceed preview char limit", () => {
+    const state = compactViewState({
+      ctx: ctx(),
+      data: data({ messageCount: 2, hasContent: true, runningCount: 1, longestMessageLength: COMPACT_MAX_STREAM_PREVIEW + 100 }),
+    })
+    expect(state.renderBudget.streamingOverBudget).toBe(true)
+  })
+  test("streamingOverBudget is false when under preview char limit", () => {
+    const state = compactViewState({
+      ctx: ctx(),
+      data: data({ messageCount: 2, hasContent: true, runningCount: 1, longestMessageLength: 100 }),
+    })
+    expect(state.renderBudget.streamingOverBudget).toBe(false)
   })
 })
 

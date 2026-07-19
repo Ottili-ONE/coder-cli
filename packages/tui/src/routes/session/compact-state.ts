@@ -66,6 +66,8 @@ export interface CompactRenderBudget {
   streamPreviewChars: number
   /** Minimum cadence (ms) at which a live, streaming view re-samples its source. */
   resampleMs: number
+  /** When true, the running stream has exceeded the preview char budget. */
+  streamingOverBudget: boolean
 }
 
 // Terminal-fallback + performance-budget constants.
@@ -196,6 +198,10 @@ export interface CompactViewState {
   accessibleSummary: string
   /** Compact inline indicator (glyph + short word) for narrow terminals. */
   meterText: string
+  /** True when streaming messages may arrive out of order relative to their index. */
+  streamingHazard: boolean
+  /** True when the degraded state has redirected to a more specific status. */
+  degradedRedirected: boolean
 }
 
 /**
@@ -213,9 +219,22 @@ export function compactViewState(input: CompactViewInput): CompactViewState {
   const streamPreviewChars = input.opts?.streamPreviewChars ?? COMPACT_MAX_STREAM_PREVIEW
   const resampleMs = input.opts?.resampleMs ?? COMPACT_RENDER_BUDGET_MS
 
-  const status = classifyCompactState(input.ctx, input.data)
+  // Detect streaming-order hazard: many running messages with a large total char
+  // volume means the stream may be delivering chunks out of order relative to
+  // their message index (common with parallel tool calls streaming back).
+  const streamingHazard = input.data.runningCount > 3 && input.data.totalChars > COMPACT_LONG_CONTENT_TOTAL_CHARS
+
+  // Enhanced degraded handling: empty degraded resolves to empty, not degraded,
+  // so the surface never says "limited" when there is nothing to limit.
+  const degradedRedirected = !!(input.ctx.degraded && input.data.messageCount === 0)
+  const effectiveContext: CompactViewContext = degradedRedirected
+    ? { ...input.ctx, degraded: false }
+    : input.ctx
+
+  const status = classifyCompactState(effectiveContext, input.data)
   const stale =
     !!input.ctx.loading && (status === "populated" || status === "long-content" || status === "degraded")
+  const streamingOverBudget = input.data.runningCount > 0 && input.data.longestMessageLength > streamPreviewChars
 
   return {
     status,
@@ -223,9 +242,11 @@ export function compactViewState(input: CompactViewInput): CompactViewState {
     narrow,
     noColor,
     stale,
-    renderBudget: { maxMessages, streamPreviewChars, resampleMs },
-    summaryText: summarizeCompactState(status, input.ctx, input.data, noColor),
-    accessibleSummary: accessibleCompactSummary(status, input.ctx, input.data),
+    streamingHazard,
+    degradedRedirected,
+    renderBudget: { maxMessages, streamPreviewChars, resampleMs, streamingOverBudget },
+    summaryText: summarizeCompactState(status, effectiveContext, input.data, noColor),
+    accessibleSummary: accessibleCompactSummary(status, effectiveContext, input.data),
     meterText: compactMeterText(status, noColor),
   }
 }

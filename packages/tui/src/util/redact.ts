@@ -32,6 +32,12 @@ export function redactSecrets(input: string): string {
   text = text.replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/g, (match) => {
     return `${match.split(/\s+/)[0]} ${REDACTION_MARKER}`
   })
+  // JWT-style tokens (header.payload.signature — any base64url-encoded segment ≥ 20 chars).
+  text = text.replace(/\b[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/g, () => REDACTION_MARKER)
+  // OAuth session / refresh tokens that start with a known prefix.
+  text = text.replace(/\b(gh[osu]_|ghp_|ghr_|github_pat_|ya29\.|eyJ|tok_|f04_|sess_)[A-Za-z0-9_-]{8,}/g, (_match, prefix: string) => `${prefix}${REDACTION_MARKER}`)
+  // session_id / sid = value assignments (common in diagnostics).
+  text = text.replace(/\b(session[_-]?id|sid|jti)\b(\s*[:=]\s*["']?)[A-Za-z0-9_-]{8,}/gi, (_match, key: string, sep: string) => `${key}${sep}${REDACTION_MARKER}`)
   // key = value assignments with a secret-looking key.
   text = text.replace(ASSIGNMENT_RE, (_match, key: string, sep: string) => `${key}${sep}${REDACTION_MARKER}`)
   return text

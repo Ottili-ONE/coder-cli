@@ -80,6 +80,9 @@ export const CompactStatusLine: ParentComponent<{
       <Show when={props.state.stale}>
         <text fg={colors().textMuted}> · updating…</text>
       </Show>
+      <Show when={props.state.renderBudget.streamingOverBudget}>
+        <text fg={colors().warning}> · large stream</text>
+      </Show>
     </box>
   )
 }
