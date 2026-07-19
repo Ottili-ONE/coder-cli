@@ -39,6 +39,18 @@ export interface ConflictFile {
   readonly resolution?: ConflictSide
   /** Edited content, present only when `resolution` is `"manual"`. */
   readonly content?: string
+  /** Count of <<<<<<< conflict regions in this file. */
+  readonly conflictRegions?: number
+  /** Lines added across all conflict regions (ours + theirs). */
+  readonly additions?: number
+  /** Lines deleted across all conflict regions. */
+  readonly deletions?: number
+  /** Per-region resolution state for the conflict preview. */
+  readonly regionResolutions?: Array<{
+    regionIndex: number
+    resolution?: ConflictSide
+    content?: string
+  }>
 }
 
 /** Whole-panel lifecycle derived from context + files. */
@@ -70,6 +82,18 @@ export interface ConflictResolutionState {
   readonly status: ConflictResolutionStatus
   /** One-line header summary, safe to render verbatim. */
   readonly summaryText: string
+  /** Whether the conflict preview panel is open for the focused file. */
+  readonly previewOpen: boolean
+  /** Index of the file whose preview is open. */
+  readonly previewFileIndex: number
+  /** Which zone has keyboard focus — the file list or the preview regions. */
+  readonly previewFocus: "list" | "regions"
+  /** Active file list filter query. Empty string means no filter. */
+  readonly filterQuery: string
+  /** Files filtered by filterQuery. Reference-equal to files when no filter is active. */
+  readonly filteredFiles: ReadonlyArray<ConflictFile>
+  /** Total conflict regions across all files (for summary display). */
+  readonly conflictRegionsTotal: number
 }
 
 export const NARROW_WIDTH_DEFAULT = 60
@@ -158,6 +182,41 @@ export function mergeConflicts(
     byPath.set(f.path, existing ? { ...existing, ...f, resolution: f.resolution ?? existing.resolution } : f)
   }
   return [...byPath.values()]
+}
+
+// --- filtering --------------------------------------------------------------
+
+/** Filter files by case-insensitive path substring match. */
+export function filterFiles(
+  files: ReadonlyArray<ConflictFile>,
+  query: string,
+): ReadonlyArray<ConflictFile> {
+  if (!query) return files
+  const lower = query.toLowerCase()
+  return files.filter((f) => f.path.toLowerCase().includes(lower))
+}
+
+// --- preview state ----------------------------------------------------------
+
+/** Toggle the conflict preview for a file index. Returns new previewOpen + previewFileIndex. */
+export function togglePreview(
+  state: ConflictResolutionState,
+  fileIndex: number,
+): Pick<ConflictResolutionState, "previewOpen" | "previewFileIndex" | "previewFocus"> {
+  if (state.previewOpen && state.previewFileIndex === fileIndex) {
+    return { previewOpen: false, previewFileIndex: fileIndex, previewFocus: "list" }
+  }
+  return { previewOpen: true, previewFileIndex: fileIndex, previewFocus: "list" }
+}
+
+/** Cycle the keyboard focus zone between the file list and conflict regions. */
+export function previewFocusTab(state: ConflictResolutionState): "list" | "regions" {
+  return state.previewFocus === "list" ? "regions" : "list"
+}
+
+/** Count conflict regions across all files for summary display. */
+export function totalConflictRegions(files: ReadonlyArray<ConflictFile>): number {
+  return files.reduce((sum, f) => sum + (f.conflictRegions ?? 0), 0)
 }
 
 // --- keyboard navigation & focus -------------------------------------------
@@ -253,6 +312,10 @@ export interface ConflictOverrides {
   readonly width?: number
   readonly narrowWidth?: number
   readonly operation?: ConflictType
+  readonly filterQuery?: string
+  readonly previewOpen?: boolean
+  readonly previewFileIndex?: number
+  readonly previewFocus?: "list" | "regions"
 }
 
 export function conflictResolutionState(
@@ -287,6 +350,14 @@ export function conflictResolutionState(
         ? "resolving"
         : "ready"
 
+  const filterQuery = overrides.filterQuery ?? ""
+  const filteredFiles = filterQuery ? filterFiles(files, filterQuery) : files
+
+  const previewOpen = overrides.previewOpen ?? false
+  const previewFileIndex = overrides.previewFileIndex ?? (focusIndex >= 0 ? focusIndex : -1)
+
+  const conflictRegionsTotal = files.reduce((sum, f) => sum + (f.conflictRegions ?? 0), 0)
+
   return {
     operation,
     files,
@@ -299,5 +370,11 @@ export function conflictResolutionState(
     stale,
     status,
     summaryText: summary(operation, files, ctx),
+    previewOpen,
+    previewFileIndex,
+    previewFocus: overrides.previewFocus ?? "list",
+    filterQuery,
+    filteredFiles,
+    conflictRegionsTotal,
   }
 }
