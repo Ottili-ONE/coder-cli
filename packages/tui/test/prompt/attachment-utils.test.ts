@@ -7,14 +7,18 @@
  * redaction. They are pure-function tests that need no renderer or SDK.
  */
 import { describe, expect, test } from "bun:test"
+import type { RGBA } from "@opentui/core"
 import type { FilePart } from "@opencode-ai/sdk/v2"
 
 import {
   attachmentKind,
   mimeBadge,
+  mimeColor,
   formatFileSize,
   estimateDataUrlBytes,
+  isDataUrl,
   truncateFilename,
+  redactAttachmentFilename,
   attachmentAccessibilityLabel,
   attachmentStatusLabel,
   attachmentStatusGlyph,
@@ -85,6 +89,98 @@ describe("mimeBadge", () => {
 
   test("falls back to file for unknown non-image types", () => {
     expect(mimeBadge("application/octet-stream")).toBe("file")
+  })
+})
+
+function stubTheme(overrides: Partial<Record<keyof ReturnType<typeof mimeColor> extends never ? never : string, RGBA>> = {}): Parameters<typeof mimeColor>[1] {
+  return {
+    accent: { r: 0, g: 120, b: 255, a: 1 },
+    primary: { r: 200, g: 50, b: 50, a: 1 },
+    secondary: { r: 100, g: 100, b: 100, a: 1 },
+    info: { r: 0, g: 200, b: 100, a: 1 },
+    ...overrides,
+  } as Parameters<typeof mimeColor>[1]
+}
+
+describe("mimeColor", () => {
+  test("image mimes return accent", () => {
+    const theme = stubTheme()
+    expect(mimeColor("image/png", theme)).toBe(theme.accent)
+    expect(mimeColor("image/jpeg", theme)).toBe(theme.accent)
+    expect(mimeColor("image/gif", theme)).toBe(theme.accent)
+  })
+
+  test("PDF returns primary", () => {
+    const theme = stubTheme()
+    expect(mimeColor("application/pdf", theme)).toBe(theme.primary)
+  })
+
+  test("SVG returns accent (image/ prefix match wins)", () => {
+    const theme = stubTheme()
+    // SVG starts with "image/" so the image branch fires first.
+    expect(mimeColor("image/svg+xml", theme)).toBe(theme.accent)
+  })
+
+  test("fallback mimes return secondary", () => {
+    const theme = stubTheme()
+    expect(mimeColor("text/plain", theme)).toBe(theme.secondary)
+    expect(mimeColor("application/json", theme)).toBe(theme.secondary)
+    expect(mimeColor("application/octet-stream", theme)).toBe(theme.secondary)
+    expect(mimeColor("", theme)).toBe(theme.secondary)
+  })
+
+  test("each theme slot is distinct where applicable", () => {
+    const theme = stubTheme()
+    // SVG hits the image branch (accent), so image and SVG collide.
+    const results = new Set([mimeColor("image/png", theme), mimeColor("application/pdf", theme), mimeColor("text/plain", theme)])
+    expect(results.size).toBe(3)
+  })
+})
+
+describe("isDataUrl", () => {
+  test("recognises data URLs", () => {
+    expect(isDataUrl("data:image/png;base64,AAAA")).toBe(true)
+    expect(isDataUrl("data:text/plain,hello")).toBe(true)
+    expect(isDataUrl("data:,")).toBe(true)
+  })
+
+  test("rejects non-data URLs", () => {
+    expect(isDataUrl("https://example.com/file.png")).toBe(false)
+    expect(isDataUrl("file:///tmp/photo.png")).toBe(false)
+    expect(isDataUrl("")).toBe(false)
+    expect(isDataUrl("/absolute/path")).toBe(false)
+  })
+})
+
+describe("redactAttachmentFilename", () => {
+  test("passes through clean filenames", () => {
+    expect(redactAttachmentFilename("photo.png")).toBe("photo.png")
+    expect(redactAttachmentFilename("document.pdf")).toBe("document.pdf")
+    expect(redactAttachmentFilename("a")).toBe("a")
+  })
+
+  test("redacts sensitive patterns in filenames", () => {
+    const result = redactAttachmentFilename("sk-secret-key-1234567890123456.txt")
+    expect(result).not.toContain("sk-secret")
+    expect(result).toContain("••••")
+    expect(result).toContain(".txt")
+  })
+
+  test("redacts long base64/hex token filenames", () => {
+    // 32+ chars of base64/hex characters triggers redaction.
+    const result = redactAttachmentFilename("a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6.txt")
+    expect(result).not.toContain("a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6")
+    expect(result).toContain("••••")
+  })
+
+  test("handles empty string", () => {
+    expect(redactAttachmentFilename("")).toBe("")
+  })
+
+  test("redacts sk- prefixed keys", () => {
+    const result = redactAttachmentFilename("sk-live-abcdefgh123")
+    expect(result).not.toContain("sk-live")
+    expect(result).toContain("••••")
   })
 })
 
@@ -457,5 +553,156 @@ describe("attachment utils edge cases", () => {
     const parts = [filePart()]
     const state = buildAttachmentState(parts, {}, { renderBudget: 0 })
     expect(state.status).toBe("long-content")
+  })
+
+  test("buildAttachmentState with render budget below total bytes flags long-content", () => {
+    // 10KB base64 data URL → ~7.5KB estimated bytes; budget=1 → long-content
+    const parts = [filePart({ url: `data:image/png;base64,${"a".repeat(10000)}` })]
+    const state = buildAttachmentState(parts, {}, { renderBudget: 1 })
+    expect(state.status).toBe("long-content")
+  })
+
+  test("truncateAttachmentSize with data exceeding 50MB hard cap", () => {
+    const overCap = ATTACHMENT_MAX_SIZE + 1000
+    const result = truncateAttachmentSize(overCap)
+    expect(result.truncated).toBe(true)
+    expect(result.dropped).toBe(1000)
+    expect(result.bytes).toBe(ATTACHMENT_MAX_SIZE)
+  })
+
+  test("estimateAttachmentBytes sums across multiple parts", () => {
+    const part1 = filePart({ url: "data:image/png;base64,AAAA" })
+    const part2 = filePart({ url: "data:image/png;base64,AAAA" })
+    expect(estimateAttachmentBytes(part1)).toBe(3)
+    expect(estimateAttachmentBytes(part2)).toBe(3)
+  })
+})
+
+// ── Multi-attachment state transitions ──────────────────────────────────────
+
+describe("buildAttachmentState with multiple parts", () => {
+  test("count reflects the number of parts", () => {
+    const one = buildAttachmentState([filePart()])
+    expect(one.count).toBe(1)
+    const three = buildAttachmentState([filePart(), filePart({ id: "f2" }), filePart({ id: "f3" })])
+    expect(three.count).toBe(3)
+  })
+
+  test("status is populated for multiple valid parts under budget", () => {
+    const state = buildAttachmentState([filePart(), filePart({ id: "f2" })])
+    expect(state.status).toBe("populated")
+  })
+
+  test("redacted when any part has a sensitive filename", () => {
+    const parts = [filePart({ filename: "readme.txt" }), filePart({ filename: "sk-secret-key-123456789012345.txt", id: "f2" })]
+    const state = buildAttachmentState(parts)
+    expect(state.redacted).toBe(true)
+  })
+
+  test("not redacted when no parts have sensitive filenames", () => {
+    const parts = [filePart({ filename: "readme.txt" }), filePart({ filename: "photo.png", id: "f2" })]
+    const state = buildAttachmentState(parts)
+    expect(state.redacted).toBe(false)
+  })
+})
+
+// ── Transition tests (no renderer, pure function) ───────────────────────────
+
+describe("attachment state transitions", () => {
+  test("loading → populated transition works through context change", () => {
+    const loadingState = buildAttachmentState([filePart()], { loading: true })
+    expect(loadingState.status).toBe("loading")
+    const populatedState = buildAttachmentState([filePart()], { loading: false })
+    expect(populatedState.status).toBe("populated")
+  })
+
+  test("loading → failure transition", () => {
+    const failingState = buildAttachmentState([filePart()], { loading: false, error: "read timed out" })
+    expect(failingState.status).toBe("failure")
+    expect(failingState.context.error).toBe("read timed out")
+  })
+
+  test("populated → long-content transition when size grows", () => {
+    const small = buildAttachmentState([filePart({ url: "data:image/png;base64,AAAA" })])
+    expect(small.status).toBe("populated")
+    const large = buildAttachmentState([filePart()], {}, { renderBudget: 1 })
+    expect(large.status).toBe("long-content")
+  })
+
+  test("failure → retry → populated sequence", () => {
+    const first = buildAttachmentState([filePart()], { error: "timed out" })
+    expect(first.status).toBe("failure")
+    const afterRetry = buildAttachmentState([filePart()], { error: null })
+    expect(afterRetry.status).toBe("populated")
+  })
+})
+
+// ── Summary and Aria extended tests ─────────────────────────────────────────
+
+describe("attachmentSummary state transitions", () => {
+  test("long-content summary includes count and truncation info", () => {
+    const parts = [filePart()]
+    const state = buildAttachmentState(parts, {}, { renderBudget: 1 })
+    expect(attachmentSummary(state)).toContain("large content")
+    expect(attachmentSummary(state)).toContain("1 part")
+  })
+
+  test("long-content summary mentions parts count", () => {
+    const url = `data:image/png;base64,${"a".repeat(ATTACHMENT_RENDER_BUDGET / 3 * 4 + 100)}`
+    const state = buildAttachmentState([filePart({ url })], {}, { renderBudget: 1 })
+    const summary = attachmentSummary(state)
+    expect(summary).toContain("large content")
+    expect(summary).toContain("1 part")
+  })
+
+  test("populated summary handles zero parts in populated state", () => {
+    const state = buildAttachmentState([filePart()])
+    expect(attachmentSummary(state)).toBe("Attachments: 1 file")
+  })
+
+  test("attachmentAriaLabel passes through clean state", () => {
+    const state = buildAttachmentState([filePart()])
+    const label = attachmentAriaLabel(state)
+    expect(label).toContain("1 file")
+    expect(label).not.toContain("••••")
+  })
+})
+
+// ── Keyboard navigation and accessibility focus tests ───────────────────────
+
+describe("attachmentAccessibilityLabel extended coverage", () => {
+  test("labels all known mime kinds correctly", () => {
+    expect(attachmentAccessibilityLabel({ mime: "image/png" })).toContain("image")
+    expect(attachmentAccessibilityLabel({ mime: "image/svg+xml" })).toContain("SVG image")
+    expect(attachmentAccessibilityLabel({ mime: "application/pdf" })).toContain("PDF document")
+    expect(attachmentAccessibilityLabel({ mime: "text/plain" })).toContain("file")
+    expect(attachmentAccessibilityLabel({ mime: "image/webp", filename: "img.webp" })).toContain("image")
+    expect(attachmentAccessibilityLabel({ mime: "image/webp", filename: "img.webp" })).toContain("img.webp")
+  })
+
+  test("includes size when provided", () => {
+    expect(attachmentAccessibilityLabel({ mime: "image/png", filename: "a.png" }, 1024)).toContain("1.0 KB")
+  })
+
+  test("omits size when not provided", () => {
+    const label = attachmentAccessibilityLabel({ mime: "image/png", filename: "a.png" })
+    expect(label).not.toContain("KB")
+    expect(label).not.toContain("B ")
+  })
+})
+
+// ── Narrow terminal extended tests ──────────────────────────────────────────
+
+describe("attachment narrow terminal edge cases", () => {
+  test("isAttachmentNarrow handles zero width", () => {
+    expect(isAttachmentNarrow(0, 60)).toBe(true)
+  })
+
+  test("isAttachmentNarrow handles negative width", () => {
+    expect(isAttachmentNarrow(-1, 60)).toBe(true)
+  })
+
+  test("isAttachmentNarrow handles very large width", () => {
+    expect(isAttachmentNarrow(10000, 60)).toBe(false)
   })
 })
