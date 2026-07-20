@@ -1,8 +1,15 @@
 export { CodeBlockView } from "./CodeBlockView"
 export {
-  buildCodeBlockState,
-  executionAvailable,
+  CODE_BLOCK_LONG_THRESHOLD,
+  CODE_BLOCK_TOKEN_LIMIT,
   RUNNABLE,
+  buildCodeBlockState,
+  codeBlockAriaLabel,
+  codeBlockStatusGlyph,
+  codeBlockStatusLabel,
+  codeBlockSummary,
+  deriveCodeBlockStatus,
+  executionAvailable,
   formatGutter,
   gutterWidth,
   highlightFamily,
@@ -10,8 +17,9 @@ export {
   lineInSelection,
   normalizeSelection,
   splitFileLines,
+  type CodeBlockContext,
+  type CodeBlockInput,
   type CodeBlockProps,
   type CodeBlockState,
   type CodeBlockStatus,
-  type CodeBlockInput,
 } from "./state"
