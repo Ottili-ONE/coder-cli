@@ -116,6 +116,14 @@ export const Flag = {
     return truthy("EVOLUTION_T_CLI_0193_TUI_REDESIGN_CODE_BLOCK_RENDERER__C_ENABLED")
   },
 
+  // Multi-pane workspace (T-CLI-0201): resizable transcript, files, diff, tasks
+  // and terminal panes arranged in a multi-pane layout using the PanelGroup/
+  // Panel/Separator component system. Off until staging validation passes; when
+  // off the session renders the single-scrollbox legacy layout (zero regression).
+  get EVOLUTION_T_CLI_0201_TUI_REDESIGN_MULTI_PANE_WORKSPACE__ENABLED() {
+    return truthy("EVOLUTION_T_CLI_0201_TUI_REDESIGN_MULTI_PANE_WORKSPACE__ENABLED")
+  },
+
   // Focus mode (T-CLI-0205): minimal transcript/composer surface that drops
   // the sidebar, header strip, and status chrome behind a single keystroke.
   // Off until staging validation passes; when off `focused()` is forced false
