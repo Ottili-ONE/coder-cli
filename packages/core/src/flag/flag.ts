@@ -155,6 +155,17 @@ export const Flag = {
     return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_TUI_WEB_DESKTOP_PARITY")
   },
 
+  // Image and file attachments redesign (T-CLI-0197): redesigned AttachmentBar
+  // and user message file display with metadata, size info, and accessibility
+  // labels. Off until staging validation passes; when off the legacy surface
+  // renders identically (zero regression). The MEE flag
+  // EVOLUTION_T_CLI_0197_TUI_REDESIGN_IMAGE_AND_FILE_ATTACHME_ENABLED maps to
+  // this env var.
+  get EVOLUTION_T_CLI_0197_TUI_REDESIGN_IMAGE_AND_FILE_ATTACHME_ENABLED() {
+    if (truthy("EVOLUTION_T_CLI_0197_TUI_REDESIGN_IMAGE_AND_FILE_ATTACHME_ENABLED")) return true
+    return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_TUI_ATTACHMENT_REDESIGN")
+  },
+
   // Evaluated at access time (not module load) because tests, the CLI, and
   // external tooling set these env vars at runtime.
   get OTTILI_CODER_DISABLE_PROJECT_CONFIG() {

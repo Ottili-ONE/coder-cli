@@ -55,6 +55,7 @@ import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
+import { attachmentKind, mimeBadge, mimeColor, formatFileSize, truncateFilename, estimateDataUrlBytes, attachmentAccessibilityLabel, isDataUrl } from "./attachment-utils"
 
 export type PromptProps = {
   sessionID?: string
@@ -136,26 +137,6 @@ function formatEditorContext(selection: EditorSelection) {
 
 let stashed: { prompt: PromptInfo; cursor: number } | undefined
 
-const FILE_MIME_BADGE: Record<string, string> = {
-  "image/png": "img",
-  "image/jpeg": "img",
-  "image/gif": "img",
-  "image/webp": "img",
-  "image/avif": "img",
-  "image/svg+xml": "svg",
-  "application/pdf": "pdf",
-}
-
-function fileMimeBadge(mime: string): string {
-  return FILE_MIME_BADGE[mime] ?? "file"
-}
-
-function fileMimeColor(mime: string, theme: ReturnType<typeof useTheme>["theme"]): RGBA {
-  if (mime.startsWith("image/")) return theme.accent
-  if (mime === "application/pdf") return theme.primary
-  return theme.secondary
-}
-
 /** Virtual text label for a file part in the prompt textarea extmark. */
 function filePartLabel(part: { type: string; mime?: string }, index: number): string {
   if (part.type !== "file") return ""
@@ -193,18 +174,30 @@ function AttachmentBar(props: {
         <For each={fileParts()}>
           {({ part, index }) => {
             const mime = part.mime ?? ""
-            const badge = fileMimeBadge(mime)
-            const fg = fileMimeColor(mime, props.theme)
+            const badge = mimeBadge(mime)
+            const fg = mimeColor(mime, props.theme)
+            const size = isDataUrl(part.url) ? estimateDataUrlBytes(part.url) : undefined
+            const kind = attachmentKind(mime)
+            const label = attachmentAccessibilityLabel(part, size)
             return (
-              <box flexDirection="row" gap={0} borderColor={props.theme.borderSubtle} border={["left"]}>
+              <box
+                flexDirection="row"
+                gap={0}
+                borderColor={props.theme.border}
+                border={["left"]}
+                aria-label={label}
+              >
                 <text fg={props.theme.background} style={{ bg: fg }}>
                   {" "}
                   {badge}{" "}
                 </text>
                 <text fg={props.theme.textMuted}>
                   {" "}
-                  {part.filename ?? "attachment"}{" "}
+                  {truncateFilename(part.filename ?? "attachment", 28)}{" "}
                 </text>
+                <Show when={size !== undefined && kind === "image"}>
+                  <text fg={props.theme.borderSubtle}> {formatFileSize(size!)} </text>
+                </Show>
                 <box onMouseUp={() => props.onRemove(index)}>
                   <text fg={props.theme.textMuted}> × </text>
                 </box>

@@ -105,6 +105,7 @@ import { DialogRetryAction } from "../../component/dialog-retry-action"
 import { getRevertDiffFiles } from "../../util/revert-diff"
 import { OTTILI_CODER_BASE_MODE, useBindings, useCommandShortcut, useOttiliCoderKeymap } from "../../keymap"
 import { PathFormatterProvider, usePathFormatter } from "../../context/path-format"
+import { mimeBadge, mimeColor, formatFileSize, estimateDataUrlBytes, isDataUrl, truncateFilename, attachmentAccessibilityLabel } from "../../component/prompt/attachment-utils"
 
 addDefaultParsers(parsers.parsers)
 
@@ -1821,16 +1822,6 @@ export function Session() {
   )
 }
 
-const MIME_BADGE: Record<string, string> = {
-  "text/plain": "txt",
-  "image/png": "img",
-  "image/jpeg": "img",
-  "image/gif": "img",
-  "image/webp": "img",
-  "application/pdf": "pdf",
-  "application/x-directory": "dir",
-}
-
 function UserMessage(props: {
   message: UserMessage
   parts: Part[]
@@ -1890,16 +1881,33 @@ function UserMessage(props: {
               <box flexDirection="row" paddingBottom={metadataVisible() ? 1 : 0} paddingTop={1} gap={1} flexWrap="wrap">
                 <For each={files()}>
                   {(file) => {
-                    const bg = createMemo(() => {
-                      if (file.mime.startsWith("image/")) return theme.accent
-                      if (file.mime === "application/pdf") return theme.primary
-                      return theme.secondary
-                    })
+                    const badge = mimeBadge(file.mime)
+                    const fg = mimeColor(file.mime, theme)
+                    const size = isDataUrl(file.url) ? estimateDataUrlBytes(file.url) : undefined
+                    const label = attachmentAccessibilityLabel(file, size)
                     return (
-                      <text fg={theme.text}>
-                        <span style={{ bg: bg(), fg: theme.background }}> {MIME_BADGE[file.mime] ?? file.mime} </span>
-                        <span style={{ bg: theme.backgroundElement, fg: theme.textMuted }}> {file.filename} </span>
-                      </text>
+                      <box
+                        flexDirection="row"
+                        gap={0}
+                        borderColor={theme.border}
+                        border={["left"]}
+                        aria-label={label}
+                      >
+                        <text fg={theme.background} style={{ bg: fg }}>
+                          {" "}
+                          {badge}{" "}
+                        </text>
+                        <text fg={theme.textMuted} style={{ bg: theme.backgroundElement }}>
+                          {" "}
+                          {truncateFilename(file.filename ?? "attachment", 24)}{" "}
+                        </text>
+                        <Show when={size !== undefined}>
+                          <text fg={theme.borderSubtle} style={{ bg: theme.backgroundElement }}>
+                            {" "}
+                            {formatFileSize(size!)}{" "}
+                          </text>
+                        </Show>
+                      </box>
                     )
                   }}
                 </For>
