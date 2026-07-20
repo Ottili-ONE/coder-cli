@@ -1,4 +1,5 @@
-// Multi-pane workspace layout decisions (T-CLI-0201).
+// Multi-pane workspace layout decisions (T-CLI-0201) and pane lifecycle model
+// (T-CLI-0202).
 //
 // Pure layout math for the resizable transcript, files, diff, tasks and
 // terminal panes. Kept Solid/engine-free so the model can be unit-tested
@@ -9,11 +10,80 @@
 // occupies based on the terminal dimensions, session state, and active
 // tool context. The render layer maps these decisions onto PanelGroup/Panel
 // components from diff-viewer-ui.tsx.
+//
+// Each pane follows the eight-state lifecycle (loading, offline, denied,
+// failure, empty, degraded, long-content, populated) established by the
+// codebase pattern. The model provides render-budget caps, narrow-terminal
+// and limited-color fallbacks, accessibility summaries, and secret redaction.
+
+import { redactSensitive } from "../../component/agent-roster/model"
 
 export type PaneID = "transcript" | "files" | "diff" | "tasks" | "terminal"
 
-// Visibility state for each pane. Always exists in the model so open/close
-// transitions are pure signal updates without structural DOM changes.
+// ---------------------------------------------------------------------------
+// Eight-state pane lifecycle
+// ---------------------------------------------------------------------------
+
+export type PaneStatus =
+  | "loading"
+  | "offline"
+  | "denied"
+  | "failure"
+  | "empty"
+  | "degraded"
+  | "long-content"
+  | "populated"
+
+/** Environmental context that decides the pane lifecycle state. */
+export interface PaneContext {
+  /** Content is still being fetched / streamed. */
+  loading: boolean
+  /** Network / backend connection is available. */
+  connected: boolean
+  /** The viewer is permitted to access this pane's data. */
+  permitted: boolean
+  /** A recoverable error or partial load condition. */
+  partial: boolean
+  /** Unrecoverable error message, if any. */
+  error?: string
+  /** Any content exists in the pane. */
+  hasContent: boolean
+  /** Approximate number of content rows / items in the pane. */
+  contentCount: number
+}
+
+export const MAX_PANE_CONTENT = 500
+export const MAX_PANE_TEXT_LEN = 2000
+
+export interface PaneRenderBudget {
+  /** Hard cap on rendered content rows (tail window). */
+  maxContent: number
+  /** Hard cap on single text preview length in chars. */
+  maxTextLen: number
+  /** True when content exceeds the maxContent budget. */
+  overBudget: boolean
+}
+
+export interface PaneView {
+  id: PaneID
+  status: PaneStatus
+  context: PaneContext
+  renderBudget: PaneRenderBudget
+}
+
+export interface PaneAccessibility {
+  /** Self-describing aria-label for the pane region. */
+  ariaLabel: string
+  /** Short textual label (never color-only) for the status. */
+  statusLabel: string
+  /** ASCII-safe marker when color is unavailable. */
+  statusMarker: string
+}
+
+// ---------------------------------------------------------------------------
+// Visibility state for each pane in the layout model.
+// ---------------------------------------------------------------------------
+
 export interface PaneState {
   id: PaneID
   visible: boolean
@@ -38,6 +108,10 @@ export interface MultiPaneInput {
   hasActiveTerminal: boolean
   /** Whether the redesign flag is enabled. */
   enabled: boolean
+  /** Per-pane lifecycle contexts for state-aware rendering. */
+  paneContexts?: Partial<Record<PaneID, PaneContext>>
+  /** Whether the terminal supports color. */
+  useColor?: boolean
 }
 
 export interface MultiPaneState {
@@ -51,28 +125,162 @@ export interface MultiPaneState {
   diffSplitView: boolean
   /** Whether the multi-pane layout is active at all. */
   active: boolean
+  /** Per-pane lifecycle views for state-aware rendering. */
+  paneViews: Partial<Record<PaneID, PaneView>>
+  /** Per-pane accessibility labels. */
+  paneAria: Partial<Record<PaneID, PaneAccessibility>>
+  /** Whether narrow-terminal fallbacks should apply. */
+  narrow: boolean
+  /** Whether color is available. */
+  useColor: boolean
 }
 
 // Minimum width a pane must retain to remain functional.
 const MIN_PANE_WIDTH = 20
-// Default transcript share: 60% of terminal width (Claude Code-inspired ratio).
-const TRANSCRIPT_DEFAULT_FRACTION = 0.6
+
+// Terminal width below which secondary panes collapse.
+const NARROW_WIDTH_THRESHOLD = 80
+
+// ---------------------------------------------------------------------------
+// Pane lifecycle classification
+// ---------------------------------------------------------------------------
+
+/** Status precedence: blocking states win over content states. */
+export function derivePaneStatus(context: PaneContext): PaneStatus {
+  if (context.loading) return "loading"
+  if (!context.connected) return "offline"
+  if (!context.permitted) return "denied"
+  if (context.error) return "failure"
+  if (!context.hasContent) return "empty"
+  if (context.partial) return "degraded"
+  if (context.contentCount > MAX_PANE_CONTENT) return "long-content"
+  return "populated"
+}
+
+export function buildPaneView(
+  id: PaneID,
+  context: PaneContext | undefined,
+  overBudgetOverride?: boolean,
+): PaneView {
+  const ctx: PaneContext = context ?? {
+    loading: false,
+    connected: true,
+    permitted: true,
+    partial: false,
+    hasContent: false,
+    contentCount: 0,
+  }
+  const status = derivePaneStatus(ctx)
+  const overBudget = overBudgetOverride ?? ctx.contentCount > MAX_PANE_CONTENT
+  return {
+    id,
+    status,
+    context: ctx,
+    renderBudget: {
+      maxContent: MAX_PANE_CONTENT,
+      maxTextLen: MAX_PANE_TEXT_LEN,
+      overBudget,
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Accessibility
+// ---------------------------------------------------------------------------
+
+const STATUS_COLOR_GLYPH: Record<PaneStatus, string> = {
+  loading: "…",
+  offline: "✕",
+  denied: "⊘",
+  failure: "✕",
+  empty: "∅",
+  degraded: "△",
+  "long-content": "▾",
+  populated: "●",
+}
+
+const STATUS_ASCII_MARKER: Record<PaneStatus, string> = {
+  loading: "[loading]",
+  offline: "[offline]",
+  denied: "[denied]",
+  failure: "[error]",
+  empty: "[empty]",
+  degraded: "[partial]",
+  "long-content": "[long]",
+  populated: "[ok]",
+}
+
+export function statusMarker(status: PaneStatus, useColor: boolean): string {
+  return useColor ? STATUS_COLOR_GLYPH[status] : STATUS_ASCII_MARKER[status]
+}
+
+export function paneStatusLabel(status: PaneStatus): string {
+  switch (status) {
+    case "loading":
+      return "loading"
+    case "offline":
+      return "offline"
+    case "denied":
+      return "denied"
+    case "failure":
+      return "error"
+    case "empty":
+      return "empty"
+    case "degraded":
+      return "degraded"
+    case "long-content":
+      return "long content"
+    case "populated":
+      return "ready"
+  }
+}
+
+export function paneAriaLabel(pane: PaneView): string {
+  const safe = redactSensitive(paneStatusLabel(pane.status)).text
+  return `${pane.id} pane: ${safe}`
+}
+
+export function buildPaneAccessibility(pane: PaneView, useColor: boolean): PaneAccessibility {
+  return {
+    ariaLabel: paneAriaLabel(pane),
+    statusLabel: paneStatusLabel(pane.status),
+    statusMarker: statusMarker(pane.status, useColor),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Narrow terminal helpers
+// ---------------------------------------------------------------------------
+
+export function isNarrowTerminal(width: number): boolean {
+  return width < NARROW_WIDTH_THRESHOLD
+}
+
+// ---------------------------------------------------------------------------
+// Layout computation
+// ---------------------------------------------------------------------------
 
 // Legacy single-pane output — exactly the current rendering behavior.
-function legacyLayout(): MultiPaneState {
+function legacyLayout(useColor: boolean): MultiPaneState {
   return {
     axis: "y",
     panes: [{ id: "transcript", visible: true, size: 1, resizable: false, label: "Transcript" }],
     showSeparators: false,
     diffSplitView: false,
     active: false,
+    paneViews: {},
+    paneAria: {},
+    narrow: false,
+    useColor,
   }
 }
 
 export function computeMultiPaneLayout(input: MultiPaneInput): MultiPaneState {
-  if (!input.enabled) return legacyLayout()
+  const useColor = input.useColor ?? true
+  if (!input.enabled) return legacyLayout(useColor)
 
   const transcriptWide = input.width > 120
+  const narrow = isNarrowTerminal(input.width)
 
   // Build secondary panes based on available tool context.
   const secondaryPanes: PaneState[] = []
@@ -118,14 +326,14 @@ export function computeMultiPaneLayout(input: MultiPaneInput): MultiPaneState {
   }
 
   // If no secondary context exists, fall back to the single-pane legacy layout.
-  if (secondaryPanes.length === 0) return legacyLayout()
+  if (secondaryPanes.length === 0) return legacyLayout(useColor)
 
   // Compute the transcript width: remaining space after secondary panes.
   const secondaryTotal = secondaryPanes.reduce((sum, p) => sum + p.size, 0)
   const transcriptSize = input.width - secondaryTotal
 
   // Guard minimum widths.
-  const panes: PaneState[] = [
+  const allPanes: PaneState[] = [
     {
       id: "transcript",
       visible: true,
@@ -136,11 +344,24 @@ export function computeMultiPaneLayout(input: MultiPaneInput): MultiPaneState {
     ...secondaryPanes,
   ]
 
+  // Build per-pane lifecycle views from contexts.
+  const paneViews: MultiPaneState["paneViews"] = {}
+  const paneAria: MultiPaneState["paneAria"] = {}
+  for (const pane of allPanes) {
+    const view = buildPaneView(pane.id, input.paneContexts?.[pane.id])
+    paneViews[pane.id] = view
+    paneAria[pane.id] = buildPaneAccessibility(view, useColor)
+  }
+
   return {
     axis: "x",
-    panes,
+    panes: allPanes,
     showSeparators: true,
     diffSplitView: transcriptWide,
     active: true,
+    paneViews,
+    paneAria,
+    narrow,
+    useColor,
   }
 }

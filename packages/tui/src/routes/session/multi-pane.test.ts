@@ -1,13 +1,23 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { Flag } from "@opencode-ai/core/flag/flag"
-import { computeMultiPaneLayout } from "./multi-pane"
-import type { MultiPaneInput } from "./multi-pane"
+import {
+  computeMultiPaneLayout,
+  derivePaneStatus,
+  buildPaneView,
+  buildPaneAccessibility,
+  statusMarker,
+  paneStatusLabel,
+  isNarrowTerminal,
+  type MultiPaneInput,
+  type PaneContext,
+  type PaneStatus,
+  MAX_PANE_CONTENT,
+  MAX_PANE_TEXT_LEN,
+} from "./multi-pane"
 
-// Multi-pane workspace layout contract (T-CLI-0201).
-// The session route derives its pane structure from `computeMultiPaneLayout`,
-// a pure function that takes terminal dimensions and session tool context
-// and returns the pane set. No timers: every case is a pure function
-// evaluation, which keeps the suite stable in CI.
+// Multi-pane workspace layout contract (T-CLI-0201) and pane state lifecycle
+// (T-CLI-0202). Every case is a pure function evaluation, which keeps the suite
+// stable in CI.
 
 const FLAG = "EVOLUTION_T_CLI_0201_TUI_REDESIGN_MULTI_PANE_WORKSPACE__ENABLED"
 
@@ -37,6 +47,10 @@ const WITH_TASK: MultiPaneInput = { ...BASE_WIDE, hasActiveTask: true }
 // Input with active terminal context (e.g. a running shell command).
 const WITH_TERMINAL: MultiPaneInput = { ...BASE_WIDE, hasActiveTerminal: true }
 
+// ---------------------------------------------------------------------------
+// Layout: flag-off returns legacy single-pane
+// ---------------------------------------------------------------------------
+
 describe("multi-pane workspace: flag-off returns legacy single-pane layout", () => {
   test("flag off returns inactive single-pane state regardless of input", () => {
     const layout = computeMultiPaneLayout({ ...WITH_DIFF, enabled: false })
@@ -53,6 +67,10 @@ describe("multi-pane workspace: flag-off returns legacy single-pane layout", () 
   })
 })
 
+// ---------------------------------------------------------------------------
+// Layout: no secondary context returns legacy layout
+// ---------------------------------------------------------------------------
+
 describe("multi-pane workspace: no secondary context returns legacy layout", () => {
   test("no active tools returns single transcript pane", () => {
     const layout = computeMultiPaneLayout(BASE_WIDE)
@@ -67,6 +85,10 @@ describe("multi-pane workspace: no secondary context returns legacy layout", () 
     expect(layout.panes).toHaveLength(1)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Layout: active diff opens diff pane
+// ---------------------------------------------------------------------------
 
 describe("multi-pane workspace: active diff opens diff pane", () => {
   test("active diff on wide terminal opens transcript + diff panes", () => {
@@ -94,6 +116,10 @@ describe("multi-pane workspace: active diff opens diff pane", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Layout: active file opens files pane
+// ---------------------------------------------------------------------------
+
 describe("multi-pane workspace: active file opens files pane", () => {
   test("active file read on wide terminal opens transcript + files panes", () => {
     const layout = computeMultiPaneLayout(WITH_FILE)
@@ -108,6 +134,10 @@ describe("multi-pane workspace: active file opens files pane", () => {
     expect(layout.panes[1].id).toBe("files")
   })
 })
+
+// ---------------------------------------------------------------------------
+// Layout: active task and terminal
+// ---------------------------------------------------------------------------
 
 describe("multi-pane workspace: active task and terminal", () => {
   test("active task opens tasks pane", () => {
@@ -124,6 +154,10 @@ describe("multi-pane workspace: active task and terminal", () => {
     expect(layout.panes[1].id).toBe("terminal")
   })
 })
+
+// ---------------------------------------------------------------------------
+// Layout: priority and ordering
+// ---------------------------------------------------------------------------
 
 describe("multi-pane workspace: priority and ordering", () => {
   test("diff takes priority over files when both active (diff opens first)", () => {
@@ -151,6 +185,10 @@ describe("multi-pane workspace: priority and ordering", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Layout: pane sizing
+// ---------------------------------------------------------------------------
+
 describe("multi-pane workspace: pane sizing", () => {
   test("transcript gets 60% of width minus secondary pane sizes", () => {
     const layout = computeMultiPaneLayout(WITH_DIFF)
@@ -171,6 +209,10 @@ describe("multi-pane workspace: pane sizing", () => {
     expect(layout.showSeparators).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Layout: all pane IDs produce expected labels
+// ---------------------------------------------------------------------------
 
 describe("multi-pane workspace: all pane IDs produce expected labels", () => {
   const labelFor = (id: string): string | undefined => {
@@ -210,10 +252,11 @@ describe("multi-pane workspace: all pane IDs produce expected labels", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Layout: feature flag gating
+// ---------------------------------------------------------------------------
+
 describe("multi-pane workspace failure path: the feature flag gates engagement", () => {
-  // The session route computes multiPane() = flag. When the flag is off
-  // computeMultiPaneLayout receives enabled=false and returns the legacy
-  // single-pane layout. Test the gate directly.
   const saved = process.env[FLAG]
 
   const routeEnabled = (signal: boolean) =>
@@ -255,12 +298,14 @@ describe("multi-pane workspace failure path: the feature flag gates engagement",
   })
 })
 
+// ---------------------------------------------------------------------------
+// Layout: streaming stability
+// ---------------------------------------------------------------------------
+
 describe("multi-pane workspace is stable across streaming transcript updates", () => {
-  // The layout model reads only terminal dimensions and tool-context booleans,
-  // not message content. The pane set stays fixed while the assistant streams.
   test("layout is invariant while messages stream in", () => {
     const base: MultiPaneInput = { ...WITH_DIFF }
-    for (const messages of [0, 1, 5, 42, 1000]) {
+    for (const _messages of [0, 1, 5, 42, 1000]) {
       const layout = computeMultiPaneLayout(base)
       expect(layout.active).toBe(true)
       expect(layout.panes).toHaveLength(2)
@@ -270,5 +315,311 @@ describe("multi-pane workspace is stable across streaming transcript updates", (
 
   test("functions are pure and deterministic for identical inputs", () => {
     expect(computeMultiPaneLayout(WITH_DIFF)).toEqual(computeMultiPaneLayout(WITH_DIFF))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Pane state lifecycle: derivePaneStatus
+// ---------------------------------------------------------------------------
+
+describe("derivePaneStatus — eight-state lifecycle", () => {
+  const baseContext: PaneContext = {
+    loading: false,
+    connected: true,
+    permitted: true,
+    partial: false,
+    hasContent: true,
+    contentCount: 10,
+  }
+
+  test("loading takes precedence over all states", () => {
+    expect(derivePaneStatus({ ...baseContext, loading: true })).toBe("loading")
+    expect(derivePaneStatus({ ...baseContext, loading: true, error: "err" })).toBe("loading")
+  })
+
+  test("offline takes precedence over content states", () => {
+    const ctx = { ...baseContext, connected: false }
+    expect(derivePaneStatus(ctx)).toBe("offline")
+    expect(derivePaneStatus({ ...ctx, loading: false, error: undefined })).toBe("offline")
+  })
+
+  test("denied takes precedence over content states", () => {
+    expect(derivePaneStatus({ ...baseContext, permitted: false })).toBe("denied")
+  })
+
+  test("failure is returned when error is present", () => {
+    expect(derivePaneStatus({ ...baseContext, error: "connection failed" })).toBe("failure")
+  })
+
+  test("empty is returned when no content", () => {
+    expect(derivePaneStatus({ ...baseContext, hasContent: false })).toBe("empty")
+  })
+
+  test("degraded is returned for partial context", () => {
+    expect(derivePaneStatus({ ...baseContext, partial: true })).toBe("degraded")
+  })
+
+  test("long-content when content exceeds budget", () => {
+    expect(derivePaneStatus({ ...baseContext, contentCount: MAX_PANE_CONTENT + 1 })).toBe("long-content")
+  })
+
+  test("populated is the default happy path", () => {
+    expect(derivePaneStatus(baseContext)).toBe("populated")
+  })
+
+  test("status precedence order is correct", () => {
+    // loading > offline > denied > failure > empty > degraded > long-content > populated
+    expect(derivePaneStatus({ ...baseContext, loading: true, connected: false, permitted: false, error: "err" })).toBe("loading")
+    expect(derivePaneStatus({ ...baseContext, connected: false, permitted: false, error: "err" })).toBe("offline")
+    expect(derivePaneStatus({ ...baseContext, permitted: false, error: "err" })).toBe("denied")
+    expect(derivePaneStatus({ ...baseContext, error: "err" })).toBe("failure")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Pane state lifecycle: buildPaneView
+// ---------------------------------------------------------------------------
+
+describe("buildPaneView", () => {
+  test("returns a pane view with correct status and render budget", () => {
+    const view = buildPaneView("diff", {
+      loading: false,
+      connected: true,
+      permitted: true,
+      partial: false,
+      hasContent: true,
+      contentCount: 10,
+    })
+    expect(view.id).toBe("diff")
+    expect(view.status).toBe("populated")
+    expect(view.renderBudget.maxContent).toBe(MAX_PANE_CONTENT)
+    expect(view.renderBudget.maxTextLen).toBe(MAX_PANE_TEXT_LEN)
+    expect(view.renderBudget.overBudget).toBe(false)
+  })
+
+  test("uses empty context when undefined", () => {
+    const view = buildPaneView("files", undefined)
+    expect(view.status).toBe("empty")
+    expect(view.context.hasContent).toBe(false)
+  })
+
+  test("overBudget flag can be set explicitly", () => {
+    const view = buildPaneView("terminal", undefined, true)
+    expect(view.renderBudget.overBudget).toBe(true)
+  })
+
+  test("overBudget true when content exceeds budget", () => {
+    const view = buildPaneView("tasks", {
+      loading: false, connected: true, permitted: true, partial: false,
+      hasContent: true, contentCount: MAX_PANE_CONTENT + 100,
+    })
+    expect(view.status).toBe("long-content")
+    expect(view.renderBudget.overBudget).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Accessibility helpers
+// ---------------------------------------------------------------------------
+
+describe("paneStatusLabel", () => {
+  const cases: [PaneStatus, string][] = [
+    ["loading", "loading"],
+    ["offline", "offline"],
+    ["denied", "denied"],
+    ["failure", "error"],
+    ["empty", "empty"],
+    ["degraded", "degraded"],
+    ["long-content", "long content"],
+    ["populated", "ready"],
+  ]
+  for (const [status, expected] of cases) {
+    test(`${status} → "${expected}"`, () => {
+      expect(paneStatusLabel(status)).toBe(expected)
+    })
+  }
+})
+
+describe("statusMarker", () => {
+  test("returns colored glyph when useColor is true", () => {
+    expect(statusMarker("loading", true)).toBe("…")
+    expect(statusMarker("populated", true)).toBe("●")
+  })
+
+  test("returns ASCII marker when useColor is false", () => {
+    expect(statusMarker("failure", false)).toBe("[error]")
+    expect(statusMarker("empty", false)).toBe("[empty]")
+    expect(statusMarker("populated", false)).toBe("[ok]")
+  })
+
+  test("never returns an empty string for any status", () => {
+    const statuses: PaneStatus[] = ["loading", "offline", "denied", "failure", "empty", "degraded", "long-content", "populated"]
+    for (const status of statuses) {
+      expect(statusMarker(status, true)).toBeTruthy()
+      expect(statusMarker(status, false)).toBeTruthy()
+    }
+  })
+})
+
+describe("buildPaneAccessibility", () => {
+  test("includes aria-label with redacted status text", () => {
+    const view = buildPaneView("diff", {
+      loading: false, connected: true, permitted: true, partial: false,
+      hasContent: true, contentCount: 5,
+    })
+    const acc = buildPaneAccessibility(view, true)
+    expect(acc.ariaLabel).toContain("diff")
+    expect(acc.ariaLabel).toContain("ready")
+    expect(acc.ariaLabel).not.toContain("••••")
+    expect(acc.statusMarker).toBeTruthy()
+  })
+
+  test("color false produces ASCII markers in accessibility", () => {
+    const view = buildPaneView("diff", {
+      loading: true, connected: true, permitted: true, partial: false,
+      hasContent: false, contentCount: 0,
+    })
+    const acc = buildPaneAccessibility(view, false)
+    expect(acc.ariaLabel).toContain("diff")
+    expect(acc.ariaLabel).toContain("loading")
+    expect(acc.statusMarker).toBe("[loading]")
+  })
+
+  test("every pane status produces a non-empty aria label", () => {
+    const statuses: PaneStatus[] = ["loading", "offline", "denied", "failure", "empty", "degraded", "long-content", "populated"]
+    for (const status of statuses) {
+      const view = buildPaneView("files", {
+        loading: status === "loading",
+        connected: status !== "offline",
+        permitted: status !== "denied",
+        partial: status === "degraded",
+        hasContent: !["empty", "loading", "failure"].includes(status),
+        contentCount: status === "long-content" ? MAX_PANE_CONTENT + 1 : 5,
+        error: status === "failure" ? "test error" : undefined,
+      })
+      const acc = buildPaneAccessibility(view, true)
+      expect(acc.ariaLabel).toBeTruthy()
+      expect(acc.ariaLabel.length).toBeGreaterThan(5)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Narrow terminal detection
+// ---------------------------------------------------------------------------
+
+describe("isNarrowTerminal", () => {
+  test("returns true for widths below 80", () => {
+    expect(isNarrowTerminal(79)).toBe(true)
+    expect(isNarrowTerminal(60)).toBe(true)
+    expect(isNarrowTerminal(20)).toBe(true)
+  })
+
+  test("returns false for widths 80 and above", () => {
+    expect(isNarrowTerminal(80)).toBe(false)
+    expect(isNarrowTerminal(120)).toBe(false)
+    expect(isNarrowTerminal(200)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// MultiPaneState: paneViews and paneAria integration
+// ---------------------------------------------------------------------------
+
+describe("computeMultiPaneLayout pane lifecycle integration", () => {
+  test("paneViews and paneAria are populated for each visible pane", () => {
+    const layout = computeMultiPaneLayout(WITH_DIFF)
+    expect(layout.paneViews["transcript"]).toBeDefined()
+    expect(layout.paneViews["diff"]).toBeDefined()
+    expect(layout.paneAria["transcript"]).toBeDefined()
+    expect(layout.paneAria["diff"]).toBeDefined()
+  })
+
+  test("paneViews are empty in legacy layout", () => {
+    const layout = computeMultiPaneLayout(BASE_WIDE)
+    expect(Object.keys(layout.paneViews)).toHaveLength(0)
+  })
+
+  test("pane contexts are reflected in pane views", () => {
+    const layout = computeMultiPaneLayout({
+      ...WITH_DIFF,
+      paneContexts: {
+        diff: { loading: false, connected: true, permitted: true, partial: false, hasContent: true, contentCount: 3 },
+        transcript: { loading: true, connected: true, permitted: true, partial: false, hasContent: true, contentCount: 10 },
+      },
+    })
+    expect(layout.paneViews["transcript"]?.status).toBe("loading")
+    expect(layout.paneViews["diff"]?.status).toBe("populated")
+  })
+
+  test("narrow flag is set when terminal is below threshold", () => {
+    const wide = computeMultiPaneLayout(WITH_FILE)
+    expect(wide.narrow).toBe(false)
+    const narrow = computeMultiPaneLayout({ ...WITH_FILE, width: 60 })
+    expect(narrow.narrow).toBe(true)
+  })
+
+  test("useColor reflects input setting", () => {
+    const colored = computeMultiPaneLayout(WITH_DIFF)
+    expect(colored.useColor).toBe(true)
+    const noColor = computeMultiPaneLayout({ ...WITH_DIFF, useColor: false })
+    expect(noColor.useColor).toBe(false)
+  })
+
+  test("paneAria markers use ASCII when no color", () => {
+    const layout = computeMultiPaneLayout({ ...WITH_DIFF, useColor: false })
+    const diffAria = layout.paneAria["diff"]
+    expect(diffAria?.statusMarker.startsWith("[")).toBe(true)
+    expect(diffAria?.statusMarker.endsWith("]")).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PaneContext for each lifecycle status
+// ---------------------------------------------------------------------------
+
+describe("pane contexts produce correct status for each lifecycle state", () => {
+  function contextFor(overrides: Partial<PaneContext>): PaneContext {
+    return { loading: false, connected: true, permitted: true, partial: false, hasContent: true, contentCount: 5, ...overrides }
+  }
+
+  test("loading", () => {
+    const status = derivePaneStatus(contextFor({ loading: true }))
+    expect(status).toBe("loading")
+  })
+
+  test("offline", () => {
+    const status = derivePaneStatus(contextFor({ connected: false, loading: false }))
+    expect(status).toBe("offline")
+  })
+
+  test("denied", () => {
+    const status = derivePaneStatus(contextFor({ permitted: false, connected: true, loading: false }))
+    expect(status).toBe("denied")
+  })
+
+  test("failure", () => {
+    const status = derivePaneStatus(contextFor({ error: "something broke", permitted: true, connected: true, loading: false }))
+    expect(status).toBe("failure")
+  })
+
+  test("empty", () => {
+    const status = derivePaneStatus(contextFor({ hasContent: false, error: undefined, permitted: true, connected: true, loading: false }))
+    expect(status).toBe("empty")
+  })
+
+  test("degraded", () => {
+    const status = derivePaneStatus(contextFor({ partial: true, hasContent: true, error: undefined }))
+    expect(status).toBe("degraded")
+  })
+
+  test("long-content", () => {
+    const status = derivePaneStatus(contextFor({ contentCount: MAX_PANE_CONTENT + 1, partial: false, hasContent: true, error: undefined }))
+    expect(status).toBe("long-content")
+  })
+
+  test("populated", () => {
+    const status = derivePaneStatus(contextFor({ contentCount: 10, partial: false, hasContent: true, error: undefined }))
+    expect(status).toBe("populated")
   })
 })

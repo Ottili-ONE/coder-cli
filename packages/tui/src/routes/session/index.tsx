@@ -68,7 +68,7 @@ import { Sidebar } from "./sidebar"
 import { computeFocusChrome } from "./focus"
 import { computeCompactChrome, computeCompactSpacing } from "./compact"
 import { computeResponsiveLayout, type ToolDiffView } from "../../component/responsive-layout/model"
-import { computeMultiPaneLayout, type MultiPaneInput } from "./multi-pane"
+import { computeMultiPaneLayout, type MultiPaneInput, type PaneContext, type PaneID } from "./multi-pane"
 import { MultiPaneWorkspace } from "./multi-pane-workspace"
 import {
   compactViewState,
@@ -432,25 +432,68 @@ export function Session() {
   //
   // Tool-context booleans are derived from visible message parts so the pane
   // set reacts to streaming tool output without reading content (only type).
-  const multiPaneInput = createMemo<MultiPaneInput>(() => ({
-    width: dimensions().width,
-    height: dimensions().height,
-    hasActiveDiff: visibleMessages().some((m) =>
-      (sync.data.part[m.id] ?? []).some((p) => p.type === "tool" && (p.tool === "edit" || p.tool === "apply_patch")),
+  const diffParts = createMemo(() =>
+    visibleMessages().flatMap((m) =>
+      (sync.data.part[m.id] ?? []).filter((p) => p.type === "tool" && (p.tool === "edit" || p.tool === "apply_patch")),
     ),
-    hasActiveFile: visibleMessages().some((m) =>
-      (sync.data.part[m.id] ?? []).some((p) => p.type === "tool" && (p.tool === "read" || p.tool === "write")),
+  )
+  const fileParts = createMemo(() =>
+    visibleMessages().flatMap((m) =>
+      (sync.data.part[m.id] ?? []).filter((p) => p.type === "tool" && (p.tool === "read" || p.tool === "write")),
     ),
-    hasActiveTask: visibleMessages().some((m) =>
-      (sync.data.part[m.id] ?? []).some(
+  )
+  const taskParts = createMemo(() =>
+    visibleMessages().flatMap((m) =>
+      (sync.data.part[m.id] ?? []).filter(
         (p) => p.type === "tool" && p.tool === "task" && p.state.status === "running",
       ),
     ),
-    hasActiveTerminal: visibleMessages().some((m) =>
-      (sync.data.part[m.id] ?? []).some((p) => p.type === "tool" && p.tool === "bash"),
+  )
+  const terminalParts = createMemo(() =>
+    visibleMessages().flatMap((m) =>
+      (sync.data.part[m.id] ?? []).filter((p) => p.type === "tool" && p.tool === "bash"),
     ),
-    enabled: Flag.EVOLUTION_T_CLI_0201_TUI_REDESIGN_MULTI_PANE_WORKSPACE__ENABLED,
-  }))
+  )
+  const multiPaneInput = createMemo<MultiPaneInput>(() => {
+    const hasDiff = diffParts().length > 0
+    const hasFiles = fileParts().length > 0
+    const hasTasks = taskParts().length > 0
+    const hasTerminal = terminalParts().length > 0
+    const noColor = detectNoColor()
+    const paneContexts: Partial<Record<PaneID, PaneContext>> = {
+      diff: hasDiff
+        ? { loading: false, connected: true, permitted: true, partial: false, hasContent: true, contentCount: diffParts().length }
+        : { loading: false, connected: true, permitted: true, partial: false, hasContent: false, contentCount: 0 },
+      files: hasFiles
+        ? { loading: false, connected: true, permitted: true, partial: false, hasContent: true, contentCount: fileParts().length }
+        : { loading: false, connected: true, permitted: true, partial: false, hasContent: false, contentCount: 0 },
+      tasks: hasTasks
+        ? { loading: false, connected: true, permitted: true, partial: false, hasContent: true, contentCount: taskParts().length }
+        : { loading: false, connected: true, permitted: true, partial: false, hasContent: false, contentCount: 0 },
+      terminal: hasTerminal
+        ? { loading: false, connected: true, permitted: true, partial: false, hasContent: true, contentCount: terminalParts().length }
+        : { loading: false, connected: true, permitted: true, partial: false, hasContent: false, contentCount: 0 },
+      transcript: {
+        loading: pending() !== undefined,
+        connected: compactConnected(),
+        permitted: true,
+        partial: false,
+        hasContent: visibleMessages().length > 0,
+        contentCount: visibleMessages().length,
+      },
+    }
+    return {
+      width: dimensions().width,
+      height: dimensions().height,
+      hasActiveDiff: hasDiff,
+      hasActiveFile: hasFiles,
+      hasActiveTask: hasTasks,
+      hasActiveTerminal: hasTerminal,
+      enabled: Flag.EVOLUTION_T_CLI_0201_TUI_REDESIGN_MULTI_PANE_WORKSPACE__ENABLED,
+      paneContexts,
+      useColor: !noColor,
+    }
+  })
   const multiPaneLayout = createMemo(() => computeMultiPaneLayout(multiPaneInput()))
 
   // `session.list` (defined in app.tsx) requests the sidebar to open.
@@ -1848,28 +1891,41 @@ export function Session() {
                   </box>
                 )
 
+                const diffToolParts = diffParts()
+                const fileToolParts = fileParts()
+                const taskToolParts = taskParts()
+                const terminalToolParts = terminalParts()
+
                 return (
                   <MultiPaneWorkspace
                     input={multiPaneInput()}
                     transcript={transcriptContent}
                     diff={
-                      <box flexGrow={1} minHeight={0} flexDirection="column" justifyContent="center" alignItems="center">
-                        <text fg={theme.textMuted}>Diff pane — open in diff viewer for full detail</text>
+                      <box flexGrow={1} minHeight={0} flexDirection="column" justifyContent="center" alignItems="center" aria-label="Diff pane content">
+                        <Show when={diffToolParts.length > 0} fallback={<text fg={theme.textMuted}>No diff content yet</text>}>
+                          <text fg={theme.textMuted}>{diffToolParts.length} diff{diffToolParts.length === 1 ? "" : "s"} — open in diff viewer for detail</text>
+                        </Show>
                       </box>
                     }
                     files={
-                      <box flexGrow={1} minHeight={0} flexDirection="column" justifyContent="center" alignItems="center">
-                        <text fg={theme.textMuted}>Files pane</text>
+                      <box flexGrow={1} minHeight={0} flexDirection="column" justifyContent="center" alignItems="center" aria-label="Files pane content">
+                        <Show when={fileToolParts.length > 0} fallback={<text fg={theme.textMuted}>No file content yet</text>}>
+                          <text fg={theme.textMuted}>{fileToolParts.length} file{fileToolParts.length === 1 ? "" : "s"} referenced</text>
+                        </Show>
                       </box>
                     }
                     tasks={
-                      <box flexGrow={1} minHeight={0} flexDirection="column" justifyContent="center" alignItems="center">
-                        <text fg={theme.textMuted}>Tasks pane — {foregroundTasks().length} running</text>
+                      <box flexGrow={1} minHeight={0} flexDirection="column" justifyContent="center" alignItems="center" aria-label="Tasks pane content">
+                        <Show when={taskToolParts.length > 0} fallback={<text fg={theme.textMuted}>No active tasks</text>}>
+                          <text fg={theme.textMuted}>{taskToolParts.length} task{taskToolParts.length === 1 ? "" : "s"} running</text>
+                        </Show>
                       </box>
                     }
                     terminal={
-                      <box flexGrow={1} minHeight={0} flexDirection="column" justifyContent="center" alignItems="center">
-                        <text fg={theme.textMuted}>Terminal pane</text>
+                      <box flexGrow={1} minHeight={0} flexDirection="column" justifyContent="center" alignItems="center" aria-label="Terminal pane content">
+                        <Show when={terminalToolParts.length > 0} fallback={<text fg={theme.textMuted}>No active terminal</text>}>
+                          <text fg={theme.textMuted}>{terminalToolParts.length} terminal session{terminalToolParts.length === 1 ? "" : "s"}</text>
+                        </Show>
                       </box>
                     }
                   />
