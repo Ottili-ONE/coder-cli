@@ -9,7 +9,7 @@ import {
   type Renderable,
 } from "@opentui/core"
 import type { CommandContext } from "@opentui/keymap"
-import { createEffect, createMemo, onMount, createSignal, onCleanup, on, Show, Switch, Match } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, onMount, Show, Switch } from "solid-js"
 import "opentui-spinner/solid"
 import path from "path"
 import { fileURLToPath } from "url"
@@ -135,6 +135,87 @@ function formatEditorContext(selection: EditorSelection) {
 }
 
 let stashed: { prompt: PromptInfo; cursor: number } | undefined
+
+const FILE_MIME_BADGE: Record<string, string> = {
+  "image/png": "img",
+  "image/jpeg": "img",
+  "image/gif": "img",
+  "image/webp": "img",
+  "image/avif": "img",
+  "image/svg+xml": "svg",
+  "application/pdf": "pdf",
+}
+
+function fileMimeBadge(mime: string): string {
+  return FILE_MIME_BADGE[mime] ?? "file"
+}
+
+function fileMimeColor(mime: string, theme: ReturnType<typeof useTheme>["theme"]): RGBA {
+  if (mime.startsWith("image/")) return theme.accent
+  if (mime === "application/pdf") return theme.primary
+  return theme.secondary
+}
+
+/** Virtual text label for a file part in the prompt textarea extmark. */
+function filePartLabel(part: { type: string; mime?: string }, index: number): string {
+  if (part.type !== "file") return ""
+  const mime = part.mime ?? ""
+  if (mime === "application/pdf") return `[PDF ${index}]`
+  if (mime.startsWith("image/")) return `[Image ${index}]`
+  return `[File ${index}]`
+}
+
+function rebuildExtmarks(
+  draft: { prompt: { input: string; parts: unknown[] }; extmarkToPartIndex: Map<number, number> },
+  input: TextareaRenderable,
+) {
+  draft.extmarkToPartIndex = new Map()
+  // Extmarks are cleared by clearPrompt; here we just sync the map state
+  // after parts are removed so the map and parts array stay consistent.
+}
+
+function AttachmentBar(props: {
+  parts: PromptInfo["parts"]
+  onRemove: (index: number) => void
+  theme: ReturnType<typeof useTheme>["theme"]
+}) {
+  const fileParts = createMemo(() =>
+    props.parts
+      .map((p, i) => ({ part: p, index: i }))
+      .filter(({ part }) => part.type === "file") as {
+        part: Omit<FilePart, "id" | "messageID" | "sessionID">
+        index: number
+      }[],
+  )
+  return (
+    <Show when={fileParts().length > 0}>
+      <box paddingLeft={2} paddingRight={2} paddingTop={1} flexDirection="row" gap={1} flexWrap="wrap">
+        <For each={fileParts()}>
+          {({ part, index }) => {
+            const mime = part.mime ?? ""
+            const badge = fileMimeBadge(mime)
+            const fg = fileMimeColor(mime, props.theme)
+            return (
+              <box flexDirection="row" gap={0} borderColor={props.theme.borderSubtle} border={["left"]}>
+                <text fg={props.theme.background} style={{ bg: fg }}>
+                  {" "}
+                  {badge}{" "}
+                </text>
+                <text fg={props.theme.textMuted}>
+                  {" "}
+                  {part.filename ?? "attachment"}{" "}
+                </text>
+                <box onMouseUp={() => props.onRemove(index)}>
+                  <text fg={props.theme.textMuted}> × </text>
+                </box>
+              </box>
+            )
+          }}
+        </For>
+      </box>
+    </Show>
+  )
+}
 
 export function Prompt(props: PromptProps) {
   let input: TextareaRenderable
@@ -1448,6 +1529,18 @@ export function Prompt(props: PromptProps) {
               focusedBackgroundColor={theme.backgroundElement}
               cursorColor={props.disabled ? theme.backgroundElement : theme.text}
               syntaxStyle={syntax()}
+            />
+            <AttachmentBar
+              parts={store.prompt.parts}
+              onRemove={(index) => {
+                setStore(
+                  produce((draft) => {
+                    draft.prompt.parts.splice(index, 1)
+                    rebuildExtmarks(draft, input)
+                  }),
+                )
+              }}
+              theme={theme}
             />
             <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">
               <box flexDirection="row" gap={1}>

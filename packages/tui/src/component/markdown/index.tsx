@@ -106,6 +106,16 @@ function renderInline(children: Inline[], theme: ReturnType<typeof useTheme>["th
             {renderInline(node.children, theme, conceal)}
           </text>
         )
+      case "image": {
+        const alt = concealText(node.alt || "image", conceal)
+        const url = concealText(node.url, conceal)
+        return (
+          <text fg={theme.markdownImage}>
+            <text fg={theme.markdownImageText}>[img: {alt}]</text>
+            {url !== alt ? <text fg={theme.textMuted}> ({url})</text> : null}
+          </text>
+        )
+      }
     }
   })
 }

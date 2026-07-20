@@ -25,6 +25,7 @@ export type Inline =
   | { type: "strike"; children: Inline[] }
   | { type: "code"; value: string }
   | { type: "link"; text: string; url: string }
+  | { type: "image"; alt: string; url: string }
 
 export type Align = "left" | "center" | "right"
 
@@ -92,6 +93,15 @@ function parseInline(input: string): Inline[] {
       continue
     }
 
+    // Image ![alt](url) — must be checked before link
+    const image = rest.match(/^!\[([^\]]*)\]\(([^)]+)\)/)
+    if (image) {
+      flush()
+      out.push({ type: "image", alt: image[1], url: image[2] })
+      rest = rest.slice(image[0].length)
+      continue
+    }
+
     // Link [text](url)
     const link = rest.match(/^\[([^\]]*)\]\(([^)]+)\)/)
     if (link) {
@@ -145,6 +155,8 @@ export function inlineToPlain(inline: Inline[]): string {
           return node.value
         case "link":
           return node.text || node.url
+        case "image":
+          return node.alt || `[image: ${node.url}]`
         default:
           return inlineToPlain(node.children)
       }
