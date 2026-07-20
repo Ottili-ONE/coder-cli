@@ -105,7 +105,21 @@ import { DialogRetryAction } from "../../component/dialog-retry-action"
 import { getRevertDiffFiles } from "../../util/revert-diff"
 import { OTTILI_CODER_BASE_MODE, useBindings, useCommandShortcut, useOttiliCoderKeymap } from "../../keymap"
 import { PathFormatterProvider, usePathFormatter } from "../../context/path-format"
-import { mimeBadge, mimeColor, formatFileSize, estimateDataUrlBytes, isDataUrl, truncateFilename, attachmentAccessibilityLabel } from "../../component/prompt/attachment-utils"
+import {
+  mimeBadge,
+  mimeColor,
+  formatFileSize,
+  estimateDataUrlBytes,
+  isDataUrl,
+  truncateFilename,
+  attachmentAccessibilityLabel,
+  attachmentStatusLabel,
+  attachmentSummary,
+  attachmentAriaLabel,
+  buildAttachmentState,
+  redactAttachmentFilename,
+} from "../../component/prompt/attachment-utils"
+import type { AttachmentState } from "../../component/prompt/attachment-utils"
 
 addDefaultParsers(parsers.parsers)
 
@@ -1843,6 +1857,14 @@ function UserMessage(props: {
     return texts.join("\n\n")
   })
   const files = createMemo(() => props.parts.flatMap((x) => (x.type === "file" ? [x] : [])))
+  // Attachment state is derived from the file parts themselves.
+  // The parts are already resolved by the time they reach this component,
+  // so we pass an empty context to get a correct lifecycle without redundant
+  // loading/offline/denied states — those are handled upstream.
+  const attachmentState = createMemo<AttachmentState>(() =>
+    buildAttachmentState(files()),
+  )
+  const useColor = createMemo(() => !(typeof process !== "undefined" && (process.env.NO_COLOR || process.env.TERM === "dumb")))
   const { theme } = useTheme()
   const [hover, setHover] = createSignal(false)
   const queued = createMemo(() => props.pending && props.message.id > props.pending)
@@ -1851,6 +1873,8 @@ function UserMessage(props: {
   const metadataVisible = createMemo(() => queued() || ctx.showTimestamps())
 
   const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
+
+  const attachmentRegionLabel = createMemo(() => attachmentAriaLabel(attachmentState()))
 
   return (
     <>
@@ -1878,13 +1902,21 @@ function UserMessage(props: {
           >
             <text fg={theme.text}>{text()}</text>
             <Show when={files().length}>
-              <box flexDirection="row" paddingBottom={metadataVisible() ? 1 : 0} paddingTop={1} gap={1} flexWrap="wrap">
+              <box
+                flexDirection="row"
+                paddingBottom={metadataVisible() ? 1 : 0}
+                paddingTop={1}
+                gap={1}
+                flexWrap="wrap"
+                aria-label={attachmentRegionLabel()}
+              >
                 <For each={files()}>
                   {(file) => {
                     const badge = mimeBadge(file.mime)
                     const fg = mimeColor(file.mime, theme)
                     const size = isDataUrl(file.url) ? estimateDataUrlBytes(file.url) : undefined
                     const label = attachmentAccessibilityLabel(file, size)
+                    const displayName = truncateFilename(redactAttachmentFilename(file.filename ?? "attachment"), 24)
                     return (
                       <box
                         flexDirection="row"
@@ -1899,7 +1931,7 @@ function UserMessage(props: {
                         </text>
                         <text fg={theme.textMuted} style={{ bg: theme.backgroundElement }}>
                           {" "}
-                          {truncateFilename(file.filename ?? "attachment", 24)}{" "}
+                          {displayName}{" "}
                         </text>
                         <Show when={size !== undefined}>
                           <text fg={theme.borderSubtle} style={{ bg: theme.backgroundElement }}>
@@ -1911,6 +1943,11 @@ function UserMessage(props: {
                     )
                   }}
                 </For>
+              </box>
+            </Show>
+            <Show when={files().length === 0 && attachmentState().status !== "populated" && attachmentState().status !== "empty"}>
+              <box paddingTop={1} aria-label={attachmentRegionLabel()}>
+                <text fg={theme.textMuted}>{attachmentStatusLabel(attachmentState().status)}</text>
               </box>
             </Show>
             <Show
