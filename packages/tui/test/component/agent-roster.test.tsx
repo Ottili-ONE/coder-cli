@@ -10,6 +10,7 @@ import type { Agent } from "@opencode-ai/sdk/v2"
 import { TestTuiContexts } from "../../test/fixture/tui-environment"
 import {
   type RosterAgentInput,
+  type RosterAgentView,
   type RosterContext,
   buildState,
   colorSupport,
@@ -38,11 +39,17 @@ function agent(overrides: Partial<RosterAgentInput> = {}): RosterAgentInput {
   }
 }
 
+/** Normalize an agent input into a presentable view for deriveRosterStatus tests. */
+function viewAgent(input: RosterAgentInput, ctx: { connected: boolean; errored: boolean } = { connected: true, errored: false }): RosterAgentView {
+  return normalizeAgent(input, ctx)
+}
+
 function context(overrides: Partial<RosterContext> = {}): RosterContext {
   return { connected: true, permitted: true, loading: false, partial: false, ...overrides }
 }
 
 const readyAgent = agent({ name: "general" })
+const readyView = viewAgent(readyAgent)
 const deniedAgent = agent({
   name: "locked",
   permission: { edit: "deny", bash: { "*": "deny" } },
@@ -51,19 +58,19 @@ const offlineAgent = agent({ name: "remote", permission: { edit: "allow", bash: 
 
 test("deriveRosterStatus classifies every required state", () => {
   expect(deriveRosterStatus(context({ loading: true }), [], 50, false)).toBe("loading")
-  expect(deriveRosterStatus(context({ connected: false }), [readyAgent], 50, false)).toBe("offline")
-  expect(deriveRosterStatus(context({ permitted: false }), [readyAgent], 50, false)).toBe("denied")
-  expect(deriveRosterStatus(context({ error: "boom" }), [readyAgent], 50, false)).toBe("failure")
+  expect(deriveRosterStatus(context({ connected: false }), [readyView], 50, false)).toBe("offline")
+  expect(deriveRosterStatus(context({ permitted: false }), [readyView], 50, false)).toBe("denied")
+  expect(deriveRosterStatus(context({ error: "boom" }), [readyView], 50, false)).toBe("failure")
   expect(deriveRosterStatus(context(), [], 50, false)).toBe("empty")
   expect(
-    deriveRosterStatus(context({ partial: true }), [readyAgent], 50, false),
+    deriveRosterStatus(context({ partial: true }), [readyView], 50, false),
   ).toBe("degraded")
-  const degraded = normalizeAgent(readyAgent, { connected: true, errored: true })
+  const degraded = viewAgent(readyAgent, { connected: true, errored: true })
   expect(deriveRosterStatus(context(), [degraded], 50, false)).toBe("degraded")
-  const many = Array.from({ length: 60 }, (_, i) => agent({ name: `a${i}` }))
-  expect(deriveRosterStatus(context(), many, 50, false)).toBe("long-content")
-  expect(deriveRosterStatus(context(), many, 50, true)).toBe("populated")
-  expect(deriveRosterStatus(context(), [readyAgent], 50, false)).toBe("populated")
+  const manyViews = Array.from({ length: 60 }, (_, i) => viewAgent(agent({ name: `a${i}` })))
+  expect(deriveRosterStatus(context(), manyViews, 50, false)).toBe("long-content")
+  expect(deriveRosterStatus(context(), manyViews, 50, true)).toBe("populated")
+  expect(deriveRosterStatus(context(), [readyView], 50, false)).toBe("populated")
 })
 
 test("normalizeAgent redacts secrets and derives row status", () => {
@@ -177,12 +184,17 @@ test("toRosterInput maps the SDK Agent into the decoupled roster shape", () => {
   const sdkAgent = {
     name: "build",
     mode: "primary" as const,
-    builtIn: true,
-    permission: { edit: "allow" as const, bash: { "*": "allow" as const } },
+    native: true,
+    permission: [
+      { permission: "edit" as const, pattern: "*", action: "allow" as const },
+      { permission: "bash" as const, pattern: "*", action: "allow" as const },
+    ],
+    options: {},
   } satisfies Agent
   const mapped = toRosterInput(sdkAgent)
   expect(mapped.name).toBe("build")
   expect(mapped.permission.edit).toBe("allow")
+  expect(mapped.builtIn).toBe(true)
 })
 
 // ---- Render tests: prove each state actually paints ----
@@ -275,8 +287,9 @@ test("renders the offline, denied and failure states", async () => {
 
 test("renders the degraded state with a warning banner", async () => {
   const app = await renderRoster(120, {
-    agents: accessor([readyAgent, normalizeAgent(readyAgent, { connected: true, errored: true })]),
+    agents: accessor([readyAgent, agent({ name: "errored" })]),
     partial: accessor(true),
+    erroredNames: accessor(new Set(["errored"])),
   })
   try {
     const frame = app.captureCharFrame()
@@ -328,7 +341,7 @@ test("selection is retained and actionable via onSelect", async () => {
     },
   })
   try {
-    app.mockInput.send("enter")
+    app.mockInput.pressKey("enter")
     await app.flush()
     expect(selected).toBe("general")
   } finally {

@@ -62,14 +62,31 @@ function statusColor(status: AgentRowStatus, theme: ReturnType<typeof useTheme>[
 
 /** Map the SDK `Agent` into the roster's decoupled input shape. */
 export function toRosterInput(agent: Agent): RosterAgentInput {
+  const permission: RosterAgentInput["permission"] = {
+    edit: "allow",
+    bash: {},
+  }
+  for (const rule of agent.permission) {
+    if (rule.permission === "edit") {
+      permission.edit = rule.action
+    } else if (rule.permission === "bash") {
+      permission.bash[rule.pattern] = rule.action
+    } else if (rule.permission === "webfetch") {
+      permission.webfetch = rule.action
+    } else if (rule.permission === "doom_loop") {
+      permission.doom_loop = rule.action
+    } else if (rule.permission === "external_directory") {
+      permission.external_directory = rule.action
+    }
+  }
   return {
     name: agent.name,
     description: agent.description,
     mode: agent.mode,
-    builtIn: agent.builtIn,
+    builtIn: agent.native ?? false,
     color: agent.color,
     prompt: agent.prompt,
-    permission: agent.permission,
+    permission,
     model: agent.model,
   }
 }
