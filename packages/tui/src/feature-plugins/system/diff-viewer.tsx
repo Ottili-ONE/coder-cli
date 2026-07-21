@@ -947,7 +947,6 @@ function DiffViewer(props: { api: TuiPluginApi }) {
       { key: "k,up", cmd: "diff.up", desc: "Move diff viewer up" },
       { key: "pagedown,ctrl+f", cmd: "diff.page.down", desc: "Page diff viewer down" },
       { key: "pageup,ctrl+b", cmd: "diff.page.up", desc: "Page diff viewer up" },
-      { key: "m", cmd: "diff.mark_reviewed", desc: "Mark selected file reviewed" },
       ...props.api.tuiConfig.keybinds.gather(
         "diff",
         commands.map((command) => command.name),

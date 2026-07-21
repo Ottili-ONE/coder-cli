@@ -78,6 +78,7 @@ export const Definitions = {
   diff_apply: keybind("g", "Apply accepted hunks to the working tree"),
   diff_add_comment: keybind("c", "Comment on the current file"),
   diff_toggle_comments: keybind("C", "Toggle comment visibility"),
+  diff_mark_reviewed: keybind("m", "Mark selected file as reviewed"),
   diff_help: keybind("?", "Show more diff viewer shortcuts"),
 
   editor_open: keybind("<leader>e", "Open external editor"),
@@ -293,6 +294,7 @@ export const CommandMap = {
   diff_apply: "diff.apply",
   diff_add_comment: "diff.add_comment",
   diff_toggle_comments: "diff.toggle_comments",
+  diff_mark_reviewed: "diff.mark_reviewed",
   diff_help: "diff.help",
   editor_open: "prompt.editor",
   theme_list: "theme.switch",
