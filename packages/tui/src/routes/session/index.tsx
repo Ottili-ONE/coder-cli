@@ -25,7 +25,7 @@ import { SplitBorder } from "../../ui/border"
 import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { Spinner } from "../../component/spinner"
 import { createSyntaxStyleMemo, generateSubtleSyntax, selectedForeground, useTheme } from "../../context/theme"
-import { ScrollBoxRenderable, addDefaultParsers, RGBA } from "@opentui/core"
+import { BoxRenderable, ScrollBoxRenderable, addDefaultParsers, RGBA } from "@opentui/core"
 import { Prompt, type PromptRef } from "../../component/prompt"
 import type {
   AssistantMessage,
@@ -3069,6 +3069,62 @@ const toolDisplays = new Set([
   "question",
   "skill",
 ])
+
+export function InlineToolRow(props: {
+  id?: string
+  icon: string
+  complete: boolean
+  pending: string
+  failed?: boolean
+  error?: string
+  errorExpanded?: boolean
+  separateAfter?: (id: string | undefined) => boolean
+  subagent?: boolean
+  children?: JSX.Element
+}) {
+  const { theme } = useTheme()
+  return (
+    <box
+      id={props.id ?? ""}
+      border={["left"]}
+      paddingLeft={2}
+      paddingTop={1}
+      paddingBottom={1}
+      marginTop={1}
+      borderColor={props.failed ? theme.error : theme.textMuted}
+      customBorderChars={SplitBorder.customBorderChars}
+      ref={(el: BoxRenderable) => {
+        setPreLayoutSiblingMargin(el, (previous) => {
+          const previousInline = previous?.id.startsWith("tool-card-") ?? false
+          const previousSubagent = previous?.id.startsWith("tool-card-subagent-") ?? false
+          const currentSubagent = Boolean(props.subagent)
+          return previous?.id.startsWith("text-") ||
+            previous?.id.startsWith("tool-block-") ||
+            (previousInline && previousSubagent !== currentSubagent) ||
+            props.separateAfter?.(previous?.id)
+            ? 1
+            : 0
+        })
+      }}
+    >
+      <box flexDirection="row" gap={1} alignItems="center">
+        <text width={2} fg={props.failed ? theme.error : theme.textMuted}>
+          {props.icon}
+        </text>
+        <Show when={props.complete} fallback={<text fg={theme.textMuted}>{"✻ " + props.pending}</text>}>
+          <text flexGrow={1} fg={theme.textMuted} wrapMode="none">
+            {props.children}
+          </text>
+        </Show>
+      </box>
+      <Show when={props.error && props.errorExpanded}>
+        <box marginTop={1} paddingLeft={2}>
+          <text fg={theme.error}>{props.error}</text>
+        </box>
+      </Show>
+    </box>
+  )
+}
 
 export function toolDisplay(tool: string) {
   return toolDisplays.has(tool) ? tool : "generic"
