@@ -25,7 +25,7 @@ function withTheme(component: () => JSX.Element) {
 function Bridge(props: Partial<FileTreeProps>) {
   const { theme } = useTheme()
   const { theme: _theme, ...rest } = props
-  return <FileTree theme={theme} {...(rest as FileTreeProps)} />
+  return <FileTree theme={theme} {...(rest as Omit<FileTreeProps, "theme">)} />
 }
 
 async function renderFrame(component: () => JSX.Element, width = 40, height = 12) {
