@@ -3,12 +3,12 @@ import { createSignal, type Accessor } from "solid-js"
 import { describe, expect, test } from "bun:test"
 import { testRender } from "@opentui/solid"
 import { RGBA } from "@opentui/core"
-import { ContextMeter, type ContextMeterColors } from "../../../src/component/context-meter/index"
+import { ContextMeter, type ContextMeterColors } from "../../src/component/context-meter/index"
 import type {
   ContextMeterContext,
   ContextMeterMessage,
   ContextMeterProvider,
-} from "../../../src/component/context-meter/model"
+} from "../../src/component/context-meter/model"
 import { TestTuiContexts } from "../fixture/tui-environment"
 
 const mockColors = (): ContextMeterColors => ({
