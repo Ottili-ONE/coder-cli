@@ -5,7 +5,7 @@ import { expect, test } from "bun:test"
 import { KVProvider } from "../../../src/context/kv"
 import { ThemeProvider } from "../../../src/context/theme"
 import { TuiConfigProvider, resolve } from "../../../src/config"
-import { TestTuiContexts } from "../fixture/tui-environment"
+import { TestTuiContexts } from "../../fixture/tui-environment"
 import { MarkdownView } from "../../../src/component/markdown/index"
 
 function accessor<T>(value: T): Accessor<T> {

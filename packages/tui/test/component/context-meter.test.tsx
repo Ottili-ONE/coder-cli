@@ -9,7 +9,7 @@ import type {
   ContextMeterMessage,
   ContextMeterProvider,
 } from "../../../src/component/context-meter/model"
-import { TestTuiContexts } from "../../fixture/tui-environment"
+import { TestTuiContexts } from "../fixture/tui-environment"
 
 const mockColors = (): ContextMeterColors => ({
   primary: RGBA.fromValues(0, 200, 200),
