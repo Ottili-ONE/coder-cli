@@ -193,10 +193,10 @@ describe("buildProjectSwitcher — status transitions", () => {
 
   test("loading is ignored once workspaces have arrived", () => {
     const model = buildProjectSwitcher({ workspaces: [ws()], loading: true })
-    expect(model.status).toBe("ready")
+    expect(model.status).toBe("populated")
   })
 
-  test("ready state reports totals and current worktree", () => {
+  test("populated state reports totals and current worktree", () => {
     const input: BuildProjectSwitcherInput = {
       workspaces: [
         ws({ id: "a", projectID: "p1" }),
@@ -207,7 +207,7 @@ describe("buildProjectSwitcher — status transitions", () => {
       currentID: "b",
     }
     const model = buildProjectSwitcher(input)
-    expect(model.status).toBe("ready")
+    expect(model.status).toBe("populated")
     expect(model.totalWorktrees).toBe(3)
     expect(model.connectedCount).toBe(1)
     expect(model.currentWorktreeID).toBe("b")
@@ -277,7 +277,7 @@ describe("failure path — empty / unavailable data", () => {
       statuses: { a: "exploded" },
       currentID: "a",
     })
-    expect(model.status).toBe("ready")
+    expect(model.status).toBe("populated")
     const wt = flattenWorktrees(model)[0]
     expect(wt.status).toBe("unknown")
     expect(wt.isCurrent).toBe(true)
