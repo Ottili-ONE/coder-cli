@@ -17,12 +17,17 @@
 import stripAnsi from "strip-ansi"
 import type { UsageLimitsResponse, UsageLimitItem } from "../../util/usage-limits-api"
 
+export type { UsageLimitsResponse }
+
 /** Whole-meter lifecycle derived from harness context + data. */
 export type CostUsageStatus =
   | "loading"
   | "empty"
   | "populated"
   | "long-content"
+  | "unknown"
+  | "ready"
+  | "error"
   | "failure"
   | "denied"
   | "offline"
@@ -40,6 +45,7 @@ export interface CostUsageTokens {
 
 export interface RawStep {
   id: string
+  index?: number
   role: string
   model?: string
   provider?: string

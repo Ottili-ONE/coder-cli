@@ -18,7 +18,7 @@ const step = (over: Partial<RawStep> = {}): RawStep => ({
   model: "gpt-4o",
   provider: "openai",
   cost: 0.01,
-  tokens: { input: 1000, output: 500, reasoning: 0, cacheRead: 200, cacheWrite: 100 },
+  tokens: { input: 1000, output: 500, reasoning: 0, cache: { read: 200, write: 100 } },
   ...over,
 })
 
