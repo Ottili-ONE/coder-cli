@@ -34,7 +34,7 @@ async function renderPreview(width: number, props: Parameters<typeof FilePreview
 // ---------- Accessible labels + lifecycle states ----------
 
 test("renders the loading state with an accessible label", async () => {
-  const app = await renderPreview(120, { content: accessor([]), loading: accessor(true), path: accessor("src/app.ts") })
+  const app = await renderPreview(120, { content: accessor([]), loading: accessor(true), path: "src/app.ts" })
   try {
     const frame = app.captureCharFrame()
     expect(frame).toContain("File preview")
@@ -46,7 +46,7 @@ test("renders the loading state with an accessible label", async () => {
 })
 
 test("renders the empty state when the file has no content", async () => {
-  const app = await renderPreview(120, { content: accessor([]), path: accessor("empty.ts") })
+  const app = await renderPreview(120, { content: accessor([]), path: "empty.ts" })
   try {
     const frame = app.captureCharFrame()
     expect(frame).toContain("File preview")
@@ -60,7 +60,7 @@ test("renders the empty state when the file has no content", async () => {
 test("renders populated content with line count and ANSI-safe text", async () => {
   const app = await renderPreview(120, {
     content: accessor(["\x1b[32mconst x = 1\x1b[0m", "function main() {}"]),
-    path: accessor("src/app.ts"),
+    path: "src/app.ts",
   })
   try {
     const frame = app.captureCharFrame()
@@ -78,7 +78,7 @@ test("failure path redacts the message and offers a retry", async () => {
   const app = await renderPreview(120, {
     content: accessor(["Booting…"]),
     failure: accessor("Connection refused: Bearer sk-live-abcdefghijklmnop"),
-    path: accessor("secret.ts"),
+    path: "secret.ts",
   })
   try {
     const frame = app.captureCharFrame()
@@ -95,7 +95,7 @@ test("denied path reports access refusal and a retry hint", async () => {
   const app = await renderPreview(120, {
     content: accessor(["x"]),
     denied: accessor(true),
-    path: accessor("/etc/secret"),
+    path: "/etc/secret",
   })
   try {
     const frame = app.captureCharFrame()
@@ -110,7 +110,7 @@ test("offline path reports an unreachable source", async () => {
   const app = await renderPreview(120, {
     content: accessor(["x"]),
     offline: accessor(true),
-    path: accessor("remote://file"),
+    path: "remote://file",
   })
   try {
     const frame = app.captureCharFrame()
@@ -140,7 +140,7 @@ test("degraded path reports reduced fidelity with a reason", async () => {
 
 test("large files fold by default and expand on space", async () => {
   const lines = Array.from({ length: 30 }, (_, i) => `source line ${i}`)
-  const app = await renderPreview(120, { content: accessor(lines), path: accessor("big.ts") })
+  const app = await renderPreview(120, { content: accessor(lines), path: "big.ts" })
   try {
     const folded = app.captureCharFrame()
     expect(folded).toContain("lines hidden")
@@ -159,7 +159,7 @@ test("large files fold by default and expand on space", async () => {
 
 test("very large files are capped with a performance notice", async () => {
   const lines = Array.from({ length: 6000 }, (_, i) => `l${i}`)
-  const app = await renderPreview(120, { content: accessor(lines), path: accessor("huge.ts") })
+  const app = await renderPreview(120, { content: accessor(lines), path: "huge.ts" })
   try {
     const frame = app.captureCharFrame()
     expect(frame).toContain("Large file")
@@ -173,7 +173,7 @@ test("very large files are capped with a performance notice", async () => {
 
 test("narrow terminals truncate long lines without dumping raw content", async () => {
   const longLine = "x".repeat(200)
-  const app = await renderPreview(40, { content: accessor(["short", longLine]), path: accessor("a.ts") })
+  const app = await renderPreview(40, { content: accessor(["short", longLine]), path: "a.ts" })
   try {
     const frame = app.captureCharFrame()
     expect(frame).toContain("…")
@@ -186,8 +186,8 @@ test("narrow terminals truncate long lines without dumping raw content", async (
 
 test("standard width shows full lines that narrow would truncate", async () => {
   const longLine = "y".repeat(120)
-  const narrow = await renderPreview(40, { content: accessor([longLine]), path: accessor("a.ts") })
-  const wide = await renderPreview(160, { content: accessor([longLine]), path: accessor("a.ts") })
+  const narrow = await renderPreview(40, { content: accessor([longLine]), path: "a.ts" })
+  const wide = await renderPreview(160, { content: accessor([longLine]), path: "a.ts" })
   try {
     expect(narrow.captureCharFrame()).toContain("…")
     expect(wide.captureCharFrame()).toContain(longLine)
@@ -202,7 +202,7 @@ test("standard width shows full lines that narrow would truncate", async () => {
 test("arrow keys move focus between lines (regression for keybindings)", async () => {
   const app = await renderPreview(120, {
     content: accessor(["first", "second", "third"]),
-    path: accessor("a.ts"),
+    path: "a.ts",
   })
   try {
     expect(app.captureCharFrame()).toContain("> first")
@@ -221,7 +221,7 @@ test("arrow keys move focus between lines (regression for keybindings)", async (
 })
 
 test("j/k keys also move focus, matching the vi-style binding", async () => {
-  const app = await renderPreview(120, { content: accessor(["a", "b", "c"]), path: accessor("a.ts") })
+  const app = await renderPreview(120, { content: accessor(["a", "b", "c"]), path: "a.ts" })
   try {
     app.mockInput.pressKey("j")
     await app.flush()
@@ -238,7 +238,7 @@ test("copy key copies the focused line and signals it", async () => {
   let copied = ""
   const app = await renderPreview(120, {
     content: accessor(["focus me", "skip me"]),
-    path: accessor("a.ts"),
+    path: "a.ts",
     onCopy: (text) => {
       copied = text
     },
@@ -257,7 +257,7 @@ test("enter activates the focused line and reports its id", async () => {
   let activated = -1
   const app = await renderPreview(120, {
     content: accessor(["alpha", "beta"]),
-    path: accessor("a.ts"),
+    path: "a.ts",
     onSelect: (id) => {
       activated = id
     },
@@ -277,7 +277,7 @@ test("open key fires onOpen with the path", async () => {
   let opened: string | undefined
   const app = await renderPreview(120, {
     content: accessor(["x"]),
-    path: accessor("src/open.ts"),
+    path: "src/open.ts",
     onOpen: (p) => {
       opened = p
     },
@@ -296,7 +296,7 @@ test("retry key fires onRetry only on a retryable failure", async () => {
   const app = await renderPreview(120, {
     content: accessor(["x"]),
     failure: accessor("boom"),
-    path: accessor("a.ts"),
+    path: "a.ts",
     onRetry: () => {
       retries++
     },
@@ -314,7 +314,7 @@ test("retry key is a no-op on healthy content", async () => {
   let retries = 0
   const app = await renderPreview(120, {
     content: accessor(["x"]),
-    path: accessor("a.ts"),
+    path: "a.ts",
     onRetry: () => {
       retries++
     },
@@ -330,7 +330,7 @@ test("retry key is a no-op on healthy content", async () => {
 
 test("search filters to matches, shows a count, and escape clears", async () => {
   const lines = ["info message", "Error: disk full", "another error here", "plain text"]
-  const app = await renderPreview(120, { content: accessor(lines), path: accessor("a.ts") })
+  const app = await renderPreview(120, { content: accessor(lines), path: "a.ts" })
   try {
     app.mockInput.pressKey("/")
     app.mockInput.typeText("error")
@@ -355,7 +355,7 @@ test("search filters to matches, shows a count, and escape clears", async () => 
 
 test("resize clears narrow truncation after widening", async () => {
   const longLine = "z".repeat(150)
-  const app = await renderPreview(40, { content: accessor([longLine]), path: accessor("a.ts") })
+  const app = await renderPreview(40, { content: accessor([longLine]), path: "a.ts" })
   try {
     expect(app.captureCharFrame()).toContain("…")
     app.resize(160, 40)
@@ -370,7 +370,7 @@ test("resize clears narrow truncation after widening", async () => {
 
 test("streaming updates append lines and keep selection valid", async () => {
   const [content, setContent] = createSignal<string[]>(["line one"])
-  const app = await renderPreview(120, { content, path: accessor("a.ts") })
+  const app = await renderPreview(120, { content, path: "a.ts" })
   try {
     expect(app.captureCharFrame()).toContain("line one")
 
@@ -389,7 +389,7 @@ test("streaming updates append lines and keep selection valid", async () => {
 test("streaming transitions loading -> populated and selection stays valid", async () => {
   const [content, setContent] = createSignal<string[]>([])
   const [loading, setLoading] = createSignal(true)
-  const app = await renderPreview(120, { content, loading, path: accessor("a.ts") })
+  const app = await renderPreview(120, { content, loading, path: "a.ts" })
   try {
     expect(app.captureCharFrame()).toContain("loading")
 
