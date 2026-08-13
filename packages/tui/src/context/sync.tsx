@@ -31,6 +31,7 @@ import { useArgs } from "./args"
 import { batch, onMount } from "solid-js"
 import path from "path"
 import { useKV } from "./kv"
+import { usePermission } from "./permission"
 
 const emptyConsoleState: ConsoleState = {
   consoleManagedProviders: [],
@@ -82,6 +83,12 @@ function search<T>(items: T[], target: string, key: (item: T) => string) {
   return { found: false, index: left }
 }
 
+function compareMessage(a: Message, b: Message) {
+  return a.time.created - b.time.created || a.id.localeCompare(b.id)
+}
+
+const messageKey = (message: Message) => message.time.created + message.id
+
 export const {
   context: SyncContext,
   use: useSync,
@@ -91,6 +98,7 @@ export const {
   init: () => {
     const startup = useTuiStartup()
     const kv = useKV()
+    const permission = usePermission()
     const [store, setStore] = createStore<{
       status: "loading" | "partial" | "complete"
       provider: Provider[]
@@ -99,6 +107,9 @@ export const {
       console_state: ConsoleState
       account_status: AccountStatus
       cloud_status: CloudStatus
+      capabilities: {
+        experimentalBackgroundSubagents: boolean
+      },
       provider_auth: Record<string, ProviderAuthMethod[]>
       agent: Agent[]
       command: Command[]
@@ -143,6 +154,9 @@ export const {
       console_state: emptyConsoleState,
       account_status: emptyAccountStatus,
       cloud_status: emptyCloudStatus,
+      capabilities: {
+        experimentalBackgroundSubagents: false,
+      },
       provider_auth: {},
       config: {},
       status: "loading",
@@ -195,7 +209,7 @@ export const {
         .then((x) => (x.data ?? []).toSorted((a, b) => a.id.localeCompare(b.id)))
     }
 
-    event.subscribe((event, { workspace }) => {
+    event.subscribe((event, { directory, workspace }) => {
       switch (event.type) {
         case "server.instance.disposed":
           void bootstrap()
@@ -217,6 +231,15 @@ export const {
 
         case "permission.asked": {
           const request = event.properties
+          if (permission.mode === "auto") {
+            void sdk.client.permission.reply({
+              requestID: request.id,
+              reply: "once",
+              directory,
+              workspace,
+            })
+            break
+          }
           const requests = store.permission[request.sessionID]
           if (!requests) {
             setStore("permission", request.sessionID, [request])
@@ -338,7 +361,7 @@ export const {
             setStore("message", event.properties.info.sessionID, [event.properties.info])
             break
           }
-          const result = search(messages, event.properties.info.id, (m) => m.id)
+          const result = search(messages, messageKey(event.properties.info), messageKey)
           if (result.found) {
             setStore("message", event.properties.info.sessionID, result.index, reconcile(event.properties.info))
             break
@@ -374,13 +397,13 @@ export const {
         case "message.removed": {
           touchMessage(event.properties.sessionID, event.properties.messageID)
           const messages = store.message[event.properties.sessionID]
-          const result = search(messages, event.properties.messageID, (m) => m.id)
-          if (result.found) {
+          const index = messages.findIndex((message) => message.id === event.properties.messageID)
+          if (index !== -1) {
             setStore(
               "message",
               event.properties.sessionID,
               produce((draft) => {
-                draft.splice(result.index, 1)
+                draft.splice(index, 1)
               }),
             )
           }
@@ -393,7 +416,7 @@ export const {
             setStore("part", event.properties.part.messageID, [event.properties.part])
             break
           }
-          const result = search(parts, event.properties.part.id, (p) => p.id)
+          const result = search(parts, event.properties.part.id, (part) => part.id)
           if (result.found) {
             setStore("part", event.properties.part.messageID, result.index, reconcile(event.properties.part))
             break
@@ -411,7 +434,7 @@ export const {
         case "message.part.delta": {
           const parts = store.part[event.properties.messageID]
           if (!parts) break
-          const result = search(parts, event.properties.partID, (p) => p.id)
+          const result = search(parts, event.properties.partID, (part) => part.id)
           if (!result.found) break
           touchPart(event.properties.sessionID, event.properties.partID)
           setStore(
@@ -430,7 +453,7 @@ export const {
         case "message.part.removed": {
           touchPart(event.properties.sessionID, event.properties.partID)
           const parts = store.part[event.properties.messageID]
-          const result = search(parts, event.properties.partID, (p) => p.id)
+          const result = search(parts, event.properties.partID, (part) => part.id)
           if (result.found) {
             setStore(
               "part",
@@ -470,6 +493,10 @@ export const {
       // blocking - include session.list when continuing a session
       const providersPromise = sdk.client.config.providers({ workspace }, { throwOnError: true })
       const providerListPromise = sdk.client.provider.list({ workspace }, { throwOnError: true })
+      const capabilitiesPromise = sdk.client.experimental.capabilities
+        .get({ workspace }, { throwOnError: true })
+        .then((x) => x.data)
+        .catch(() => undefined)
       const consoleStatePromise = sdk.client.experimental.console
         .get({ workspace }, { throwOnError: true })
         .then((x) => x.data)
@@ -479,6 +506,7 @@ export const {
       await Promise.all([
         providersPromise,
         providerListPromise,
+        capabilitiesPromise,
         agentsPromise,
         configPromise,
         projectPromise,
@@ -487,6 +515,7 @@ export const {
         .then(async () => {
           const providersResponse = providersPromise.then((x) => x.data!)
           const providerListResponse = providerListPromise.then((x) => x.data!)
+          const capabilitiesResponse = capabilitiesPromise
           const consoleStateResponse = consoleStatePromise
           const agentsResponse = agentsPromise.then((x) => x.data ?? [])
           const configResponse = configPromise.then((x) => x.data!)
@@ -495,6 +524,7 @@ export const {
           return Promise.all([
             providersResponse,
             providerListResponse,
+            capabilitiesResponse,
             consoleStateResponse,
             agentsResponse,
             configResponse,
@@ -502,15 +532,17 @@ export const {
           ]).then((responses) => {
             const providers = responses[0]
             const providerList = responses[1]
-            const consoleState = responses[2]
-            const agents = responses[3]
-            const config = responses[4]
-            const sessions = responses[5]
+            const capabilities = responses[2]
+            const consoleState = responses[3]
+            const agents = responses[4]
+            const config = responses[5]
+            const sessions = responses[6]
 
             batch(() => {
               setStore("provider", reconcile(providers.providers))
               setStore("provider_default", reconcile(providers.default))
               setStore("provider_next", reconcile(providerList))
+              setStore("capabilities", "experimentalBackgroundSubagents", capabilities?.backgroundSubagents === true)
               setStore("console_state", reconcile(consoleState))
               setStore("agent", reconcile(agents))
               setStore("config", reconcile(config))
@@ -627,6 +659,7 @@ export const {
                     (message) => tracker.messages.has(message.id) && !infos.some((item) => item.id === message.id),
                   ),
                 )
+                infos.sort(compareMessage)
                 const removed = infos.slice(0, -100)
                 const visible = infos.slice(-100)
                 const visibleIDs = new Set(visible.map((message) => message.id))

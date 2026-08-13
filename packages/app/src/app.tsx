@@ -5,7 +5,7 @@ import { DialogProvider } from "@opencode-ai/ui/context/dialog"
 import { FileComponentProvider } from "@opencode-ai/ui/context/file"
 import { MarkedProvider } from "@opencode-ai/ui/context/marked"
 import { ParityProvider } from "@/parity/app-surface"
-import { File } from "@opencode-ai/ui/file"
+import { FileIcon } from "@opencode-ai/ui/file-icon"
 import { Font } from "@opencode-ai/ui/font"
 import { Splash } from "@opencode-ai/ui/logo"
 import { ThemeProvider } from "@opencode-ai/ui/theme/context"
@@ -70,8 +70,8 @@ const SessionRoute = Object.assign(
     createEffect(() => {
       if (!settings.general.newLayoutDesigns()) return
       if (params.id || search.draftId) return
-      if (!tabs.ready() || !sdk.directory) return
-      tabs.newDraft({ server: server.key, directory: sdk.directory }, search.prompt)
+      if (!tabs.ready() || !sdk().directory) return
+      tabs.newDraft({ server: server.key, directory: sdk().directory }, search.prompt)
     })
 
     return (
@@ -249,7 +249,7 @@ export function AppBaseProviders(props: ParentProps<{ locale?: Locale }>) {
                 <WslServersProvider>
                   <DialogProvider>
                     <MarkedProvider>
-                      <FileComponentProvider component={File}>
+                      <FileComponentProvider component={FileIcon}>
                         <ParityProvider>{props.children}</ParityProvider>
                       </FileComponentProvider>
                     </MarkedProvider>

@@ -5,9 +5,8 @@ import Http from "node:http"
 import path from "node:path"
 import { NodeHttpServer } from "@effect/platform-node"
 import { Effect, Exit, Fiber, Layer, Schema } from "effect"
-import { FetchHttpClient, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
+import { HttpServer, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { eq } from "drizzle-orm"
-import { FSUtil } from "@opencode-ai/core/fs-util"
 import { GlobalBus, type GlobalEvent } from "@/bus/global"
 import { Database } from "@opencode-ai/core/database/database"
 import { ProjectV2 } from "@opencode-ai/core/project"
@@ -16,6 +15,7 @@ import { AbsolutePath } from "@opencode-ai/core/schema"
 import { Session as SessionNs } from "@/session/session"
 import { SessionID } from "@/session/schema"
 import { SessionTable } from "@opencode-ai/core/session/sql"
+import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { EventSequenceTable } from "@opencode-ai/core/event/sql"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, provideTmpdirInstance, requireInstance, TestInstance } from "../fixture/fixture"
@@ -33,8 +33,9 @@ import { Cairn } from "@/cairn"
 import { Project } from "@/project/project"
 import { Vcs } from "@/project/vcs"
 import { RuntimeFlags } from "@/effect/runtime-flags"
-import { EventV2Bridge } from "@/event-v2-bridge"
 import { Ripgrep } from "@opencode-ai/core/ripgrep"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 
 const originalEnv = {
   OTTILI_CODER_AUTH_CONTENT: process.env.OTTILI_CODER_AUTH_CONTENT,
@@ -64,8 +65,6 @@ const workspaceLayer = (experimentalWorkspaces: boolean) =>
 const testServerLayer = Layer.mergeAll(
   NodeHttpServer.layer(Http.createServer, { host: "127.0.0.1", port: 0 }),
   workspaceLayer(true),
-  SessionNs.defaultLayer,
-  Database.defaultLayer,
 )
 const it = testEffect(testServerLayer)
 

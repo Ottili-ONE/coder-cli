@@ -39,7 +39,7 @@ import { Command } from "@/command"
 import { Truncate } from "@/tool/truncate"
 import { ToolRegistry } from "@/tool/registry"
 import { Format } from "@/format"
-import { InstanceLayer } from "@/project/instance-layer"
+import { InstanceStore } from "@/project/instance-store"
 import { Project } from "@/project/project"
 import { Vcs } from "@/project/vcs"
 import { Workspace } from "@/control-plane/workspace"
@@ -52,6 +52,9 @@ import { memoMap } from "@opencode-ai/core/effect/memo-map"
 import { BackgroundJob } from "@/background/job"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { AppNodeBuilderV1 } from "./app-node-builder-v1"
+import { SessionProjector } from "@opencode-ai/core/session/projector"
 
 export const AppLayer = Layer.mergeAll(
   Npm.defaultLayer,

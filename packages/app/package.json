@@ -76,6 +76,6 @@
     "solid-js": "catalog:",
     "solid-list": "catalog:",
     "tailwindcss": "catalog:",
-    "virtua": "catalog:"
+    "@pierre/trees": "1.0.0-beta.4"
   }
 }

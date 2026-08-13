@@ -1,7 +1,8 @@
 export * as BackgroundJob from "./background-job"
 
-import { Cause, Clock, Config, Context, Data, Deferred, Effect, Exit, Layer, Scope, SynchronizedRef } from "effect"
+import { Cause, Clock, Config, ConfigProvider, Context, Data, Deferred, Effect, Exit, Layer, Scope, SynchronizedRef } from "effect"
 import { Identifier } from "./id/id"
+import { makeGlobalNode } from "./effect/app-node"
 
 export type Status = "running" | "completed" | "error" | "cancelled"
 
@@ -153,7 +154,7 @@ export class BackgroundJobCapacityError extends Data.TaggedError("BackgroundJobC
 }> {}
 
 /** Patterns that reveal credentials or tokens; matched case-insensitively. */
-const SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+const SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string | ((substring: string, ...args: any[]) => string)]> = [
   [/\bBearer\s+[A-Za-z0-9._-]+/gi, "Bearer ••••"],
   [/\b(token|secret|api[_-]?key|password|passwd|access[_-]?key|private[_-]?key)-[A-Za-z0-9_-]{6,}/gi, "$1-••••"],
   [/(sk|pk|rk|tk)-[A-Za-z0-9_-]{8,}/gi, (m) => `${m.slice(0, 6)}••••`],
@@ -169,7 +170,7 @@ export function redactSecrets(text: string | undefined): string | undefined {
   if (text === undefined || text === null) return text
   let out = text
   for (const [pattern, replacement] of SECRET_PATTERNS) {
-    out = out.replace(pattern, replacement as string)
+    out = typeof replacement === "function" ? out.replace(pattern, replacement) : out.replace(pattern, replacement)
   }
   return out
 }
@@ -213,11 +214,11 @@ function errorText(error: unknown) {
 function withSegmentTimeout(scope: Scope.Scope, timeoutMs: number, run: Effect.Effect<string, unknown>) {
   if (timeoutMs <= 0) return run
   return run.pipe(
-    Effect.timeoutFail({
+    Effect.timeoutOrElse({
       duration: timeoutMs,
-      onTimeout: () => new Error(`background job segment exceeded ${timeoutMs}ms timeout`),
+      orElse: () => Effect.fail(new Error(`background job segment exceeded ${timeoutMs}ms timeout`)),
     }),
-    Effect.ensuring(Effect.ignore),
+    Effect.ensuring(Effect.void),
   )
 }
 
@@ -229,7 +230,10 @@ function withSegmentTimeout(scope: Scope.Scope, timeoutMs: number, run: Effect.E
  * those semantics.
  */
 export const make = Effect.gen(function* () {
-  const bounds = yield* ConfigProvider.fromEnv().pipe(ConfigProvider.load(boundsConfig), Effect.orElseSucceed(() => defaultBounds))
+  const bounds = yield* boundsConfig.pipe(
+    Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromEnv()),
+    Effect.orElseSucceed(() => defaultBounds),
+  )
   const state: State = {
     jobs: yield* SynchronizedRef.make(new Map()),
     scope: yield* Scope.Scope,
@@ -335,7 +339,7 @@ export const make = Effect.gen(function* () {
     return snapshot(job)
   })
 
-  const start: Interface["start"] = Effect.fn("BackgroundJob.start")(function* (input) {
+  const start = Effect.fn("BackgroundJob.start")(function* (input) {
     return yield* Effect.uninterruptibleMask((restore) =>
       Effect.gen(function* () {
         const id = input.id ?? Identifier.ascending("job")
@@ -350,20 +354,11 @@ export const make = Effect.gen(function* () {
             if (existing?.info.status === "running") {
               return [{ info: snapshot(existing) }, jobs] as readonly [StartResult, Map<string, Active>]
             }
-            if (existing && existing.info.status !== "running" && input.id === undefined) {
-              // auto-id collisions on a finished job: regenerate to avoid overwrite
-            }
             if (countRunning(jobs) >= state.bounds.maxRunning) {
-              return [
-                { error: new BackgroundJobCapacityError({ reason: "max_running", detail: `max ${state.bounds.maxRunning} running` }) } as unknown as StartResult,
-                jobs,
-              ] as readonly [StartResult, Map<string, Active>]
+              return yield* Effect.fail(new BackgroundJobCapacityError({ reason: "max_running", detail: `max ${state.bounds.maxRunning} running` }))
             }
             if (jobs.size >= state.bounds.maxRetained) {
-              return [
-                { error: new BackgroundJobCapacityError({ reason: "max_retained", detail: `max ${state.bounds.maxRetained} retained` }) } as unknown as StartResult,
-                jobs,
-              ] as readonly [StartResult, Map<string, Active>]
+              return yield* Effect.fail(new BackgroundJobCapacityError({ reason: "max_retained", detail: `max ${state.bounds.maxRetained} retained` }))
             }
             const scope = yield* Scope.fork(state.scope, "parallel")
             const token = {}
@@ -398,30 +393,30 @@ export const make = Effect.gen(function* () {
             ]
           }),
         )
-        if ("error" in result && result.error) return yield* Effect.fail(result.error)
-        if ("scope" in result) {
+        const resultScoped = result as Extract<StartResult, { scope: unknown }>
+        if ("scope" in resultScoped) {
           yield* Effect.logInfo("background job started").pipe(
             Effect.annotateLogs({
               id,
-              correlation_id: result.info.correlation_id,
-              type: result.info.type,
-              attempt: result.info.attempt,
+              correlation_id: resultScoped.info.correlation_id,
+              type: resultScoped.info.type,
+              attempt: resultScoped.info.attempt,
             }),
             Effect.ignore,
           )
           yield* fork(
-            result.scope,
+            resultScoped.scope,
             id,
-            result.token,
+            resultScoped.token,
             0,
             restore(input.run).pipe(Effect.ensuring(Deferred.succeed(tail, undefined))),
-            result.timeoutMs,
+            resultScoped.timeoutMs,
           )
         }
         return result.info
       }),
     )
-  })
+  }) as Interface["start"]
 
   const extend: Interface["extend"] = Effect.fn("BackgroundJob.extend")(function* (input) {
     return yield* Effect.uninterruptibleMask((restore) =>
@@ -544,6 +539,6 @@ export const make = Effect.gen(function* () {
   return Service.of({ list, get, start, extend, wait, waitForPromotion, promote, cancel })
 })
 
-export const layer = Layer.effect(Service, make)
+const layer = Layer.effect(Service, make)
 
-export const defaultLayer = layer
+export const node = makeGlobalNode({ service: Service, layer, deps: [] })

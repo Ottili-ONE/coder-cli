@@ -1,12 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import {
-  accessTokenIsExpiring,
-  buildAuthorizeUrl,
-  escapeHtml,
-  pollDeviceCodeToken,
-  requestDeviceCode,
-  XaiAuthPlugin,
-} from "../../src/plugin/xai"
+import { accessTokenIsExpiring, pollDeviceCodeToken, requestDeviceCode, XaiAuthPlugin } from "../../src/plugin/xai"
 import { OAUTH_DUMMY_KEY } from "../../src/auth"
 
 function makeJwt(payload: object): string {
@@ -124,8 +117,7 @@ describe("plugin.xai", () => {
         await hooks.auth!.loader!(async () => ({ type: "wellknown", key: "k", token: "t" }) as any, {} as any),
       ).toEqual({})
       expect(hooks.auth!.methods.map((m) => [m.type, m.label])).toEqual([
-        ["oauth", "xAI Grok OAuth (SuperGrok Subscription)"],
-        ["oauth", "xAI Grok OAuth (Headless / Remote / VPS)"],
+        ["oauth", "SuperGrok Subscription"],
         ["api", "Manually enter API Key"],
       ])
     })
@@ -439,8 +431,7 @@ describe("plugin.xai", () => {
       })
       const hooks = await XaiAuthPlugin({} as any, serverOptions(server))
       const headless = hooks.auth!.methods.find(
-        (m): m is Extract<typeof m, { type: "oauth" }> =>
-          m.type === "oauth" && m.label === "xAI Grok OAuth (Headless / Remote / VPS)",
+        (m): m is Extract<typeof m, { type: "oauth" }> => m.type === "oauth" && m.label === "SuperGrok Subscription",
       )!
       const result = await headless.authorize!()
 
@@ -463,8 +454,7 @@ describe("plugin.xai", () => {
         return new Response("unexpected request", { status: 500 })
       })
       const headless = (await XaiAuthPlugin({} as any, serverOptions(server))).auth!.methods.find(
-        (m): m is Extract<typeof m, { type: "oauth" }> =>
-          m.type === "oauth" && m.label === "xAI Grok OAuth (Headless / Remote / VPS)",
+        (m): m is Extract<typeof m, { type: "oauth" }> => m.type === "oauth" && m.label === "SuperGrok Subscription",
       )!
       expect((await headless.authorize!()).url).toBe("https://x.ai/device")
     })
@@ -488,6 +478,7 @@ describe("plugin.xai", () => {
       expect(parsed.get("scope")).toContain("offline_access")
       expect(parsed.get("scope")).toContain("grok-cli:access")
       expect(parsed.get("scope")).toContain("api:access")
+      expect(parsed.get("referrer")).toBe("opencode")
       await expect(
         requestDeviceCode({ deviceAuthorizationUrl: new URL("/error", server.url).toString() }),
       ).rejects.toThrow(/429.*rate limited/)
@@ -625,8 +616,7 @@ describe("plugin.xai", () => {
         return Response.json({ error: "access_denied" }, { status: 400 })
       })
       const headless = (await XaiAuthPlugin({} as any, serverOptions(server))).auth!.methods.find(
-        (m): m is Extract<typeof m, { type: "oauth" }> =>
-          m.type === "oauth" && m.label === "xAI Grok OAuth (Headless / Remote / VPS)",
+        (m): m is Extract<typeof m, { type: "oauth" }> => m.type === "oauth" && m.label === "SuperGrok Subscription",
       )!
       expect(await ((await headless.authorize!()) as any).callback()).toEqual({ type: "failed" })
     })

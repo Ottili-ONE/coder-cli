@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { open } from "node:fs/promises"
+import { nativeT } from "./native-translations"
 
 export const ATTACHMENT_LIMIT_MB = 20
 export const MAX_ATTACHMENT_BYTES = ATTACHMENT_LIMIT_MB * 1024 * 1024
@@ -19,7 +20,7 @@ export function createPickedFileAuthorizations(
     async read(sender: number, token: string, path: string) {
       const selection = selections.get(token)
       if (selection?.sender !== sender || !selection.paths.delete(path))
-        throw new Error("File was not selected by the picker")
+        throw new Error(nativeT("desktop.picker.error.notSelected"))
       const bytes = await read(path, selection.remaining)
       selection.remaining -= bytes.byteLength
       if (selection.paths.size === 0) selections.delete(token)
@@ -34,7 +35,7 @@ export function createPickedFileAuthorizations(
 export function assertAttachmentBudget(files: { size: number }[]) {
   const total = files.reduce((sum, file) => sum + file.size, 0)
   if (total <= MAX_ATTACHMENT_BYTES) return
-  throw new Error(`Selected attachments exceed the ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB limit`)
+  throw new Error(nativeT("desktop.picker.error.sizeLimit", { limit: MAX_ATTACHMENT_BYTES / 1024 / 1024 }))
 }
 
 export async function readAttachment(filePath: string, maxBytes = MAX_ATTACHMENT_BYTES) {
@@ -42,7 +43,7 @@ export async function readAttachment(filePath: string, maxBytes = MAX_ATTACHMENT
   try {
     const info = await file.stat()
     if (info.size > maxBytes)
-      throw new Error(`Selected attachments exceed the ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB limit`)
+      throw new Error(nativeT("desktop.picker.error.sizeLimit", { limit: MAX_ATTACHMENT_BYTES / 1024 / 1024 }))
     const bytes = Buffer.allocUnsafe(info.size)
     let offset = 0
     while (offset < info.size) {

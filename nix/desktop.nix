@@ -9,6 +9,8 @@
   writableTmpDirAsHomeHook,
   autoPatchelfHook,
   ottili-coder,
+  copyDesktopItems,
+  makeDesktopItem,
 }:
 let
   electron = electron_41;
@@ -29,6 +31,7 @@ stdenv.mkDerivation (finalAttrs: {
     writableTmpDirAsHomeHook
   ] ++ lib.optionals stdenv.hostPlatform.isLinux [
     autoPatchelfHook
+    copyDesktopItems
   ] ++ lib.optionals stdenv.hostPlatform.isDarwin [
     # Ad-hoc sign the .app: --config.mac.identity=null below skips signing.
     darwin.autoSignDarwinBinariesHook
@@ -38,20 +41,39 @@ stdenv.mkDerivation (finalAttrs: {
     (lib.getLib stdenv.cc.cc)
   ];
 
+  desktopItems = lib.optional stdenv.hostPlatform.isLinux (makeDesktopItem {
+    name = "ai.ottili-coder.desktop";
+    desktopName = "Ottili Coder";
+    exec = "ottili-coder-desktop %U";
+    icon = "ai.ottili-coder.desktop";
+    # Electron 41 derives X11 WM_CLASS from app.name.
+    startupWMClass = "Ottili Coder";
+    categories = [ "Development" ];
+  });
+
   env = ottili-coder.env // {
     ELECTRON_SKIP_BINARY_DOWNLOAD = "1";
   };
 
   # https://github.com/electron/electron/issues/31121
   # mac builds use a .app bundle which doesnt have this issue
-  postPatch = lib.optionalString stdenv.isLinux ''
-    BASE_PATH=packages/desktop
-    FILES=(src/main/windows.ts)
-    for file in "''${FILES[@]}"; do
-      substituteInPlace $BASE_PATH/$file \
-        --replace-fail "process.resourcesPath" "'$out/opt/ottili-coder-desktop/resources'"
-    done
-  '';
+  postPatch =
+    # NOTE: Relax Bun version check to be a warning instead of an error
+    ''
+      substituteInPlace packages/script/src/index.ts \
+        --replace-fail 'throw new Error(`This script requires bun@''${expectedBunVersionRange}' \
+                       'console.warn(`Warning: This script requires bun@''${expectedBunVersionRange}'
+    ''
+    # https://github.com/electron/electron/issues/31121
+    # mac builds use a .app bundle which doesnt have this issue
+    + lib.optionalString stdenv.isLinux ''
+      BASE_PATH=packages/desktop
+      FILES=(src/main/windows.ts)
+      for file in "''${FILES[@]}"; do
+        substituteInPlace $BASE_PATH/$file \
+          --replace-fail "process.resourcesPath" "'$out/opt/ottili-coder-desktop/resources'"
+      done
+    '';
 
   preBuild = ''
     cp -r "${electron.dist}" $HOME/.electron-dist
@@ -88,11 +110,23 @@ stdenv.mkDerivation (finalAttrs: {
     + lib.optionalString stdenv.hostPlatform.isLinux ''
       mkdir -p $out/opt/ottili-coder-desktop
       cp -r dist/linux*-unpacked/{resources,LICENSE*} $out/opt/ottili-coder-desktop
+      install -Dm644 resources/icons/32x32.png \
+        "$out/share/icons/hicolor/32x32/apps/ai.ottili-coder.desktop.png"
+      install -Dm644 resources/icons/64x64.png \
+        "$out/share/icons/hicolor/64x64/apps/ai.ottili-coder.desktop.png"
+      install -Dm644 resources/icons/128x128.png \
+        "$out/share/icons/hicolor/128x128/apps/ai.ottili-coder.desktop.png"
+      install -Dm644 resources/icons/128x128@2x.png \
+        "$out/share/icons/hicolor/256x256/apps/ai.ottili-coder.desktop.png"
+      install -Dm644 resources/icons/icon.png \
+        "$out/share/icons/hicolor/512x512/apps/ai.ottili-coder.desktop.png"
+      install -Dm644 resources/ai.ottili-coder.desktop.metainfo.xml \
+        "$out/share/metainfo/ai.ottili-coder.desktop.metainfo.xml"
       makeWrapper ${lib.getExe electron} $out/bin/ottili-coder-desktop \
-        --inherit-argv0 \
-        --set ELECTRON_FORCE_IS_PACKAGED 1 \
-        --add-flags $out/opt/ottili-coder-desktop/resources/app.asar \
-        --add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--ozone-platform-hint=auto --enable-features=WaylandWindowDecorations --enable-wayland-ime=true}}"
+       --inherit-argv0 \
+       --set ELECTRON_FORCE_IS_PACKAGED 1 \
+       --add-flags $out/opt/ottili-coder-desktop/resources/app.asar \
+       --add-flags "\''${NIXOS_OZONE_WL:+\''${WAYLAND_DISPLAY:+--ozone-platform-hint=auto --enable-features=WaylandWindowDecorations --enable-wayland-ime=true}}"
     ''
     + ''
       runHook postInstall

@@ -1,6 +1,6 @@
 {
   "name": "@opencode-ai/enterprise",
-  "version": "1.0.0",
+  "version": "1.18.18",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@opencode-ai/core": "workspace:*",
+    "@opencode-ai/session-ui": "workspace:*",
     "@opencode-ai/ui": "workspace:*",
     "aws4fetch": "^1.0.20",
     "@pierre/diffs": "catalog:",
@@ -27,7 +28,8 @@
     "luxon": "catalog:",
     "nitro": "3.0.1-alpha.1",
     "solid-js": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "marked-katex-extension": "5.1.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",

@@ -1,5 +1,5 @@
-import { FetchHttpClient } from "effect/unstable/http"
-import { Layer } from "effect"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { Database } from "@opencode-ai/core/database/database"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Auth } from "../../src/auth"

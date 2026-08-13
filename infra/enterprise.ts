@@ -7,6 +7,7 @@ new sst.cloudflare.x.SolidStart("Teams", {
   domain: shortDomain,
   path: "packages/enterprise",
   buildCommand: "bun run build:cloudflare",
+  link: [SECRET.SupportApiKey],
   environment: {
     OTTILI_CODER_STORAGE_ADAPTER: "r2",
     OTTILI_CODER_STORAGE_ACCOUNT_ID: sst.cloudflare.DEFAULT_ACCOUNT_ID,

@@ -130,7 +130,7 @@ export function toConfig(input: Info): ConfigPermissionV1.Info {
   const active = input.active ?? "standard"
   const out = categoriesToConfig(BuiltInProfileCategories(active))
   if (active === "read-only" || active === "standard" || active === "trusted") return out
-  const custom = input.custom?.[active]
+  const custom = input.custom?.[active as Name]
   if (!custom) return out
   const base = custom.base ? categoriesToConfig(BuiltInProfileCategories(custom.base)) : {}
   return { ...base, ...categoriesToConfig(custom.categories) }

@@ -8,7 +8,7 @@ import { TextField } from "@opencode-ai/ui/text-field"
 import { showToast } from "@/utils/toast"
 import { batch, For } from "solid-js"
 import { createStore, produce } from "solid-js/store"
-import { Link } from "@/components/link"
+import { ExternalLink as Link } from "@/components/external-link"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
@@ -122,7 +122,7 @@ export function DialogCustomProvider(props: Props) {
       const nextDisabled = disabledProviders.filter((id) => id !== result.providerID)
 
       if (result.key) {
-        await serverSDK.client.auth.set({
+        await serverSDK().client.auth.set({
           providerID: result.providerID,
           auth: {
             type: "api",

@@ -397,7 +397,7 @@ export default function Layout(props: ParentProps) {
         alertedAtBySession.delete(sessionKey)
       }
 
-      const unsub = serverSDK.event.listen((e) => {
+      const unsub = serverSDK().event.listen((e) => {
         if (e.details?.type === "worktree.ready") {
           setBusy(e.name, false)
           WorktreeState.ready(serverSDK.scope, e.name)
@@ -407,7 +407,7 @@ export default function Layout(props: ParentProps) {
         if (e.details?.type === "worktree.failed") {
           setBusy(e.name, false)
           WorktreeState.failed(
-            serverSDK.scope,
+            serverSDK().scope,
             e.name,
             e.details.properties?.message ?? language.t("common.requestFailed"),
           )
@@ -683,7 +683,7 @@ export default function Layout(props: ParentProps) {
 
   createEffect(() => {
     route()
-    serverSDK.url
+    serverSDK().url
 
     prefetchToken.value += 1
     clearSessionPrefetchInflight(serverSDK.scope)
@@ -733,11 +733,11 @@ export default function Layout(props: ParentProps) {
     const [store, setStore] = serverSync.child(directory, { bootstrap: false })
 
     return runSessionPrefetch({
-      scope: serverSDK.scope,
+      scope: serverSDK().scope,
       directory,
       sessionID,
       task: (rev) =>
-        retry(() => serverSDK.client.session.messages({ directory, sessionID, limit: prefetchChunk }))
+        retry(() => serverSDK().client.session.messages({ directory, sessionID, limit: prefetchChunk }))
           .then((messages) => {
             if (prefetchToken.value !== token) return
             if (!isSessionPrefetchCurrent(serverSDK.scope, directory, sessionID, rev)) return
@@ -779,7 +779,7 @@ export default function Layout(props: ParentProps) {
               }
 
               setStore("message", sessionID, reconcile(merged, { key: "id" }))
-              setSessionPrefetch({ scope: serverSDK.scope, directory, sessionID, ...meta })
+              setSessionPrefetch({ scope: serverSDK().scope, directory, sessionID, ...meta })
 
               for (const message of items) {
                 const currentParts = store.part[message.info.id] ?? []
@@ -970,7 +970,7 @@ export default function Layout(props: ParentProps) {
     const index = sessions.findIndex((s) => s.id === session.id)
     const nextSession = sessions[index + 1] ?? sessions[index - 1]
 
-    await serverSDK.client.session.update({
+    await serverSDK().client.session.update({
       directory: session.directory,
       sessionID: session.id,
       time: { archived: Date.now() },
@@ -1293,7 +1293,7 @@ export default function Layout(props: ParentProps) {
     }
     const refreshDirs = async (target?: string) => {
       if (!target || target === root || canOpen(target)) return canOpen(target)
-      const listed = await serverSDK.client.worktree
+      const listed = await serverSDK().client.worktree
         .list({ directory: root })
         .then((x) => x.data ?? [])
         .catch(() => [] as string[])
@@ -1308,7 +1308,7 @@ export default function Layout(props: ParentProps) {
         navigateWithSidebarReset(`/${base64Encode(target.directory)}/session/${target.id}`)
         return true
       }
-      const resolved = await serverSDK.client.session
+      const resolved = await serverSDK().client.session
         .get({ sessionID: target.id })
         .then((x) => x.data)
         .catch(() => undefined)
@@ -1339,7 +1339,7 @@ export default function Layout(props: ParentProps) {
       await Promise.all(
         dirs.map(async (item) => ({
           path: { directory: item },
-          session: await serverSDK.client.session
+          session: await serverSDK().client.session
             .list({ directory: item })
             .then((x) => x.data ?? [])
             .catch(() => []),
@@ -1402,7 +1402,7 @@ export default function Layout(props: ParentProps) {
     const name = next === getFilename(project.worktree) ? "" : next
 
     if (project.id && project.id !== "global") {
-      await serverSDK.client.project.update({ projectID: project.id, directory: project.worktree, name })
+      await serverSDK().client.project.update({ projectID: project.id, directory: project.worktree, name })
       return
     }
 
@@ -1495,7 +1495,7 @@ export default function Layout(props: ParentProps) {
 
     setBusy(directory, true)
 
-    const result = await serverSDK.client.worktree
+    const result = await serverSDK().client.worktree
       .remove({ directory: root, worktreeRemoveInput: { directory } })
       .then((x) => x.data)
       .catch((err) => {
@@ -1553,7 +1553,7 @@ export default function Layout(props: ParentProps) {
     })
     const dismiss = () => toaster.dismiss(progress)
 
-    const sessions: Session[] = await serverSDK.client.session
+    const sessions: Session[] = await serverSDK().client.session
       .list({ directory })
       .then((x) => x.data ?? [])
       .catch(() => [])
@@ -1562,11 +1562,11 @@ export default function Layout(props: ParentProps) {
       directory,
       sessions.map((s) => s.id),
       platform,
-      serverSDK.scope,
+      serverSDK().scope,
     )
-    await serverSDK.client.instance.dispose({ directory }).catch(() => undefined)
+    await serverSDK().client.instance.dispose({ directory }).catch(() => undefined)
 
-    const result = await serverSDK.client.worktree
+    const result = await serverSDK().client.worktree
       .reset({ directory: root, worktreeResetInput: { directory } })
       .then((x) => x.data)
       .catch((err) => {
@@ -1588,7 +1588,7 @@ export default function Layout(props: ParentProps) {
       sessions
         .filter((session) => session.time.archived === undefined)
         .map((session) =>
-          serverSDK.client.session
+          serverSDK().client.session
             .update({
               sessionID: session.id,
               directory: session.directory,
@@ -1629,7 +1629,7 @@ export default function Layout(props: ParentProps) {
     })
 
     onMount(() => {
-      serverSDK.client.vcs
+      serverSDK().client.vcs
         .status({ directory: props.directory })
         .then((x) => {
           const files = x.data ?? []
@@ -1688,7 +1688,7 @@ export default function Layout(props: ParentProps) {
     })
 
     const refresh = async () => {
-      const sessions = await serverSDK.client.session
+      const sessions = await serverSDK().client.session
         .list({ directory: props.directory })
         .then((x) => x.data ?? [])
         .catch(() => [])
@@ -1697,7 +1697,7 @@ export default function Layout(props: ParentProps) {
     }
 
     onMount(() => {
-      serverSDK.client.vcs
+      serverSDK().client.vcs
         .status({ directory: props.directory })
         .then((x) => {
           const files = x.data ?? []
@@ -1928,7 +1928,7 @@ export default function Layout(props: ParentProps) {
 
   const createWorkspace = async (project: LocalProject) => {
     clearSidebarHoverState()
-    const created = await serverSDK.client.worktree
+    const created = await serverSDK().client.worktree
       .create({ directory: project.worktree })
       .then((x) => x.data)
       .catch((err) => {

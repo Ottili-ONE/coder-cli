@@ -1,5 +1,5 @@
-import { DateTime, Effect } from "effect"
-import { PluginV2 } from "../../plugin"
+import { Effect } from "effect"
+import { define } from "../internal"
 import { ProviderV2 } from "../../provider"
 import { ModelV2 } from "../../model"
 
@@ -47,19 +47,17 @@ const OTTILI_MODELS: OtiliModelSpec[] = [
   },
 ]
 
-export const OttiliCoderPlugin = PluginV2.define({
-  id: PluginV2.ID.make("ottili-coder"),
-  effect: Effect.gen(function* () {
-    return {
-      "catalog.transform": Effect.fn(function* (evt) {
+export const OttiliCoderPlugin = define({
+  id: "ottili-coder",
+  effect: Effect.fn(function* (ctx) {
+    yield* ctx.catalog.transform(
+      Effect.fn(function* (evt) {
         let item = evt.provider.get(ProviderV2.ID.ottiliCoder)
 
         // Ensure the provider exists and points at the Ottili AI Platform.
         if (!item) {
           evt.provider.update(ProviderV2.ID.ottiliCoder, (provider) => {
             provider.name = "Ottili"
-            provider.env = ["OTTILI_CODER_API_KEY"]
-            provider.enabled = { via: "env", name: "OTTILI_CODER_API_KEY" }
             provider.api = {
               type: "aisdk",
               package: "@ai-sdk/openai-compatible",
@@ -70,16 +68,12 @@ export const OttiliCoderPlugin = PluginV2.define({
         }
 
         const hasKey = Boolean(
-          process.env.OTTILI_CODER_API_KEY ||
-            item.provider.env.some((env) => process.env[env]) ||
-            item.provider.request.body.apiKey ||
-            (item.provider.enabled && item.provider.enabled.via === "credential"),
+          process.env.OTTILI_CODER_API_KEY || item.provider.request.body.apiKey,
         )
 
         // Keep the provider pinned to the Ottili AI Platform and apply the
         // public-key fallback when no credential is configured.
         evt.provider.update(ProviderV2.ID.ottiliCoder, (provider) => {
-          provider.env = ["OTTILI_CODER_API_KEY"]
           provider.api = {
             type: "aisdk",
             package: "@ai-sdk/openai-compatible",
@@ -105,7 +99,7 @@ export const OttiliCoderPlugin = PluginV2.define({
               output: ["text/plain"],
             }
             draft.variants = []
-            draft.time.released = DateTime.makeUnsafe(Date.parse("2026-01-15").valueOf())
+            draft.time.released = Date.parse("2026-01-15")
             draft.cost = [{ input: spec.input, output: spec.output, cache: { read: 0, write: 0 } }]
             draft.status = "active"
             draft.enabled = hasKey
@@ -129,6 +123,6 @@ export const OttiliCoderPlugin = PluginV2.define({
           }
         }
       }),
-    }
+    )
   }),
 })

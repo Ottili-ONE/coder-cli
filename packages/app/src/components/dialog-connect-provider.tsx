@@ -11,7 +11,7 @@ import { TextField } from "@opencode-ai/ui/text-field"
 import { showToast } from "@/utils/toast"
 import { createEffect, createMemo, createResource, Match, onCleanup, onMount, Switch } from "solid-js"
 import { createStore, produce } from "solid-js/store"
-import { Link } from "@/components/link"
+import { ExternalLink as Link } from "@/components/external-link"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
@@ -54,7 +54,7 @@ export function DialogConnectProvider(props: { provider: string }) {
     async () => {
       const cached = serverSync.data.provider_auth[props.provider]
       if (cached) return cached
-      const res = await serverSDK.client.provider.auth()
+      const res = await serverSDK().client.provider.auth()
       if (!alive.value) return fallback()
       serverSync.set("provider_auth", res.data ?? {})
       return res.data?.[props.provider] ?? fallback()
@@ -158,7 +158,7 @@ export function DialogConnectProvider(props: { provider: string }) {
       }
       dispatch({ type: "auth.pending" })
       const start = Date.now()
-      await serverSDK.client.provider.oauth
+      await serverSDK().client.provider.oauth
         .authorize(
           {
             providerID: props.provider,
@@ -331,7 +331,7 @@ export function DialogConnectProvider(props: { provider: string }) {
   })
 
   async function complete() {
-    await serverSDK.client.global.dispose()
+    await serverSDK().client.global.dispose()
     dialog.close()
     showToast({
       variant: "success",
@@ -409,7 +409,7 @@ export function DialogConnectProvider(props: { provider: string }) {
       }
 
       setFormStore("error", undefined)
-      await serverSDK.client.auth.set({
+      await serverSDK().client.auth.set({
         providerID: props.provider,
         auth: {
           type: "api",
@@ -480,7 +480,7 @@ export function DialogConnectProvider(props: { provider: string }) {
       }
 
       setFormStore("error", undefined)
-      const result = await serverSDK.client.provider.oauth
+      const result = await serverSDK().client.provider.oauth
         .callback({
           providerID: props.provider,
           method: store.methodIndex,
@@ -533,7 +533,7 @@ export function DialogConnectProvider(props: { provider: string }) {
 
     onMount(() => {
       void (async () => {
-        const result = await serverSDK.client.provider.oauth
+        const result = await serverSDK().client.provider.oauth
           .callback({
             providerID: props.provider,
             method: store.methodIndex,
