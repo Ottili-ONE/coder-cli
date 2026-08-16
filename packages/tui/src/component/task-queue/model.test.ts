@@ -20,6 +20,7 @@ import {
   visibleTaskIds,
   groupTasks,
   type TaskInput,
+  type Task,
 } from "./model"
 
 function task(id: string, overrides: Partial<TaskInput> = {}): Task {

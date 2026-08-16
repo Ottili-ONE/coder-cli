@@ -25,6 +25,8 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { buildPrompt } from "@opencode-ai/core/session/compaction"
 import { SessionCompactionEvent } from "@opencode-ai/schema/session-compaction-event"
+import { SessionEvent } from "@opencode-ai/core/session/event"
+import { SessionMessage } from "@opencode-ai/schema/session-message"
 
 export const Event = SessionCompactionEvent
 
@@ -476,7 +478,7 @@ const layer = Layer.effect(
       let executionModelID = userMessage.model.modelID
       if (OttiliAuto.isOttiliAutoModel(executionProviderID, executionModelID)) {
         const autoProvider = yield* provider.getProvider(ProviderV2.ID.make("ottili-auto")).pipe(
-          Effect.catchAll(() => Effect.succeed(undefined)),
+          Effect.catch(() => Effect.succeed(undefined)),
         )
         const resolved = yield* Effect.tryPromise({
           try: () =>
@@ -490,7 +492,7 @@ const layer = Layer.effect(
             ),
           catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
         }).pipe(
-          Effect.catchAll(() =>
+          Effect.catch(() =>
             Effect.sync(() =>
               OttiliAuto.resolveExecutionTargetSync({
                 agent: userMessage.agent,
@@ -730,14 +732,12 @@ const layer = Layer.effect(
     // cancellation (busy) and headless status reporting.
     const registry = MutableHashMap.empty<SessionID, CompactionStatus>()
 
-    const store = Effect.fnUntraced(function store(status: CompactionStatus) {
+    const store = (status: CompactionStatus) => {
       MutableHashMap.set(registry, status.sessionID, status)
       return status
-    })
+    }
 
-    const current = Effect.fnUntraced(function current(sessionID: SessionID) {
-      return Option.getOrUndefined(MutableHashMap.get(registry, sessionID))
-    })
+    const current = (sessionID: SessionID) => Option.getOrUndefined(MutableHashMap.get(registry, sessionID))
 
     // Admission contract: validates conflict/idempotency, admits a compaction
     // user-message, records in-flight status, and returns the versioned status.
@@ -745,7 +745,7 @@ const layer = Layer.effect(
     // free of SessionPrompt and avoids a circular layer dependency.
     const request = Effect.fn("SessionCompaction.request")(function* (input: CompactionInput) {
       const now = Date.now()
-      const existing = yield* current(input.sessionID)
+      const existing = current(input.sessionID)
       if (existing && (existing.state === "running" || existing.state === "pending")) {
         if (input.force) {
           yield* Effect.logWarning("compaction conflict overridden by force", { sessionID: input.sessionID })
@@ -805,7 +805,7 @@ const layer = Layer.effect(
       summaryMessageID?: MessageID
       error?: string
     }) {
-      const existing = yield* current(input.sessionID)
+      const existing = current(input.sessionID)
       const next: CompactionStatus = {
         version: CompactionOutputVersion,
         sessionID: input.sessionID,
@@ -827,7 +827,7 @@ const layer = Layer.effect(
 
     const status = Effect.fn("SessionCompaction.status")(function* (input: { sessionID: SessionID }) {
       return (
-        (yield* current(input.sessionID)) ?? {
+        current(input.sessionID) ?? {
           version: CompactionOutputVersion,
           sessionID: input.sessionID,
           state: "idle" as const,

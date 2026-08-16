@@ -27,6 +27,7 @@ import path from "node:path"
 import { TestLLMServer } from "./llm-server"
 import { testProviderConfig } from "./test-provider"
 import { it } from "./effect"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 
 const ottiliCoderRoot = path.resolve(import.meta.dir, "../../")
 const cliEntry = path.join(ottiliCoderRoot, "src/index.ts")
@@ -408,7 +409,7 @@ export function withCliFixture<A, E>(
     // and hit endpoints on `ottiliCoder.serve()` without rolling their own fetch.
   }).pipe(
     Effect.provide(
-      Layer.mergeAll(TestLLMServer.layer, FetchHttpClient.layer, FSUtil.defaultLayer, AppProcess.defaultLayer),
+      Layer.mergeAll(TestLLMServer.layer, FetchHttpClient.layer, LayerNode.compile(FSUtil.node), LayerNode.compile(AppProcess.node)),
     ),
   )
 }

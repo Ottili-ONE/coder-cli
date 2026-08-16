@@ -1,32 +1,46 @@
 {
   "$schema": "https://v2-8-13.turborepo.dev/schema.json",
-  "globalEnv": ["CI", "OTTILI_CODER_DISABLE_SHARE"],
-  "globalPassThroughEnv": ["CI", "OTTILI_CODER_DISABLE_SHARE"],
+  "globalEnv": [
+    "CI",
+    "OTTILI_CODER_DISABLE_SHARE"
+  ],
+  "globalPassThroughEnv": [
+    "CI",
+    "OTTILI_CODER_DISABLE_SHARE"
+  ],
   "tasks": {
     "typecheck": {},
     "build": {
       "dependsOn": [],
-      "outputs": ["dist/**"]
+      "outputs": [
+        "dist/**"
+      ]
     },
     "ottili-coder#test": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": [],
-      "passThroughEnv": ["*"]
+      "passThroughEnv": [
+        "*"
+      ]
     },
     "@opencode-ai/core#test": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
-    "@opencode-ai/app#test": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": []
     },
     "@opencode-ai/ui#test": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": []
     },
     "@opencode-ai/session-ui#test": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": []
     }
   }

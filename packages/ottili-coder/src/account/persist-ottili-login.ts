@@ -1,6 +1,6 @@
 import { Effect, Option } from "effect"
 import { AccountRepo } from "./repo"
-import { AccountID, OrgID } from "./schema"
+import { AccessToken, AccountID, OrgID, RefreshToken } from "./schema"
 import { ottiliOneServiceUrl, type OttiliOneLoginResult } from "./ottili-one"
 
 export const persistOttiliOneLogin = Effect.fn("Account.persistOttiliOneLogin")(function* (
@@ -13,8 +13,8 @@ export const persistOttiliOneLogin = Effect.fn("Account.persistOttiliOneLogin")(
     id: AccountID.make(String(result.user.user_id)),
     email: result.user.email ?? result.user.username,
     url: ottiliOneServiceUrl(result.authUrl),
-    accessToken: result.accessToken,
-    refreshToken: result.refreshToken,
+    accessToken: AccessToken.make(result.accessToken),
+    refreshToken: RefreshToken.make(result.refreshToken),
     expiry: result.expiresAt,
     orgID,
   })

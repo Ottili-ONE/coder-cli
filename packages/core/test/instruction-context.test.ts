@@ -4,6 +4,7 @@ import fs from "fs/promises"
 import path from "path"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { LayerNodePlatform } from "@opencode-ai/core/effect/app-node-platform"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Global } from "@opencode-ai/core/global"
 import { InstructionContext } from "@opencode-ai/core/instruction-context"
@@ -134,8 +135,16 @@ describe("InstructionContext", () => {
 
           const load = SystemContextRegistry.Service.pipe(
             Effect.flatMap((service) => service.load()),
-            Effect.provide(InstructionContext.layer.pipe(Layer.provideMerge(SystemContextRegistry.layer))),
-            Effect.provide(FSUtil.defaultLayer),
+            Effect.provide(
+              LayerNode.compile(
+                LayerNode.group([
+                  InstructionContext.node,
+                  SystemContextRegistry.node,
+                  FSUtil.node,
+                  LayerNodePlatform.filesystem,
+                ]),
+              ),
+            ),
             Effect.provide(Global.layerWith({ config: global })),
             Effect.provide(
               Layer.succeed(

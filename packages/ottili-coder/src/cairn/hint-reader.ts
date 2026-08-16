@@ -151,8 +151,8 @@ export const layer = Layer.effect(
   }),
 )
 
-export const defaultLayer = layer.pipe(Layer.provide(SessionMemory.defaultLayer))
+export const node = LayerNode.make({ service: Service, layer: layer, deps: [SessionMemory.node] })
 
-export const node = LayerNode.make(layer, [SessionMemory.node])
+export const defaultLayer = LayerNode.compile(node)
 
 export * as HintReader from "./hint-reader"

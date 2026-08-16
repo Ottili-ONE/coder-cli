@@ -886,20 +886,6 @@ const layer = Layer.effect(
   }),
 )
 
-export const defaultLayer = layer.pipe(
-  Layer.provide(Auth.defaultLayer),
-  Layer.provide(Session.defaultLayer),
-  Layer.provide(SessionPrompt.defaultLayer),
-  Layer.provide(Cairn.defaultLayer),
-  Layer.provide(Project.defaultLayer),
-  Layer.provide(Vcs.defaultLayer),
-  Layer.provide(FSUtil.defaultLayer),
-  Layer.provide(Database.defaultLayer),
-  Layer.provide(EventV2Bridge.defaultLayer),
-  Layer.provide(FetchHttpClient.layer),
-  Layer.provide(RuntimeFlags.defaultLayer),
-)
-
 const TIMEOUT = 5000
 
 type HistoryEvent = {
@@ -976,5 +962,8 @@ export const node = LayerNode.make({
     Database.node,
   ],
 })
+
+/** Self-contained layer compiled from the node graph, for standalone use and tests. */
+export const defaultLayer = LayerNode.compile(node)
 
 export * as Workspace from "./workspace"

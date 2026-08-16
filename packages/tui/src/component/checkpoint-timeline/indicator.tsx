@@ -1,5 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import { Show } from "solid-js"
+import { CheckpointTimelineDialog } from "./dialog"
 import { useDialog } from "../../ui/dialog"
 import { useTheme } from "../../context/theme"
 import { useCheckpointTimeline } from "../../context/checkpoint"

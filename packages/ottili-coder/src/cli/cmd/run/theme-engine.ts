@@ -8,7 +8,7 @@
 //
 // Design contract: specs/tui/theme-engine.md (T-CLI-0216 / T-CLI-0217).
 import { RGBA, type TerminalColors } from "@opentui/core"
-import { allThemes, hasTheme, resolveTheme, resolveThemeName } from "@opencode-ai/tui/theme"
+import { allThemes, hasTheme, resolveTheme, resolveThemeName } from "@opencode-ai/tui/context/theme"
 import type { TuiThemeCurrent } from "@opencode-ai/plugin/tui"
 
 // ---------------------------------------------------------------------------

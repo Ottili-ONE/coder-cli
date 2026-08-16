@@ -1,6 +1,6 @@
-import { Clock, Context, Effect, Fiber, Layer, Schema } from "effect"
-import { TaskGraphState } from "./state"
-import { Graph, TaskNode, TaskStatus } from "./event"
+import { Cause, Clock, Context, Effect, Layer, Schema } from "effect"
+import { TaskGraphState, type Graph } from "./state"
+import { TaskNode, TaskStatus } from "./event"
 import { redactUnknown } from "@/util/redact"
 
 // Hardened executor for the Task graph planner.
@@ -57,7 +57,7 @@ export class InvalidConfigError extends Schema.TaggedErrorClass<InvalidConfigErr
 export const resolveConfig = (input: unknown): Effect.Effect<PlannerConfig, InvalidConfigError> =>
   Effect.gen(function* () {
     if (input == null || typeof input !== "object") return DEFAULT_CONFIG
-    const decoded = yield* Schema.decodeUnknownOption(PlannerConfig)(input).pipe(
+    const decoded = yield* Schema.decodeUnknownEffect(PlannerConfig)(input).pipe(
       Effect.mapError(() => new InvalidConfigError({ reason: "config failed schema validation" })),
     )
     return decoded ?? DEFAULT_CONFIG
@@ -132,8 +132,14 @@ export interface Interface {
     executor: TaskExecutor
     config?: unknown
     resumeGraphID?: string
-  }) => Effect.Effect<{ graph: Graph; metrics: PlannerMetrics }, CancelledError | TimeoutError | InvalidConfigError | TooManyNodesError>
-  readonly cancel: (input: { graphID: string; reason?: string }) => Effect.Effect<Graph>
+  }) => Effect.Effect<
+    { graph: Graph; metrics: PlannerMetrics },
+    CancelledError | TimeoutError | InvalidConfigError | TooManyNodesError | TaskGraphState.NotFoundError
+  >
+  readonly cancel: (input: {
+    graphID: string
+    reason?: string
+  }) => Effect.Effect<Graph, TaskGraphState.NotFoundError>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode-ai/TaskGraphPlanner") {}
@@ -256,13 +262,15 @@ export const layer = Layer.effect(
           finishedAt: now,
         })
       }).pipe(
-        Effect.catchAll((cause) =>
+        Effect.catchCause((cause) =>
           Effect.sync(() => {
+            const error = Cause.squash(cause)
             const message =
-              cause instanceof Error ? cause.message : typeof cause === "string" ? cause : "unknown error"
+              error instanceof Error ? error.message : typeof error === "string" ? error : "unknown error"
+            const redacted = redactUnknown({ message }) as { message?: unknown }
             return updateTask(input.graph, input.task.id, {
               status: (input.task.attempts ?? 0) + 1 >= input.config.maxRetries + 1 ? "failed" : "running",
-              error: String(redactUnknown({ message }).message),
+              error: String(redacted.message),
               finishedAt: Date.now(),
             })
           }),
@@ -278,10 +286,7 @@ export const layer = Layer.effect(
         executor: TaskExecutor
         config?: unknown
         resumeGraphID?: string
-      }): Effect.Effect<
-        { graph: Graph; metrics: PlannerMetrics },
-        CancelledError | TimeoutError | InvalidConfigError | TooManyNodesError
-      > {
+      }) {
         const config = yield* resolveConfig(input.config)
 
         const baseGraph = input.resumeGraphID

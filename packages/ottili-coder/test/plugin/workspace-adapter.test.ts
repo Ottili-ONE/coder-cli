@@ -25,17 +25,17 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 
 const noopBootstrapLayer = Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))
 const workspaceLayer = Workspace.layer.pipe(
-  Layer.provide(Auth.defaultLayer),
-  Layer.provide(Session.defaultLayer),
-  Layer.provide(SessionPrompt.defaultLayer),
-  Layer.provide(Cairn.defaultLayer),
-  Layer.provide(Project.defaultLayer),
-  Layer.provide(Vcs.defaultLayer),
+  Layer.provide(LayerNode.compile(Auth.node)),
+  Layer.provide(LayerNode.compile(Session.node)),
+  Layer.provide(LayerNode.compile(SessionPrompt.node)),
+  Layer.provide(LayerNode.compile(Cairn.node)),
+  Layer.provide(LayerNode.compile(Project.node)),
+  Layer.provide(LayerNode.compile(Vcs.node)),
   Layer.provide(FetchHttpClient.layer),
-  Layer.provide(Database.defaultLayer),
-  Layer.provide(EventV2Bridge.defaultLayer),
-  Layer.provide(FSUtil.defaultLayer),
-  Layer.provide(InstanceStore.defaultLayer.pipe(Layer.provide(noopBootstrapLayer))),
+  Layer.provide(LayerNode.compile(Database.node)),
+  Layer.provide(LayerNode.compile(EventV2Bridge.node)),
+  Layer.provide(LayerNode.compile(FSUtil.node)),
+  Layer.provide(LayerNode.compile(InstanceStore.node).pipe(Layer.provide(noopBootstrapLayer))),
   Layer.provide(RuntimeFlags.layer({ experimentalWorkspaces: true })),
 )
 const it = testEffect(

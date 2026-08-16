@@ -767,10 +767,13 @@ export const RunCommand = effectCmd({
         // to stdout/UI. `client` is passed explicitly because attach mode may
         // rebind the SDK to the session's directory after the subscription is
         // created, and replies issued from inside the loop must use that client.
+        // Hoisted out of `loop` so the non-interactive `finish()` below can read
+        // the task-graph outcome after the stream is drained.
+        let taskGraphFailed = false
+
         async function loop(client: OttiliCoderClient, events: Awaited<ReturnType<typeof sdk.event.subscribe>>) {
           const toggles = new Map<string, boolean>()
           let error: string | undefined
-          let taskGraphFailed = false
 
           for await (const event of events.stream) {
             if (
@@ -849,13 +852,13 @@ export const RunCommand = effectCmd({
 
             const eventType = event.type as string
             if (eventType.startsWith("taskgraph.")) {
-              if (event.properties.sessionID !== sessionID) continue
-              if (eventType === "taskgraph.complete") {
-                const status = event.properties.status as string
-                if (status === "failed") taskGraphFailed = true
-              }
+              // Task-graph events are Ottili-specific and not part of the SDK
+              // event union, so read them through an unknown-valued record.
+              const properties = event.properties as Record<string, unknown>
+              if (properties.sessionID !== sessionID) continue
+              if (eventType === "taskgraph.complete" && properties.status === "failed") taskGraphFailed = true
               if (eventType === "taskgraph.error") taskGraphFailed = true
-              emit(eventType, { ...event.properties })
+              emit(eventType, { ...properties })
               continue
             }
 
@@ -1057,6 +1060,7 @@ export async function runMini(input: MiniCommandInput) {
     continue: input.continue,
     session: input.session,
     fork: input.fork,
+    resume: undefined,
     share: undefined,
     model: input.model,
     agent: input.agent,

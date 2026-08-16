@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "1.0.5-beta",
+  "version": "1.0.11-beta",
   "name": "ottili-coder",
   "type": "module",
   "license": "MIT",

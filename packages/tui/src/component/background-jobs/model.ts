@@ -13,7 +13,7 @@
  * a state and return a new state, keeping the data flow deterministic.
  */
 
-import type { CloudJob } from "../util/cloud-api"
+import type { CloudJob } from "../../util/cloud-api"
 import type { Info as LocalJobInfo } from "@opencode-ai/core/background-job"
 
 export type JobSource = "local" | "cloud"

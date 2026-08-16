@@ -150,6 +150,7 @@ export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const memory = yield* SessionMemory.Service
+    const crash = yield* CrashResume.Service
 
     const read = Effect.fn("CairnCheckpoint.read")(function* (sessionId: string) {
       const content = yield* memory.read(sessionId, "CHECKPOINT.md")
@@ -250,12 +251,46 @@ export const layer = Layer.effect(
         lines.push("Re-read CHECKPOINT.md for full detail. Continue from next action.")
         return lines.join("\n")
       }),
+
+      // Durable crash-recovery envelope. The markdown checkpoint stays the
+      // human-readable source; the snapshot is the machine-readable copy that
+      // survives a hard crash. Failures are non-fatal for the caller.
+      captureSnapshot: Effect.fn("CairnCheckpoint.captureSnapshot")(function* (sessionId: string) {
+        const state = yield* read(sessionId)
+        if (!state) return
+        const recordedAt = nowIso()
+        yield* crash
+          .capture({
+            schemaVersion: "1",
+            sessionId,
+            mode: state.mode,
+            goal: state.goal,
+            sequence: yield* Clock.currentTimeMillis,
+            milestones: state.milestones.map((m) => ({ title: m.title, status: m.status, notes: m.notes })),
+            currentMilestone: state.currentMilestone,
+            nextAction: state.nextAction,
+            toolResults: [],
+            edits: [],
+            validations: [],
+            blockers: state.blockers,
+            recordedAt,
+          })
+          .pipe(Effect.ignore)
+      }),
+
+      heartbeat: Effect.fn("CairnCheckpoint.heartbeat")(function* (sessionId: string) {
+        yield* crash.heartbeat(sessionId).pipe(Effect.ignore)
+      }),
+
+      clearHeartbeat: Effect.fn("CairnCheckpoint.clearHeartbeat")(function* (sessionId: string) {
+        yield* crash.clearHeartbeat(sessionId).pipe(Effect.ignore)
+      }),
     })
   }),
 )
 
-export const defaultLayer = layer.pipe(Layer.provide(SessionMemory.defaultLayer))
+export const node = LayerNode.make({ service: Service, layer: layer, deps: [SessionMemory.node, CrashResume.node] })
 
-export const node = LayerNode.make(layer, [SessionMemory.node])
+export const defaultLayer = LayerNode.compile(node)
 
 export * as Checkpoint from "./checkpoint"

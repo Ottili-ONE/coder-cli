@@ -118,7 +118,6 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
           textColor={theme.text}
           focusedTextColor={theme.text}
           cursorColor={theme.text}
-          cursorStyle={tuiConfig.cursor}
         />
       </box>
       <box flexDirection="column">

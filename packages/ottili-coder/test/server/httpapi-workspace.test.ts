@@ -25,19 +25,19 @@ import { testEffect } from "../lib/effect"
 import { httpApiLayer, requestInDirectory } from "./httpapi-layer"
 
 const originalWorkspaces = Flag.OTTILI_CODER_EXPERIMENTAL_WORKSPACES
-const workspaceLayer = Workspace.defaultLayer.pipe(
-  Layer.provide(InstanceStore.defaultLayer),
-  Layer.provide(InstanceBootstrap.defaultLayer),
+const workspaceLayer = LayerNode.compile(Workspace.node).pipe(
+  Layer.provide(LayerNode.compile(InstanceStore.node)),
+  Layer.provide(LayerNode.compile(InstanceBootstrap.node)),
 )
 const it = testEffect(
   Layer.mergeAll(
-    Project.defaultLayer,
-    Session.defaultLayer,
+    LayerNode.compile(Project.node),
+    LayerNode.compile(Session.node),
     workspaceLayer,
-    InstanceStore.defaultLayer.pipe(Layer.provide(InstanceBootstrap.defaultLayer)),
-    Database.defaultLayer,
+    LayerNode.compile(InstanceStore.node).pipe(Layer.provide(LayerNode.compile(InstanceBootstrap.node))),
+    LayerNode.compile(Database.node),
     httpApiLayer,
-  ).pipe(Layer.provide(Ripgrep.defaultLayer)),
+  ).pipe(Layer.provide(LayerNode.compile(Ripgrep.node))),
 )
 const it = testEffect(Layer.mergeAll(appLayer, httpApiLayer))
 

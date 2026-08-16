@@ -159,7 +159,7 @@ export function TestResults(props: TestResultsProps) {
   const headerId = () => `test-results-${state().status}`
 
   return (
-    <box id="test-results" flexDirection="column" width={width()} selectable>
+    <box id="test-results" flexDirection="column" width={width()}>
       <text id={headerId()} live>
         {summary()}
         <Show when={ctx().running && state().status !== "loading"}>
@@ -184,10 +184,9 @@ export function TestResults(props: TestResultsProps) {
               return (
                 <box
                   id={`test-row-${test.id}`}
-                  selectable
                   flexDirection="row"
                   gap={1}
-                  flexWrap="nowrap"
+                  flexWrap="no-wrap"
                   backgroundColor={isSelected() ? theme.backgroundElement : theme.background}
                 >
                   <text>{isSelected() ? "> " : "  "}</text>

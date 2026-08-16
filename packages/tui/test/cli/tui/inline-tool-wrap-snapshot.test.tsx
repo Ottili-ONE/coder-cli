@@ -13,7 +13,6 @@ import {
   parseQuestionAnswers,
   parseQuestions,
   parseTodos,
-  alwaysSeparate,
   toolDisplay,
 } from "../../../src/routes/session"
 
@@ -55,7 +54,6 @@ const tools: readonly ToolFixture[] = [
 function ShellOutput() {
   return (
     <box
-      ref={(el: BoxRenderable) => alwaysSeparate.add(el)}
       marginTop={1}
       paddingTop={1}
       paddingBottom={1}
@@ -72,7 +70,7 @@ function ShellOutput() {
 
 function UserMessage() {
   return (
-    <box ref={(el: BoxRenderable) => alwaysSeparate.add(el)}>
+    <box>
       <box paddingTop={1} paddingBottom={1} paddingLeft={2}>
         <text>Check whether the next tool remains separated.</text>
       </box>
@@ -111,10 +109,10 @@ function TaskRowsFixture() {
       <InlineToolRow icon="✱" complete={true} pending="">
         Grep "Task" (2 matches)
       </InlineToolRow>
-      <InlineToolRow icon="⠙" complete={true} pending="" separate={true}>
+      <InlineToolRow icon="⠙" complete={true} pending="" separateAfter={() => true}>
         Explore Task — Inspect active task spacing
       </InlineToolRow>
-      <InlineToolRow icon="✓" complete={true} pending="" separate={true}>
+      <InlineToolRow icon="✓" complete={true} pending="" separateAfter={() => true}>
         {"General Task — Confirm completed task spacing\n↳ 1 toolcall · 501ms"}
       </InlineToolRow>
       <InlineToolRow icon="→" complete={true} pending="">
@@ -133,7 +131,7 @@ function LoadedReadBeforeTaskFixture() {
       <box paddingLeft={3}>
         <text paddingLeft={3}>↳ Loaded src/cli/cmd/tui/routes/session/tools.tsx</text>
       </box>
-      <InlineToolRow icon="✓" complete={true} pending="" separate={true}>
+      <InlineToolRow icon="✓" complete={true} pending="" separateAfter={() => true}>
         {"Explore Task — Inspect active task spacing\n↳ 1 toolcall · 501ms"}
       </InlineToolRow>
     </box>
@@ -143,7 +141,7 @@ function LoadedReadBeforeTaskFixture() {
 function AssistantSummaryBeforeInlineFixture() {
   return (
     <box flexDirection="column" width={72}>
-      <box ref={(el: BoxRenderable) => alwaysSeparate.add(el)} paddingLeft={3}>
+      <box paddingLeft={3}>
         <text>▣ Build · Little Frank · 53.1s</text>
       </box>
       <InlineToolRow icon="✓" complete={true} pending="">
@@ -157,7 +155,6 @@ function AssistantErrorBeforeInlineFixture() {
   return (
     <box flexDirection="column" width={72}>
       <box
-        ref={(el: BoxRenderable) => alwaysSeparate.add(el)}
         border={["left"]}
         paddingTop={1}
         paddingBottom={1}
@@ -182,7 +179,7 @@ function StickyScrollFixture(props: { separated: boolean; scroll: (scroll: Scrol
         <text>Second row</text>
       </box>
       <Show when={props.separated}>
-        <box ref={(el: BoxRenderable) => alwaysSeparate.add(el)}>
+        <box>
           <text>Assistant text</text>
         </box>
       </Show>
@@ -195,7 +192,7 @@ function StickyScrollFixture(props: { separated: boolean; scroll: (scroll: Scrol
 
 function FailedPendingToolFixture() {
   return (
-    <InlineToolRow icon="%" complete={false} pending="Preparing patch..." failed={true} failure="Patch failed">
+    <InlineToolRow icon="%" complete={false} pending="Preparing patch..." failed={true} error="Patch failed">
       Patch
     </InlineToolRow>
   )
@@ -203,7 +200,7 @@ function FailedPendingToolFixture() {
 
 function FailedCompleteToolFixture() {
   return (
-    <InlineToolRow icon="→" complete={true} pending="Reading file..." failed={true} failure="Read failed">
+    <InlineToolRow icon="→" complete={true} pending="Reading file..." failed={true} error="Read failed">
       Read src/index.ts
     </InlineToolRow>
   )

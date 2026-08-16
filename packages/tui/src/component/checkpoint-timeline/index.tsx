@@ -30,6 +30,8 @@ export interface CheckpointTimelineProps {
   /** Copy the current resume point (nextAction) to the clipboard. */
   onCopyResume?: () => void
   onAction?: (action: CheckpointTimelineAction) => void
+  /** Optional fixed width; falls back to the terminal dimensions. */
+  width?: number
 }
 
 function accentColor(token: string, theme: ReturnType<typeof useTheme>["theme"]): RGBA {
@@ -163,12 +165,11 @@ export function CheckpointTimeline(props: CheckpointTimelineProps) {
             const focused = () => focusIndex() === i()
             const color = focused() ? theme.primary : accentColor(colorTokenFor(event), theme)
             return (
-              <box flexDirection="column">
+              <box flexDirection="column" title={`${event.kind}${event.status ? `, ${event.status}` : ""}${event.severity ? `, severity ${event.severity}` : ""}: ${event.title}${event.detail ? ` — ${event.detail}` : ""}`}>
                 <text
                   id={`checkpoint-event-${event.id}`}
                   fg={color}
                   attributes={focused() ? TextAttributes.BOLD : undefined}
-                  title={`${event.kind}${event.status ? `, ${event.status}` : ""}${event.severity ? `, severity ${event.severity}` : ""}: ${event.title}${event.detail ? ` — ${event.detail}` : ""}`}
                 >
                   {`${focused() ? "> " : "  "}${line()}`}
                 </text>

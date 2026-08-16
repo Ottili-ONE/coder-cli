@@ -4,6 +4,7 @@ import { Cause, Effect, Exit } from "effect"
 import type { MCP as MCPNS } from "../../src/mcp/index"
 import { McpCatalog } from "../../src/mcp/catalog"
 import { testEffect } from "../lib/effect"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 
 // --- Mock infrastructure ---
 
@@ -245,7 +246,7 @@ beforeEach(() => {
 const { MCP } = await import("../../src/mcp/index")
 const { McpOAuthCallback } = await import("../../src/mcp/oauth-callback")
 
-const it = testEffect(MCP.defaultLayer)
+const it = testEffect(LayerNode.compile(MCP.node))
 
 function statusName(status: Record<string, MCPNS.Status> | MCPNS.Status, server: string) {
   if ("status" in status) return status.status

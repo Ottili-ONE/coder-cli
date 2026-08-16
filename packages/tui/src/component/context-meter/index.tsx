@@ -9,6 +9,7 @@ import {
   contextMeterState,
   moveFocus,
   actionFor,
+  buildMeterBar,
   type ContextMeterAction,
   type ContextMeterContext,
   type ContextMeterMessage,
@@ -114,7 +115,10 @@ export function ContextMeter(props: ContextMeterProps) {
       case "return":
       case "enter":
       case "space":
-        props.onAction?.(actionFor(state().focusedKind))
+        {
+          const action = actionFor(state().focusedKind)
+          if (action) props.onAction?.(action)
+        }
         break
     }
   })
@@ -133,7 +137,7 @@ export function ContextMeter(props: ContextMeterProps) {
               state().focusIndex >= 0 && state().segments[state().focusIndex]?.kind === seg.kind
             const detail =
               seg.kind === "usage" && state().data?.usagePercent != null
-                ? `${buildMeterBar(state().data.usagePercent, 10)} ${seg.detail}`
+                ? `${buildMeterBar(state().data?.usagePercent, 10)} ${seg.detail}`
                 : seg.detail
             return (
               <text

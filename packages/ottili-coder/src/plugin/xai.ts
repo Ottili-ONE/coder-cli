@@ -1,9 +1,11 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 import { OAUTH_DUMMY_KEY } from "../auth"
+import { createServer } from "http"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
 
 // Public Grok-CLI OAuth client.
 const CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828"
+const AUTHORIZE_URL = "https://auth.x.ai/oauth2/authorize"
 const TOKEN_URL = "https://auth.x.ai/oauth2/token"
 // RFC 8628 device authorization grant. Confirmed exposed by xAI's
 // /.well-known/openid-configuration as `device_authorization_endpoint`
@@ -25,13 +27,46 @@ const DEVICE_CODE_SLOW_DOWN_INCREMENT_MS = 5_000
 const DEVICE_CODE_DEFAULT_EXPIRES_MS = 5 * 60 * 1000
 const OAUTH_POLLING_SAFETY_MARGIN_MS = 3_000
 
+// xAI rejects redirect_uris that don't match what was registered for the
+// Grok-CLI client. The host:port pair is part of the registration, so we have
+// to bind the loopback server to this exact port.
+const OAUTH_HOST = "127.0.0.1"
+const OAUTH_PORT = 56121
+const OAUTH_REDIRECT_PATH = "/callback"
+const REDIRECT_URI = `http://${OAUTH_HOST}:${OAUTH_PORT}${OAUTH_REDIRECT_PATH}`
+
 // Refresh the access token a little before it actually expires so a single
 // long-running tool call doesn't have to recover from a mid-flight 401.
 const ACCESS_TOKEN_REFRESH_SKEW_MS = 120_000
 
 interface XaiAuthPluginOptions {
+  authorizeUrl?: string
   tokenUrl?: string
   deviceAuthorizationUrl?: string
+}
+
+interface PkceCodes {
+  verifier: string
+  challenge: string
+}
+
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case "&":
+        return "&amp;"
+      case "<":
+        return "&lt;"
+      case ">":
+        return "&gt;"
+      case '"':
+        return "&quot;"
+      case "'":
+        return "&#39;"
+      default:
+        return char
+    }
+  })
 }
 
 interface TokenResponse {

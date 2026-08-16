@@ -13,7 +13,7 @@ import { testEffect } from "../lib/effect"
 // Skip tests if no API key is available
 const hasApiKey = !!process.env.ANTHROPIC_API_KEY
 const it = testEffect(
-  Layer.mergeAll(SessionPrompt.defaultLayer.pipe(Layer.provide(Cairn.defaultLayer)), Session.defaultLayer).pipe(Layer.provide(Ripgrep.defaultLayer)),
+  Layer.mergeAll(LayerNode.compile(SessionPrompt.node).pipe(Layer.provide(LayerNode.compile(Cairn.node))), LayerNode.compile(Session.node)).pipe(Layer.provide(LayerNode.compile(Ripgrep.node))),
 )
 const live = hasApiKey ? it.instance : it.instance.skip
 

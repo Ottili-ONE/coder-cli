@@ -132,7 +132,7 @@ export interface HookRunLog {
 /** Typed, actionable error returned when a hook fails under the "block" policy. */
 export class HookError extends Error {
   readonly event: HookEvent
-  readonly name: string
+  override readonly name: string
   readonly command: string
   readonly exitCode: number | null
   readonly timedOut: boolean
@@ -296,7 +296,7 @@ export async function runHookCommand(
   const [code, out, err] = await Promise.all([
     proc.exited,
     proc.stdout ? buffer(proc.stdout) : Promise.resolve(Buffer.alloc(0)),
-    proc.stderr ? buffer(pro.stderr) : Promise.resolve(Buffer.alloc(0)),
+    proc.stderr ? buffer(proc.stderr) : Promise.resolve(Buffer.alloc(0)),
   ]).catch((error: unknown) => {
     const message = errorMessage(error)
     return [1, Buffer.alloc(0), Buffer.from(message)] as const

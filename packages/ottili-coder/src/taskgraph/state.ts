@@ -1,8 +1,9 @@
 import path from "path"
-import { Clock, Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { Session } from "@/session/session"
-import { TaskNode, TaskStatus } from "./event"
+import { SessionID } from "@/session/schema"
+import { TaskNode } from "./event"
 
 // Durable task graph record. Persisted to disk so a planned graph survives
 // process / session boundaries; resume() reloads it and replays the pending
@@ -52,53 +53,35 @@ export class Service extends Context.Service<Service, Interface>()("@opencode-ai
 // graphID is derived from session+message in this runtime; resolve via session.
 const sessionOf = (graphID: string) => graphID.split(":")[0]
 
-const graphPath = (sessionID: string, slug?: string) =>
-  Effect.gen(function* () {
-    const instance = yield* InstanceState.context
-    const info = yield* Session.Service
-    const session = yield* info.get(sessionID)
-    const created = session.time?.created ?? Date.now()
-    const usedSlug = slug ?? session.slug ?? sessionID
-    return Session.taskgraph({ slug: usedSlug, time: { created } }, instance)
-  })
-
 const readGraph = (file: string) =>
   Effect.gen(function* () {
     const text = yield* Effect.tryPromise({
       try: () => Bun.file(file).text(),
       catch: (cause) => cause,
     })
-    return yield* Schema.decodeUnknown(GraphSchema)(JSON.parse(text)).pipe(
-      Effect.mapError(() => new NotFoundError({ graphID: path.basename(file) })),
-    )
-  })
+    return yield* Schema.decodeUnknownEffect(GraphSchema)(JSON.parse(text))
+  }).pipe(Effect.mapError(() => new NotFoundError({ graphID: path.basename(file) })))
 
 export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const state = yield* InstanceState.make<Record<string, string>>(Effect.succeed({} as Record<string, string>))
+    const sessions = yield* Session.Service
+    const state = yield* InstanceState.make<Record<string, string>>(() => Effect.succeed({} as Record<string, string>))
+
+    const graphPath = (sessionID: string, slug?: string) =>
+      Effect.gen(function* () {
+        const instance = yield* InstanceState.context
+        const session = yield* sessions.get(SessionID.make(sessionID))
+        const created = session.time?.created ?? Date.now()
+        const usedSlug = slug ?? session.slug ?? sessionID
+        return Session.taskgraph({ slug: usedSlug, time: { created } }, instance)
+      }).pipe(Effect.orDie)
 
     const resolvePath = (sessionID: string, slug?: string) =>
       Effect.gen(function* () {
         const cached = yield* InstanceState.use(state, (map) => map[sessionID])
         if (cached) return cached
         return yield* graphPath(sessionID, slug)
-      })
-
-    const persist = (sessionID: string, graph: Graph) =>
-      Effect.gen(function* () {
-        const target = yield* resolvePath(sessionID)
-        yield* Effect.tryPromise({
-          try: () => Bun.write(target, JSON.stringify(graph, null, 2)),
-          catch: (cause) => cause,
-        })
-        yield* InstanceState.useEffect(
-          state,
-          (map) =>
-            Effect.sync(() => {
-              map[sessionID] = target
-            }),
-        )
       })
 
     return Service.of({
@@ -109,16 +92,11 @@ export const layer = Layer.effect(
       write: ({ sessionID, graph, slug }) =>
         Effect.gen(function* () {
           const target = yield* resolvePath(sessionID, slug)
-          yield* Effect.tryPromise({
-            try: () => Bun.write(target, JSON.stringify(graph, null, 2)),
-            catch: (cause) => cause,
-          })
-          yield* InstanceState.useEffect(
-            state,
-            (map) =>
-              Effect.sync(() => {
-                map[sessionID] = target
-              }),
+          yield* Effect.promise(() => Bun.write(target, JSON.stringify(graph, null, 2)))
+          yield* InstanceState.useEffect(state, (map) =>
+            Effect.sync(() => {
+              map[sessionID] = target
+            }),
           )
           return { path: target }
         }),

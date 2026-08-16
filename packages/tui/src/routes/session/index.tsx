@@ -25,7 +25,7 @@ import { SplitBorder } from "../../ui/border"
 import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { Spinner } from "../../component/spinner"
 import { createSyntaxStyleMemo, generateSubtleSyntax, selectedForeground, useTheme } from "../../context/theme"
-import { BoxRenderable, ScrollBoxRenderable, addDefaultParsers, RGBA } from "@opentui/core"
+import { BoxRenderable, ScrollBoxRenderable, addDefaultParsers, RGBA, rgbToHex } from "@opentui/core"
 import { Prompt, type PromptRef } from "../../component/prompt"
 import type {
   AssistantMessage,
@@ -361,13 +361,13 @@ export function Session() {
     })
   })
   const compactStatusColors = createMemo<CompactStatusColors>(() => ({
-    error: theme.error,
-    warning: theme.warning,
-    info: theme.info,
-    success: theme.success,
-    text: theme.text,
-    textMuted: theme.textMuted,
-    borderSubtle: theme.borderSubtle,
+    error: rgbToHex(theme.error),
+    warning: rgbToHex(theme.warning),
+    info: rgbToHex(theme.info),
+    success: rgbToHex(theme.success),
+    text: rgbToHex(theme.text),
+    textMuted: rgbToHex(theme.textMuted),
+    borderSubtle: rgbToHex(theme.borderSubtle),
   }))
 
   // Performance safeguard (T-CLI-0210): when Compact mode is engaged and the

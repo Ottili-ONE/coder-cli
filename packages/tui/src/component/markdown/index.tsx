@@ -151,7 +151,7 @@ function renderBlock(
         <box flexDirection="column" gap={0}>
           <For each={block.items}>
             {(item, idx) => (
-              <box flexDirection="row" flexWrap="nowrap" alignItems="flex-start" gap={1}>
+              <box flexDirection="row" flexWrap="no-wrap" alignItems="flex-start" gap={1}>
                 <text fg={block.ordered ? theme.markdownListEnumeration : theme.markdownListItem} attributes={TextAttributes.BOLD}>
                   {block.ordered ? `${idx() + 1}.` : "•"}
                 </text>

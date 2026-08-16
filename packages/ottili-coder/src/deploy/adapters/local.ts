@@ -1,4 +1,4 @@
-import { DeployAdapter, DeployError, DeployKind, DeployResult, type DeployRequest } from "./adapter"
+import { DeployError, DeployResult, type DeployAdapter, type DeployKind, type DeployRequest } from "../adapter"
 import { Process } from "@/util/process"
 
 /**
@@ -25,6 +25,8 @@ const withRetry = async <T>(
   }
   throw last
 }
+
+const isDeployError = (e: unknown): e is DeployError => e instanceof DeployError
 
 const retryableStatus = (code: number) => code === 0 || code === 124
 
@@ -57,7 +59,7 @@ export class LocalAdapter implements DeployAdapter {
             abort: req.signal,
             timeout: 600_000,
           }),
-        (e) => e instanceof DeployError && e.kind !== "invalid-config",
+        (e) => isDeployError(e) && e.kind !== "invalid-config",
       )
       if (req.signal?.aborted) {
         throw new DeployError({ kind: "cancelled", message: "Local deployment was cancelled" })

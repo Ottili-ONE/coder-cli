@@ -34,6 +34,7 @@ import {
   RevertPayload,
   ShellPayload,
   CompactionPayload,
+  UpdatePayload,
 } from "../groups/session"
 import { PermissionNotFoundError } from "../errors"
 import * as SessionError from "./session-errors"
@@ -307,9 +308,8 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       if (admitted.error || inFlight) {
         return admitted
       }
-      const result = yield* promptSvc.loop({ sessionID }).pipe(Effect.fromResult)
-      const finished = yield* result.pipe(
-        Effect.match({
+      const finished = yield* promptSvc.loop({ sessionID }).pipe(
+        Effect.matchEffect({
           onFailure: (cause) =>
             compactSvc.complete({
               sessionID,

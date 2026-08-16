@@ -164,7 +164,7 @@ export function AgentRoster(props: AgentRosterProps) {
   })
 
   return (
-    <box id="agent-roster" flexDirection="column" width={width()} selectable>
+    <box id="agent-roster" flexDirection="column" width={width()}>
       <text id="agent-roster-status" live>
         {summary()}
       </text>
@@ -178,10 +178,9 @@ export function AgentRoster(props: AgentRosterProps) {
               return (
                 <box
                   id={`agent-row-${agent.name}`}
-                  selectable
                   flexDirection="row"
                   gap={1}
-                  flexWrap="nowrap"
+                  flexWrap="no-wrap"
                   backgroundColor={isSelected() ? theme.backgroundElement : theme.background}
                 >
                   <text>{isSelected() ? "> " : "  "}</text>

@@ -63,7 +63,6 @@ test("resolves host-neutral defaults", () => {
   expect(config.mouse).toBe(true)
   expect(config.keybinds.has("terminal.suspend")).toBe(true)
   expect(config.keybinds.has("session.list")).toBe(true)
-  expect(config.cursor).toBeUndefined()
 })
 
 test("resolves overrides without mutating input", () => {
@@ -80,7 +79,6 @@ test("resolves overrides without mutating input", () => {
       sounds: { question: "/sounds/question.wav" },
     },
     keybinds: { session_list: "ctrl+l" },
-    cursor: { blinking: false },
   }
   const config = resolve(input, { terminalSuspend: true })
 
@@ -89,7 +87,6 @@ test("resolves overrides without mutating input", () => {
     mouse: false,
     leader_timeout: 750,
     attention: input.attention,
-    cursor: { style: "block", blinking: false },
   })
   expect(config.keybinds.get("session.list")).toHaveLength(1)
   expect(input.keybinds).toEqual({ session_list: "ctrl+l" })

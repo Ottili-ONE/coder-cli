@@ -71,13 +71,13 @@ export function GitStatusBar(props: { api: TuiPluginApi }) {
             </text>
           </Show>
 
-          <Show when={data().conflict && data().conflict > 0}>
+          <Show when={(data().conflict ?? 0) > 0}>
             <text fg={theme().error} attributes={TextAttributes.BOLD}>
               ⚠{data().conflict}
             </text>
           </Show>
 
-          <Show when={data().worktree && data().worktree > 1}>
+          <Show when={(data().worktree ?? 0) > 1}>
             <text fg={theme().primary}>⑂{data().worktree}</text>
           </Show>
         </box>

@@ -1,18 +1,21 @@
-import { Effect, Schema } from "effect"
+import { Context, Effect, Layer, Option } from "effect"
 import { EventV2 } from "@opencode-ai/core/event"
+import { Database } from "@opencode-ai/core/database/database"
 import { InstanceState } from "@/effect/instance-state"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { SessionID, MessageID } from "@/session/schema"
 import { Command } from "@/command"
 import { MessageV2 } from "@/session/message-v2"
+import { Session } from "@/session/session"
+import { Permission } from "@/permission"
 import { ReviewState } from "./state"
 import { ReviewEvent } from "./event"
 
 const Severities = ["critical", "high", "medium", "low", "info"] as const
 
-const ScopeSchema = Schema.Literals(["uncommitted", "commit", "branch", "pr"])
+type Scope = "uncommitted" | "commit" | "branch" | "pr"
 
-function resolveScope(arguments_: string): (typeof Severities)[number] extends never ? never : "uncommitted" | "commit" | "branch" | "pr" {
+function resolveScope(arguments_: string): Scope {
   const arg = (arguments_ ?? "").trim().toLowerCase()
   if (arg.startsWith("pr") || arg.includes("pull") || /^\d+$/.test(arg)) return "pr"
   if (arg.startsWith("commit") || /^[0-9a-f]{6,40}$/i.test(arg)) return "commit"
@@ -24,7 +27,7 @@ interface ActiveReview {
   sessionID: SessionID
   messageID: MessageID
   target: string
-  scope: "uncommitted" | "commit" | "branch" | "pr"
+  scope: Scope
   startedAt: number
 }
 
@@ -62,7 +65,12 @@ function parseFindings(text: string) {
 }
 
 export interface Interface {
-  readonly review: (input: { sessionID: SessionID; messageID: MessageID; target: string; arguments: string }) => Effect.Effect<void>
+  readonly review: (input: {
+    sessionID: SessionID
+    messageID: MessageID
+    target: string
+    arguments: string
+  }) => Effect.Effect<void>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode-ai/ReviewAssistant") {}
@@ -71,20 +79,21 @@ export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const events = yield* EventV2Bridge.Service
-    const message = yield* MessageV2.Service
+    const state = yield* ReviewState.Service
+    const database = yield* Database.Service
 
-    const active = yield* InstanceState.make<Record<string, ActiveReview>>(Effect.succeed({}))
+    const active = yield* InstanceState.make<Record<string, ActiveReview>>(() => Effect.succeed({}))
 
     const key = (sessionID: SessionID, messageID: MessageID) => `${sessionID}:${messageID}`
 
     const publishStart = Effect.fn("ReviewAssistant.publishStart")(function* (review: ActiveReview) {
-      yield* events.publish(ReviewEvent.Start, {
+      yield* events.publish(ReviewEvent.Event.Start, {
         sessionID: review.sessionID,
         messageID: review.messageID,
         target: review.target,
         scope: review.scope,
       })
-      yield* ReviewState.Service.write({
+      yield* state.write({
         sessionID: review.sessionID,
         review: {
           target: review.target,
@@ -96,26 +105,27 @@ export const layer = Layer.effect(
     })
 
     const publishComplete = Effect.fn("ReviewAssistant.publishComplete")(function* (review: ActiveReview) {
-      const msg = yield* message.get({ sessionID: review.sessionID, messageID: review.messageID }).pipe(Effect.either)
-      const text = msg.pipe(
-        Effect.match({
-          onLeft: () => "",
-          onRight: (m) =>
-            m.parts
-              .filter((part): part is { type: "text"; text: string } => part.type === "text")
-              .map((part) => part.text)
-              .join("\n"),
-        }),
+      const message = yield* MessageV2.get({ sessionID: review.sessionID, messageID: review.messageID }).pipe(
+        Effect.provideService(Database.Service, database),
+        Effect.option,
       )
+      const text = Option.match(message, {
+        onNone: () => "",
+        onSome: (found) =>
+          found.parts
+            .filter((part): part is Extract<typeof part, { type: "text" }> => part.type === "text")
+            .map((part) => part.text)
+            .join("\n"),
+      })
       const findings = parseFindings(text)
-      const resultPath = yield* ReviewState.Service.path({ sessionID: review.sessionID }).pipe(Effect.orUndefined)
-      yield* events.publish(ReviewEvent.Complete, {
+      const resultPath = yield* state.path({ sessionID: review.sessionID })
+      yield* events.publish(ReviewEvent.Event.Complete, {
         sessionID: review.sessionID,
         messageID: review.messageID,
         ...(resultPath ? { resultPath } : {}),
         ...(findings.length ? { findings: findings.length } : {}),
       })
-      yield* ReviewState.Service.write({
+      yield* state.write({
         sessionID: review.sessionID,
         review: {
           target: review.target,
@@ -130,12 +140,12 @@ export const layer = Layer.effect(
     })
 
     const publishError = Effect.fn("ReviewAssistant.publishError")(function* (review: ActiveReview, error: string) {
-      yield* events.publish(ReviewEvent.Error, {
+      yield* events.publish(ReviewEvent.Event.Error, {
         sessionID: review.sessionID,
         messageID: review.messageID,
         error,
       })
-      yield* ReviewState.Service.write({
+      yield* state.write({
         sessionID: review.sessionID,
         review: {
           target: review.target,
@@ -156,86 +166,72 @@ export const layer = Layer.effect(
       yield* publishStart(review)
     })
 
-    const unsubscribe = yield* events.listen((event) => {
-      if (event.type === Command.Event.Executed.type) {
-        const data = event.data as EventV2.Data<typeof Command.Event.Executed>
-        if (data.name !== Command.Default.REVIEW) return Effect.void
-        const scope = resolveScope(data.arguments)
-        const target = data.arguments?.trim() || "uncommitted changes"
-        return track({
-          sessionID: data.sessionID,
-          messageID: data.messageID,
-          target,
-          scope,
-          startedAt: Date.now(),
-        })
-      }
+    const findBySession = (sessionID: SessionID) =>
+      InstanceState.use(active, (map) => Object.values(map).find((review) => review.sessionID === sessionID))
 
-      if (event.type === "message.updated") {
-        const data = event.data as EventV2.Data<typeof EventV2.unknown> & {
-          sessionID: SessionID
-          info: { role: string; time?: { completed?: number }; error?: unknown }
+    const handle = (event: EventV2.Payload): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        if (event.type === Command.Event.Executed.type) {
+          const data = event.data as EventV2.Data<typeof Command.Event.Executed>
+          if (data.name !== Command.Default.REVIEW) return
+          yield* track({
+            sessionID: data.sessionID,
+            messageID: data.messageID,
+            target: data.arguments?.trim() || "uncommitted changes",
+            scope: resolveScope(data.arguments),
+            startedAt: Date.now(),
+          })
+          return
         }
-        if (data.info.role !== "assistant" || !data.info.time?.completed) return Effect.void
-        return InstanceState.use(active, (map) => map[key(data.sessionID, data.info.id as MessageID)]).pipe(
-          Effect.flatMap((review) =>
-            review ? publishComplete(review) : Effect.void,
-          ),
-        )
-      }
 
-      if (event.type === "session.error") {
-        const data = event.data as EventV2.Data<typeof EventV2.unknown> & { sessionID?: SessionID; error?: unknown }
-        if (!data.sessionID || !data.error) return Effect.void
-        const review = yield* InstanceState.use(active, (map) =>
-          Object.values(map).find((review) => review.sessionID === data.sessionID),
-        )
-        if (!review) return Effect.void
-        const error = typeof data.error === "string" ? data.error : JSON.stringify(data.error)
-        return publishError(review, error)
-      }
-
-      if (event.type === "permission.asked") {
-        const data = event.data as EventV2.Data<typeof EventV2.unknown> & {
-          sessionID?: SessionID
-          id?: string
-          permission?: string
-          patterns?: string[]
+        if (event.type === MessageV2.Event.Updated.type) {
+          const data = event.data as EventV2.Data<typeof MessageV2.Event.Updated>
+          if (data.info.role !== "assistant" || !data.info.time?.completed) return
+          const review = yield* InstanceState.use(active, (map) => map[key(data.sessionID, data.info.id)])
+          if (!review) return
+          yield* publishComplete(review)
+          return
         }
-        if (!data.sessionID) return Effect.void
-        const review = yield* InstanceState.use(active, (map) =>
-          Object.values(map).find((review) => review.sessionID === data.sessionID),
-        )
-        if (!review) return Effect.void
-        return events.publish(ReviewEvent.Approval, {
-          sessionID: review.sessionID,
-          messageID: review.messageID,
-          tool: data.permission ?? "unknown",
-          allowed: false,
-        })
-      }
 
-      if (event.type === "permission.reply") {
-        const data = event.data as EventV2.Data<typeof EventV2.unknown> & {
-          sessionID?: SessionID
-          requestID?: string
-          reply?: string
+        if (event.type === Session.Event.Error.type) {
+          const data = event.data as EventV2.Data<typeof Session.Event.Error>
+          if (!data.sessionID || !data.error) return
+          const review = yield* findBySession(data.sessionID)
+          if (!review) return
+          const error = typeof data.error === "string" ? data.error : JSON.stringify(data.error)
+          yield* publishError(review, error)
+          return
         }
-        if (!data.sessionID) return Effect.void
-        const review = yield* InstanceState.use(active, (map) =>
-          Object.values(map).find((review) => review.sessionID === data.sessionID),
-        )
-        if (!review) return Effect.void
-        return events.publish(ReviewEvent.Approval, {
-          sessionID: review.sessionID,
-          messageID: review.messageID,
-          tool: data.requestID ?? "unknown",
-          allowed: data.reply === "always" || data.reply === "once",
-        })
-      }
 
-      return Effect.void
-    })
+        if (event.type === Permission.Event.Asked.type) {
+          const data = event.data as EventV2.Data<typeof Permission.Event.Asked>
+          if (!data.sessionID) return
+          const review = yield* findBySession(data.sessionID)
+          if (!review) return
+          yield* events.publish(ReviewEvent.Event.Approval, {
+            sessionID: review.sessionID,
+            messageID: review.messageID,
+            tool: data.permission ?? "unknown",
+            allowed: false,
+          })
+          return
+        }
+
+        if (event.type === Permission.Event.Replied.type) {
+          const data = event.data as EventV2.Data<typeof Permission.Event.Replied>
+          if (!data.sessionID) return
+          const review = yield* findBySession(data.sessionID)
+          if (!review) return
+          yield* events.publish(ReviewEvent.Event.Approval, {
+            sessionID: review.sessionID,
+            messageID: review.messageID,
+            tool: data.requestID ?? "unknown",
+            allowed: data.reply === "always" || data.reply === "once",
+          })
+        }
+      })
+
+    const unsubscribe = yield* events.listen(handle)
 
     yield* Effect.addFinalizer(() => unsubscribe)
 
@@ -252,4 +248,4 @@ export const layer = Layer.effect(
   }),
 )
 
-export * as ReviewAssistant from "."
+export * as ReviewAssistant from "./assistant"

@@ -130,7 +130,7 @@ export function Toast() {
               fallback={
                 <text
                   fg={theme[current.variant]}
-                  backgroundColor={theme.backgroundPanel}
+                  bg={theme.backgroundPanel}
                   marginBottom={1}
                   width={layout().maxWidth}
                 >
@@ -171,7 +171,7 @@ export function Toast() {
           )}
         </For>
         <Show when={toastWindow().hidden > 0}>
-          <text fg={theme.textMuted} backgroundColor={theme.backgroundPanel} paddingLeft={2} paddingRight={2} marginBottom={1}>
+          <text fg={theme.textMuted} bg={theme.backgroundPanel} paddingLeft={2} paddingRight={2} marginBottom={1}>
             {`+${toastWindow().hidden} more`}
           </text>
         </Show>

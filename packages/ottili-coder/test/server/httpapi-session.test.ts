@@ -39,9 +39,9 @@ import { testProviderConfig } from "../lib/test-provider"
 import { pollWithTimeout, testEffect } from "../lib/effect"
 
 const originalWorkspaces = Flag.OTTILI_CODER_EXPERIMENTAL_WORKSPACES
-const workspaceLayer = Workspace.defaultLayer.pipe(
-  Layer.provide(InstanceStore.defaultLayer),
-  Layer.provide(InstanceBootstrap.defaultLayer),
+const workspaceLayer = LayerNode.compile(Workspace.node).pipe(
+  Layer.provide(LayerNode.compile(InstanceStore.node)),
+  Layer.provide(LayerNode.compile(InstanceBootstrap.node)),
 )
 const appLayer = AppNodeBuilder.build(
   LayerNode.group([InstanceStore.node, Project.node, Session.node, Workspace.node, Database.node, Ripgrep.node]),

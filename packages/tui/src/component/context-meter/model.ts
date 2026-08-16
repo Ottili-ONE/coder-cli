@@ -591,3 +591,11 @@ export function actionFor(kind: ContextMeterSegmentKind | null): ContextMeterAct
       return null
   }
 }
+
+/** Render a fixed-width meter bar (filled/empty blocks) for a 0-100 percent. */
+export function buildMeterBar(percent: number | null | undefined, width = 10): string {
+  if (percent == null) return ""
+  const clamped = Math.max(0, Math.min(100, percent))
+  const filled = Math.max(0, Math.min(width, Math.round((clamped / 100) * width)))
+  return "█".repeat(filled) + "░".repeat(Math.max(0, width - filled))
+}

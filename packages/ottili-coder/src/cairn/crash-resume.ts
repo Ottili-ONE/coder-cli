@@ -125,10 +125,14 @@ function heartbeatPath(sessionId: string): string {
 }
 
 // Atomic write: serialize to a temp file then rename so a crash mid-write can
-// never leave a half-written snapshot behind.
-function atomicWriteString(fp: string, content: string): Effect.Effect<void, CrashResumeError> {
+// never leave a half-written snapshot behind. `fs` is passed in so the helper
+// carries no service requirement of its own.
+function atomicWriteString(
+  fs: FSUtil.Interface,
+  fp: string,
+  content: string,
+): Effect.Effect<void, CrashResumeError> {
   return Effect.gen(function* () {
-    const fs = yield* FSUtil.Service
     const dir = path.dirname(fp)
     yield* fs.ensureDir(dir).pipe(
       Effect.mapError((e) => new CrashResumeError({ message: `ensureDir failed: ${String(e)}` })),
@@ -143,11 +147,8 @@ function atomicWriteString(fp: string, content: string): Effect.Effect<void, Cra
   })
 }
 
-function readJsonSafe<T>(
-  fp: string,
-): Effect.Effect<T | undefined, CrashResumeError> {
+function readJsonSafe<T>(fs: FSUtil.Interface, fp: string): Effect.Effect<T | undefined, CrashResumeError> {
   return Effect.gen(function* () {
-    const fs = yield* FSUtil.Service
     const raw = yield* fs.readFileStringSafe(fp).pipe(
       Effect.mapError((e) => new CrashResumeError({ message: `read failed: ${String(e)}` })),
     )
@@ -166,29 +167,30 @@ export const layer = Layer.effect(
 
     const capture = Effect.fn("CrashResume.capture")(function* (input: CheckpointSnapshotType) {
       const fp = snapshotPath(input.sessionId)
-      const encoded = yield* Schema.encode(CheckpointSnapshot)(input).pipe(
-        Effect.mapError((e) => new CheckpointCorruptError({ message: `encode failed: ${String(e)}`, sessionId: input.sessionId })),
+      const encoded = yield* Schema.encodeEffect(CheckpointSnapshot)(input).pipe(
+        Effect.mapError(
+          (e) =>
+            new CheckpointCorruptError({ message: `encode failed: ${String(e)}`, sessionId: input.sessionId }),
+        ),
       )
-      yield* atomicWriteString(fp, encoded)
+      yield* atomicWriteString(fs, fp, JSON.stringify(encoded))
     })
 
     const read = Effect.fn("CrashResume.read")(function* (sessionId: string) {
       const fp = snapshotPath(sessionId)
-      const raw = yield* fs.readFileStringSafe(fp).pipe(
-        Effect.mapError((e) => new CrashResumeError({ message: `read failed: ${String(e)}` })),
+      const parsed = yield* readJsonSafe<unknown>(fs, fp).pipe(
+        Effect.mapError((e) => new CheckpointCorruptError({ message: `read failed`, sessionId, cause: String(e) })),
       )
-      if (!raw) return undefined
-      return yield* Schema.decode(CheckpointSnapshot)(raw).pipe(
-        Effect.mapError((e) =>
-          new CheckpointCorruptError({ message: `decode failed`, sessionId, cause: String(e) }),
-        ),
+      if (parsed === undefined) return undefined
+      return yield* Schema.decodeUnknownEffect(CheckpointSnapshot)(parsed).pipe(
+        Effect.mapError((e) => new CheckpointCorruptError({ message: `decode failed`, sessionId, cause: String(e) })),
       )
     })
 
     const heartbeat = Effect.fn("CrashResume.heartbeat")(function* (sessionId: string) {
       const now = yield* Clock.currentTimeMillis
       const fp = heartbeatPath(sessionId)
-      yield* atomicWriteString(fp, JSON.stringify({ sessionId, at: new Date(now).toISOString() }))
+      yield* atomicWriteString(fs, fp, JSON.stringify({ sessionId, at: new Date(now).toISOString() }))
     })
 
     const clearHeartbeat = Effect.fn("CrashResume.clearHeartbeat")(function* (sessionId: string) {
@@ -202,7 +204,7 @@ export const layer = Layer.effect(
         Effect.mapError((e) => new CrashResumeError({ message: `heartbeat read failed: ${String(e)}` })),
       )
       if (!raw) return false
-      const parsed = yield* readJsonSafe<{ at: string }>(fp).pipe(
+      const parsed = yield* readJsonSafe<{ at: string }>(fs, fp).pipe(
         Effect.mapError((e) => new CrashResumeError({ message: `heartbeat parse failed: ${String(e)}` })),
       )
       if (!parsed?.at) return false
@@ -233,8 +235,8 @@ export const layer = Layer.effect(
   }),
 )
 
-export const defaultLayer = layer.pipe(Layer.provide(FSUtil.defaultLayer))
+export const node = LayerNode.make({ service: Service, layer: layer, deps: [FSUtil.node] })
 
-export const node = LayerNode.make(layer, [FSUtil.node])
+export const defaultLayer = LayerNode.compile(node)
 
 export * as CrashResume from "./crash-resume"

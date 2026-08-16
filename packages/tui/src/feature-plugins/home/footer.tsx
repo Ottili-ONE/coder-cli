@@ -11,6 +11,7 @@ import { useHomeSessionDestination } from "../../routes/home/session-destination
 const id = "internal:home-footer"
 
 function Directory(props: { api: TuiPluginApi }) {
+  const theme = () => props.api.theme.current
   const destination = useHomeSessionDestination()
   const paths = useTuiPaths()
   const dir = createMemo(() => {

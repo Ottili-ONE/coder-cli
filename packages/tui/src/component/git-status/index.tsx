@@ -1,6 +1,7 @@
 /** @jsxImportSource @opentui/solid */
-import { createMemo, For, Show, type Accessor } from "solid-js"
+import { createMemo, createSignal, For, Show, type Accessor } from "solid-js"
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
+import { DegradedStateView } from "../error-state"
 import { useTheme } from "../../context/theme"
 import {
   type GitBarAction,
@@ -140,7 +141,7 @@ export function GitStatusBar(props: GitStatusBarProps) {
                 <text
                   id={`git-segment-${segment.kind}`}
                   fg={segmentColor(segment.kind, theme)}
-                  backgroundColor={isFocused() ? theme.backgroundElement : theme.background}
+                  bg={isFocused() ? theme.backgroundElement : theme.background}
                 >
                   {`${isFocused() ? "> " : ""}${segment.glyph ? segment.glyph + " " : ""}${segment.label}${segment.detail ? " " + segment.detail : ""}`}
                 </text>

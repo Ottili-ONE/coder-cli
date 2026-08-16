@@ -5,9 +5,9 @@ import { spawn, type ChildProcess } from "child_process"
 import { readFile } from "fs/promises"
 import { statSync } from "fs"
 import { setTimeout as sleep } from "node:timers/promises"
-import { Flag } from "./flag/flag"
-import { FSUtil } from "./fs-util"
-import { which } from "./util/which"
+import { Flag } from "@opencode-ai/core/flag/flag"
+import { FSUtil } from "@opencode-ai/core/fs-util"
+import { which } from "@opencode-ai/core/util/which"
 
 const SIGKILL_TIMEOUT_MS = 200
 const META: Record<string, { deny?: boolean; login?: boolean; posix?: boolean; ps?: boolean }> = {

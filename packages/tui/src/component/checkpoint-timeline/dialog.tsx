@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 import { TextAttributes } from "@opentui/core"
 import { Show } from "solid-js"
-import { useDialog } from "../../ui/dialog"
+import { Dialog, useDialog } from "../../ui/dialog"
 import { useTheme } from "../../context/theme"
 import { useCheckpointTimeline } from "../../context/checkpoint"
 import { CheckpointTimeline } from "./index"

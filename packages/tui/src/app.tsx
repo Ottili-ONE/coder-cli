@@ -241,7 +241,6 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
         // Prewarm palette before ThemeProvider mounts so `system` theme avoids a first-paint fallback flash.
         void renderer.getPalette({ size: 16 }).catch(() => undefined)
         // Ottili Coder is dark-only; no terminal mode detection.
-        const mode = "dark" as const
         if (renderer.isDestroyed) return
 
         await render(() => {
@@ -254,7 +253,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
               }}
             >
               <EpilogueProvider set={(value) => (exit.epilogue = value)}>
-                <ErrorBoundary fallback={(error, reset) => <ErrorComponent error={error} reset={reset} mode={mode} />}>
+                <ErrorBoundary fallback={(error, reset) => <ErrorComponent error={error} reset={reset} />}>
                   <TuiPathsProvider
                     value={{
                       cwd: process.cwd(),
@@ -773,7 +772,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         slashName: "usage",
         slashAliases: ["limits", "plan-usage"],
         run: () => {
-          dialog.replace(() => <DialogUsageLimits />)
+          const sessionID = route.data.type === "session" ? route.data.sessionID : ""
+          dialog.replace(() => <DialogUsageLimits sessionID={sessionID} />)
         },
         category: "System",
       },
@@ -1046,9 +1046,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       message: evt.properties.message,
       variant: evt.properties.variant,
       duration: evt.properties.duration,
-      action: evt.properties.action
-        ? { label: evt.properties.action.label, command: evt.properties.action.command }
-        : undefined,
     })
   })
 

@@ -11,28 +11,11 @@ import { Schema } from "effect"
  * be resumed, inspected, cancelled or rolled back in a later process.
  */
 
-export type DeployKind = "local" | "ssh" | "docker" | "kubernetes" | "ottili-cloud" | "custom"
+export const DeployKind = Schema.Literals(["local", "ssh", "docker", "kubernetes", "ottili-cloud", "custom"])
 
-export const DeployKind = Schema.Literals(
-  "local",
-  "ssh",
-  "docker",
-  "kubernetes",
-  "ottili-cloud",
-  "custom",
-) as Schema.Schema<DeployKind>
+export type DeployKind = Schema.Schema.Type<typeof DeployKind>
 
-export type DeployStatus =
-  | "pending"
-  | "building"
-  | "uploading"
-  | "deploying"
-  | "live"
-  | "failed"
-  | "cancelled"
-  | "rolling-back"
-
-export const DeployStatus = Schema.Literals(
+export const DeployStatus = Schema.Literals([
   "pending",
   "building",
   "uploading",
@@ -41,7 +24,9 @@ export const DeployStatus = Schema.Literals(
   "failed",
   "cancelled",
   "rolling-back",
-) as Schema.Schema<DeployStatus>
+])
+
+export type DeployStatus = Schema.Schema.Type<typeof DeployStatus>
 
 export class DeployError extends Schema.TaggedErrorClass<DeployError>()("DeployError", {
   kind: Schema.Literals([

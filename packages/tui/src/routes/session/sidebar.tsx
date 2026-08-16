@@ -101,7 +101,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean; onClose?:
   createEffect(
     on(openRequest, () => {
       setFocused(true)
-      if (focusSearchRequest() > 0) setSearchMode(true)
+      if (openRequest() > 0) setSearchMode(true)
     }),
   )
 

@@ -266,14 +266,16 @@ const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient.HttpCl
         const expiry = Option.some(now + parsed.expires_in * 1000)
         const refreshTokenValue = parsed.refresh_token ?? row.refresh_token
 
+        const accessToken = AccessToken.make(parsed.access_token)
+
         yield* repo.persistToken({
           accountID: row.id,
-          accessToken: parsed.access_token,
-          refreshToken: refreshTokenValue,
+          accessToken,
+          refreshToken: RefreshToken.make(refreshTokenValue),
           expiry,
         })
 
-        return parsed.access_token
+        return accessToken
       }
 
       const response = yield* executeEffectOk(
@@ -467,7 +469,9 @@ const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient.HttpCl
         catch: (cause) => accountErrorFromCause(cause, "Failed to sign in with Ottili"),
       })
 
-      const email = yield* persistOttiliOneLogin(result)
+      const email = yield* persistOttiliOneLogin(result).pipe(
+        Effect.provideService(AccountRepo.Service, repo),
+      )
       return new PollSuccess({ email })
     })
 
@@ -521,7 +525,7 @@ const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient.HttpCl
         )
       })
 
-      let planResponse: Awaited<ReturnType<typeof executeRead>> | undefined
+      let planResponse: HttpClientResponse.HttpClientResponse | undefined
       for (const path of USAGE_LIMIT_API_PATHS.plan) {
         const response = yield* readAuthed(path)
         if (response.status === 404) continue

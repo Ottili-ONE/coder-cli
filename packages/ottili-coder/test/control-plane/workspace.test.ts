@@ -47,19 +47,19 @@ const originalEnv = {
 
 const workspaceLayer = (experimentalWorkspaces: boolean) =>
   Workspace.layer.pipe(
-    Layer.provide(Auth.defaultLayer),
-    Layer.provide(SessionNs.defaultLayer),
-    Layer.provide(SessionPrompt.defaultLayer),
-    Layer.provide(Cairn.defaultLayer),
-    Layer.provide(Project.defaultLayer),
-    Layer.provide(Vcs.defaultLayer),
-    Layer.provide(Database.defaultLayer),
-    Layer.provide(EventV2Bridge.defaultLayer),
+    Layer.provide(LayerNode.compile(Auth.node)),
+    Layer.provide(LayerNode.compile(SessionNs.node)),
+    Layer.provide(LayerNode.compile(SessionPrompt.node)),
+    Layer.provide(LayerNode.compile(Cairn.node)),
+    Layer.provide(LayerNode.compile(Project.node)),
+    Layer.provide(LayerNode.compile(Vcs.node)),
+    Layer.provide(LayerNode.compile(Database.node)),
+    Layer.provide(LayerNode.compile(EventV2Bridge.node)),
     Layer.provide(FetchHttpClient.layer),
-    Layer.provide(FSUtil.defaultLayer),
+    Layer.provide(LayerNode.compile(FSUtil.node)),
     Layer.provide(RuntimeFlags.layer({ experimentalWorkspaces })),
-    Layer.provide(Ripgrep.defaultLayer),
-    Layer.provide(InstanceStore.defaultLayer.pipe(Layer.provide(InstanceBootstrap.defaultLayer))),
+    Layer.provide(LayerNode.compile(Ripgrep.node)),
+    Layer.provide(LayerNode.compile(InstanceStore.node).pipe(Layer.provide(LayerNode.compile(InstanceBootstrap.node)))),
   )
 
 const testServerLayer = Layer.mergeAll(

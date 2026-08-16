@@ -1,7 +1,7 @@
-import path from "path"
-import { Effect, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { Session } from "@/session/session"
+import { SessionID } from "@/session/schema"
 
 const FindingSchema = Schema.Struct({
   severity: Schema.Literals(["critical", "high", "medium", "low", "info"]),
@@ -36,31 +36,29 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode-ai/ReviewState") {}
 
-const reviewPath = (sessionID: string, slug?: string) =>
-  Effect.gen(function* () {
-    const instance = yield* InstanceState.context
-    const info = yield* Session.Service
-    const session = yield* info.get(sessionID)
-    const created = session.time?.created ?? Date.now()
-    const usedSlug = slug ?? session.slug ?? sessionID
-    return Session.review({ slug: usedSlug, time: { created } }, instance)
-  })
-
 const readReview = (file: string) =>
   Effect.gen(function* () {
     const text = yield* Effect.tryPromise({
       try: () => Bun.file(file).text(),
       catch: (cause) => cause,
     })
-    return yield* Schema.decodeUnknown(ReviewSchema)(JSON.parse(text)).pipe(
-      Effect.mapError(() => new NotFoundError({ sessionID: "unknown" })),
-    )
-  })
+    return yield* Schema.decodeUnknownEffect(ReviewSchema)(JSON.parse(text))
+  }).pipe(Effect.mapError(() => new NotFoundError({ sessionID: "unknown" })))
 
 export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const state = yield* InstanceState.make<Record<string, string>>(Effect.succeed({} as Record<string, string>))
+    const sessions = yield* Session.Service
+    const state = yield* InstanceState.make<Record<string, string>>(() => Effect.succeed({} as Record<string, string>))
+
+    const reviewPath = (sessionID: string, slug?: string) =>
+      Effect.gen(function* () {
+        const instance = yield* InstanceState.context
+        const session = yield* sessions.get(SessionID.make(sessionID))
+        const created = session.time?.created ?? Date.now()
+        const usedSlug = slug ?? session.slug ?? sessionID
+        return Session.review({ slug: usedSlug, time: { created } }, instance)
+      }).pipe(Effect.orDie)
 
     const resolvePath = (sessionID: string, slug?: string) =>
       Effect.gen(function* () {
@@ -74,16 +72,11 @@ export const layer = Layer.effect(
       write: ({ sessionID, review, slug }) =>
         Effect.gen(function* () {
           const target = yield* resolvePath(sessionID, slug)
-          yield* Effect.tryPromise({
-            try: () => Bun.write(target, JSON.stringify(review, null, 2)),
-            catch: (cause) => cause,
-          })
-          yield* InstanceState.useEffect(
-            state,
-            (map) =>
-              Effect.sync(() => {
-                map[sessionID] = target
-              }),
+          yield* Effect.promise(() => Bun.write(target, JSON.stringify(review, null, 2)))
+          yield* InstanceState.useEffect(state, (map) =>
+            Effect.sync(() => {
+              map[sessionID] = target
+            }),
           )
           return { path: target }
         }),

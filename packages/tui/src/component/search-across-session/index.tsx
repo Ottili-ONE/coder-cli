@@ -2,12 +2,12 @@
 import {
   createMemo,
   createSignal,
+  createEffect,
   For,
   Show,
   type Accessor,
-  useKeyboard,
-  useTerminalDimensions,
-} from "@opentui/solid"
+} from "solid-js"
+import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import {
   type SearchEntry,
   type SearchCategoryFilter,
@@ -122,7 +122,7 @@ export function SearchAcrossSession(props: SearchAcrossSessionProps) {
   })
 
   return (
-    <box id="search-across-session" flexDirection="column" width={width()} selectable>
+    <box id="search-across-session" flexDirection="column" width={width()}>
       <box flexDirection="column">
         <text id="search-header">{"Search across session"}</text>
         <text id="search-query">{`query: "${query()}"`}</text>

@@ -1,7 +1,7 @@
-import path from "path"
-import { Effect, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { Session } from "@/session/session"
+import { SessionID } from "@/session/schema"
 
 const PlanSchema = Schema.Struct({
   goal: Schema.String,
@@ -41,27 +41,23 @@ const readPlan = (file: string) =>
       try: () => Bun.file(file).text(),
       catch: (cause) => cause,
     })
-    return yield* Schema.decodeUnknown(PlanSchema)(JSON.parse(text)).pipe(
-      Effect.mapError(() => new NotFoundError({ sessionID: "unknown" })),
-    )
-  })
-
-const planPath = (sessionID: string, slug?: string) =>
-  Effect.gen(function* () {
-    const instance = yield* InstanceState.context
-    const info = yield* Session.Service
-    const session = yield* info.get(sessionID)
-    const created = session.time?.created ?? Date.now()
-    const usedSlug = slug ?? session.slug ?? sessionID
-    return Session.plan({ slug: usedSlug, time: { created } }, instance)
-  })
+    return yield* Schema.decodeUnknownEffect(PlanSchema)(JSON.parse(text))
+  }).pipe(Effect.mapError(() => new NotFoundError({ sessionID: "unknown" })))
 
 export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const state = yield* InstanceState.make<Record<string, string>>(
-      Effect.succeed({} as Record<string, string>),
-    )
+    const sessions = yield* Session.Service
+    const state = yield* InstanceState.make<Record<string, string>>(() => Effect.succeed({} as Record<string, string>))
+
+    const planPath = (sessionID: string, slug?: string) =>
+      Effect.gen(function* () {
+        const instance = yield* InstanceState.context
+        const session = yield* sessions.get(SessionID.make(sessionID))
+        const created = session.time?.created ?? Date.now()
+        const usedSlug = slug ?? session.slug ?? sessionID
+        return Session.plan({ slug: usedSlug, time: { created } }, instance)
+      }).pipe(Effect.orDie)
 
     const resolvePath = (sessionID: string, slug?: string) =>
       Effect.gen(function* () {
@@ -75,16 +71,11 @@ export const layer = Layer.effect(
       write: ({ sessionID, plan, slug }) =>
         Effect.gen(function* () {
           const target = yield* resolvePath(sessionID, slug)
-          yield* Effect.tryPromise({
-            try: () => Bun.write(target, JSON.stringify(plan, null, 2)),
-            catch: (cause) => cause,
-          })
-          yield* InstanceState.useEffect(
-            state,
-            (map) =>
-              Effect.sync(() => {
-                map[sessionID] = target
-              }),
+          yield* Effect.promise(() => Bun.write(target, JSON.stringify(plan, null, 2)))
+          yield* InstanceState.useEffect(state, (map) =>
+            Effect.sync(() => {
+              map[sessionID] = target
+            }),
           )
           return { path: target }
         }),

@@ -262,13 +262,13 @@ const modelsFixture = Filesystem.readJson<Record<string, ModelsDev.Provider>>(
 function recordedNativeLLMLayer(scenario: RecordedScenario) {
   const auth = authLayer(scenario)
   const provider = Provider.layer.pipe(
-    Layer.provide(FSUtil.defaultLayer),
-    Layer.provide(Env.defaultLayer),
-    Layer.provide(Config.defaultLayer),
+    Layer.provide(LayerNode.compile(FSUtil.node)),
+    Layer.provide(LayerNode.compile(Env.node)),
+    Layer.provide(LayerNode.compile(Config.node)),
     Layer.provide(auth),
-    Layer.provide(Plugin.defaultLayer),
-    Layer.provide(ModelsDev.defaultLayer),
-    Layer.provide(RuntimeFlags.defaultLayer),
+    Layer.provide(LayerNode.compile(Plugin.node)),
+    Layer.provide(LayerNode.compile(ModelsDev.node)),
+    Layer.provide(LayerNode.compile(RuntimeFlags.node)),
   )
   // Only the HTTP client is recorded; RequestExecutor and the ottili-coder LLM stack remain real.
   const metadata = {

@@ -16,17 +16,17 @@ import { EventV2Bridge } from "../../src/event-v2-bridge"
 
 export const workspaceLayerWithRuntimeFlags = (overrides: Partial<RuntimeFlags.Info>) =>
   Workspace.layer.pipe(
-    Layer.provide(Auth.defaultLayer),
-    Layer.provide(Session.defaultLayer),
-    Layer.provide(SessionPrompt.defaultLayer),
-    Layer.provide(Cairn.defaultLayer),
-    Layer.provide(Project.defaultLayer),
-    Layer.provide(Vcs.defaultLayer),
-    Layer.provide(Database.defaultLayer),
-    Layer.provide(EventV2Bridge.defaultLayer),
+    Layer.provide(LayerNode.compile(Auth.node)),
+    Layer.provide(LayerNode.compile(Session.node)),
+    Layer.provide(LayerNode.compile(SessionPrompt.node)),
+    Layer.provide(LayerNode.compile(Cairn.node)),
+    Layer.provide(LayerNode.compile(Project.node)),
+    Layer.provide(LayerNode.compile(Vcs.node)),
+    Layer.provide(LayerNode.compile(Database.node)),
+    Layer.provide(LayerNode.compile(EventV2Bridge.node)),
     Layer.provide(FetchHttpClient.layer),
-    Layer.provide(FSUtil.defaultLayer),
+    Layer.provide(LayerNode.compile(FSUtil.node)),
     Layer.provide(RuntimeFlags.layer(overrides)),
-    Layer.provide(InstanceStore.defaultLayer),
-    Layer.provide(InstanceBootstrap.defaultLayer),
+    Layer.provide(LayerNode.compile(InstanceStore.node)),
+    Layer.provide(LayerNode.compile(InstanceBootstrap.node)),
   )

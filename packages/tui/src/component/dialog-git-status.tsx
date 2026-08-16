@@ -103,7 +103,7 @@ export function DialogGitStatus() {
               )}
             </Show>
 
-            <Show when={info().conflict && info().conflict > 0}>
+            <Show when={(info().conflict ?? 0) > 0}>
               <text
                 fg={theme.error}
                 attributes={TextAttributes.BOLD}
@@ -113,7 +113,7 @@ export function DialogGitStatus() {
               </text>
             </Show>
 
-            <Show when={info().worktree && info().worktree > 1}>
+            <Show when={(info().worktree ?? 0) > 1}>
               <text fg={theme.primary}>⑂ {info().worktree} worktrees</text>
             </Show>
 

@@ -3,7 +3,7 @@ import { createSignal, onCleanup, Show, type JSX } from "solid-js"
 import { TextareaRenderable, type DiffRenderable, type Renderable, type ScrollBoxRenderable } from "@opentui/core"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { testRender, useRenderer } from "@opentui/solid"
-import type { TuiPluginApi, TuiPluginMeta, TuiRouteCurrent } from "@opencode-ai/plugin/tui"
+import type { TuiDialogPromptProps, TuiPluginApi, TuiPluginMeta, TuiRouteCurrent, TuiToast } from "@opencode-ai/plugin/tui"
 import type { Session } from "@opencode-ai/sdk/v2"
 import { expect, test } from "bun:test"
 import { KVProvider } from "../../../src/context/kv"
@@ -12,7 +12,7 @@ import { TuiConfigProvider } from "../../../src/config"
 import { TuiKeybind } from "../../../src/config/keybind"
 import { OttiliCoderKeymapProvider, registerOttiliCoderKeymap } from "../../../src/keymap"
 import { DialogProvider } from "../../../src/ui/dialog"
-import { DialogPrompt } from "../../../src/ui/dialog-prompt"
+import { DialogPrompt, type DialogPromptProps } from "../../../src/ui/dialog-prompt"
 import { ToastProvider } from "../../../src/ui/toast"
 import diffViewerPlugin from "../../../src/feature-plugins/system/diff-viewer"
 import { createTuiPluginApi } from "../../fixture/tui-plugin"
@@ -86,7 +86,7 @@ type Viewer = {
   current: () => TuiRouteCurrent
   vcsDiffInput: () => unknown
   controls: { resolve: (files: DiffFile[]) => void; reject: (error: unknown) => void }
-  toasts: Array<{ title: string; message: string; variant: string }>
+  toasts: Array<TuiToast>
   applies: Array<{ directory: string; patch: string }>
 }
 
@@ -99,9 +99,9 @@ async function renderDiffViewer(opts: {
 } = {}): Promise<Viewer> {
   const commands = new Map<string, { run?: (arg: never) => void }>()
   let current: TuiRouteCurrent = startRoute
-  let renderDiff: ((props: { params?: unknown }) => JSX.Element) | undefined
+  let renderDiff: ((input: { params?: Record<string, unknown> }) => JSX.Element) | undefined
   let vcsDiffInput: unknown
-  const toasts: Array<{ title: string; message: string; variant: string }> = []
+  const toasts: TuiToast[] = []
   const applies: Array<{ directory: string; patch: string }> = []
 
   let resolveDiff!: (value: { data: unknown[] }) => void
@@ -149,7 +149,7 @@ async function renderDiffViewer(opts: {
     const api = {
       ...base,
       route: {
-        register(routes: { name: string; render: (props: { params?: unknown }) => JSX.Element }[]) {
+        register(routes: { name: string; render: (input: { params?: Record<string, unknown> }) => JSX.Element }[]) {
           renderDiff = routes.find((route) => route.name === "diff")?.render
           return () => {}
         },
@@ -170,8 +170,8 @@ async function renderDiffViewer(opts: {
           depth: 0,
           open: false,
         },
-        DialogPrompt: (props: Record<string, unknown>) => <DialogPrompt {...(props as never)} />,
-        toast: (options: { title: string; message: string; variant: string }) => {
+        DialogPrompt: (props: TuiDialogPromptProps) => <DialogPrompt {...(props as DialogPromptProps)} />,
+        toast: (options: TuiToast) => {
           toasts.push(options)
           return Promise.resolve()
         },
@@ -580,7 +580,7 @@ test("marking a file reviewed shows the reviewed marker", async () => {
 })
 
 test("closing the diff viewer returns to the originating route", async () => {
-  const viewer = await renderDiffViewer(SAMPLE_FILES)
+  const viewer = await renderDiffViewer({ files: SAMPLE_FILES })
   try {
     await waitForText(viewer.app, "src/alpha.ts")
     expect(viewer.current()).toEqual({

@@ -174,7 +174,7 @@ export function TerminalOutput(props: TerminalOutputProps) {
   })
 
   return (
-    <box id="terminal-output" flexDirection="column" width={width()} selectable>
+    <box id="terminal-output" flexDirection="column" width={width()}>
       <text id="terminal-output-status" live>
         {summary()}{" "}
         <Show when={copied()}>
@@ -208,7 +208,6 @@ export function TerminalOutput(props: TerminalOutputProps) {
             return (
               <box
                 id={`terminal-output-line-${line.id}`}
-                selectable
                 flexDirection="row"
                 gap={1}
                 backgroundColor={isSelected() ? theme.backgroundElement : theme.background}

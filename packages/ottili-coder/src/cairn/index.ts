@@ -24,10 +24,17 @@ export const layer = Layer.mergeAll(
   CrashResume.layer,
 )
 
-// defaultLayer provides SessionMemory internally so it's self-contained.
-// Provide SessionMemory.defaultLayer once to avoid duplicate service provisions.
-export const defaultLayer = layer.pipe(Layer.provide(SessionMemory.defaultLayer))
+// The node graph carries each sub-service's own dependency edges, so
+// SessionMemory (and FSUtil beneath it) is resolved and memoized exactly once.
+export const node = LayerNode.group([
+  HintReader.node,
+  HintWriter.node,
+  Worktime.node,
+  Checkpoint.node,
+  CrashResume.node,
+])
 
-export const node = LayerNode.make(layer, [SessionMemory.node])
+// defaultLayer compiles the graph into a self-contained layer.
+export const defaultLayer = LayerNode.compile(node)
 
 export * as Cairn from "."

@@ -205,7 +205,7 @@ export function FilePreview(props: FilePreviewProps) {
     state().status === "populated" || state().status === "long" || state().status === "degraded"
 
   return (
-    <box id="file-preview" flexDirection="column" width={width()} selectable>
+    <box id="file-preview" flexDirection="column" width={width()}>
       <text id="file-preview-status" live>
         {summary()}{" "}
         <Show when={copied()}>
@@ -264,7 +264,6 @@ export function FilePreview(props: FilePreviewProps) {
               return (
                 <box
                   id={`file-preview-line-${line.id}`}
-                  selectable
                   flexDirection="row"
                   gap={1}
                   backgroundColor={isSelected() ? theme.backgroundElement : theme.background}

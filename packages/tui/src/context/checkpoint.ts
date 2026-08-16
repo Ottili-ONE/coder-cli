@@ -7,8 +7,8 @@ import {
   parseCheckpointTimeline,
   redactText,
   type CheckpointTimelineContext,
-  type CheckpointTimelineRaw,
   type CheckpointTimelineState,
+  type ParseCheckpointTimelineArgs,
 } from "../component/checkpoint-timeline/model"
 
 const CAIRN_DIR = "cairn"
@@ -20,7 +20,7 @@ const FILES = ["CHECKPOINT.md", "DECISIONS.md", "VALIDATION_LOG.md", "KNOWN_PROB
  * genuine read failures surface as a classified error so the timeline can show
  * denied / offline / failure states instead of crashing.
  */
-async function readCairnFiles(sessionID: string): Promise<CheckpointTimelineRaw> {
+async function readCairnFiles(sessionID: string): Promise<ParseCheckpointTimelineArgs> {
   const base = path.join(Global.Path.state, CAIRN_DIR, sessionID)
   const readOne = async (file: string): Promise<string | undefined> => {
     try {
@@ -51,7 +51,7 @@ export interface CheckpointTimelineController {
 export function useCheckpointTimeline(sessionID: string): CheckpointTimelineController {
   const clipboard = useClipboard()
 
-  const [last, setLast] = createSignal<CheckpointTimelineRaw | undefined>(undefined)
+  const [last, setLast] = createSignal<ParseCheckpointTimelineArgs | undefined>(undefined)
   const [degraded, setDegraded] = createSignal(false)
 
   const [resource] = createResource(

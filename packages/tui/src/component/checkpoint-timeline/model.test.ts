@@ -92,25 +92,25 @@ describe("append-log parsers", () => {
   test("parses decisions with rationale", () => {
     const events = parseDecisions(DECISIONS)
     expect(events.length).toBe(2)
-    expect(events[0]?.title).toBe("cache recoveryHint at compaction boundary")
-    expect(events[0]?.detail).toContain("re-deriving")
+    expect(events[0]?.decision).toBe("cache recoveryHint at compaction boundary")
+    expect(events[0]?.rationale).toContain("re-deriving")
     expect(events[0]?.timestamp).toBe("2026-07-14T13:05:00.000Z")
   })
 
   test("parses fenced validation result and classifies pass", () => {
     const events = parseValidations(VALIDATIONS)
     expect(events.length).toBe(1)
-    expect(events[0]?.title).toBe("bun test")
-    expect(events[0]?.detail).toContain("PASS (1m12s)")
+    expect(events[0]?.command).toBe("bun test")
+    expect(events[0]?.result).toContain("PASS (1m12s)")
     expect(events[0]?.status).toBe("pass")
   })
 
   test("parses known problems with severity and unblock", () => {
     const events = parseKnownProblems(KNOWN)
     expect(events.length).toBe(1)
-    expect(events[0]?.title).toBe("flaky DB teardown")
+    expect(events[0]?.problem).toBe("flaky DB teardown")
     expect(events[0]?.severity).toBe("high")
-    expect(events[0]?.detail).toBe("retry with transaction")
+    expect(events[0]?.unblock).toBe("retry with transaction")
   })
 })
 
@@ -239,7 +239,7 @@ describe("indicator & event rendering (terminal fallbacks)", () => {
   })
 
   test("event line degrades right-to-left across width tiers", () => {
-    const event = parseValidations(VALIDATIONS)[0]!
+    const event = parseCheckpointTimeline(fullArgs).events.find((e) => e.kind === "validation")!
     const wide = formatEventLine(event, 100, { noColor: false })
     expect(wide).toContain("validation")
     expect(wide).toContain("13:51")

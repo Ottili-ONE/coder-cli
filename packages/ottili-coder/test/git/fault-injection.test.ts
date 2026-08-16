@@ -6,6 +6,7 @@ import { Effect } from "effect"
 import { Git } from "../../src/git"
 import { tmpdir } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 
 // ---------------------------------------------------------------------------
 // Deterministic fuzz harness
@@ -86,7 +87,7 @@ const scopedTmpdir = (options?: Parameters<typeof tmpdir>[0]) =>
     (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
   )
 
-const it = testEffect(Git.defaultLayer)
+const it = testEffect(LayerNode.compile(Git.node))
 
 describe("Git fault-injection", () => {
   it.live("run() never throws on dependency errors (missing git)", () =>

@@ -4,6 +4,9 @@ import path from "path"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import os from "os"
 import { SessionID, MessageID, PartID } from "./schema"
+import { SessionEvent } from "@opencode-ai/core/session/event"
+import { SessionMessage } from "@opencode-ai/schema/session-message"
+import * as DateTime from "effect/DateTime"
 import { MessageV2 } from "./message-v2"
 import { SessionRevert } from "./revert"
 import { Session } from "./session"
@@ -678,7 +681,7 @@ const layer = Layer.effect(
       yield* publishSynthetic("Ottili Auto wählt Modell…")
 
       const autoProvider = yield* provider.getProvider(ProviderV2.ID.make("ottili-auto")).pipe(
-        Effect.catchAll(() => Effect.succeed(undefined)),
+        Effect.catch(() => Effect.succeed(undefined)),
       )
 
       const autoRoute = yield* Effect.tryPromise({
@@ -688,7 +691,7 @@ const layer = Layer.effect(
           }),
         catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
       }).pipe(
-        Effect.catchAll((error) =>
+        Effect.catch((error) =>
           Effect.sync(() => OttiliAuto.ruleBasedRoute(routeInput)).pipe(
             Effect.tap(() =>
               Effect.logWarning("ottili-auto router failed, using rule fallback", {

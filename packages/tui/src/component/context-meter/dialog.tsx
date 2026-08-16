@@ -1,9 +1,9 @@
 /** @jsxImportSource @opentui/solid */
 import { createMemo } from "solid-js"
-import { Dialog } from "../ui/dialog"
+import { Dialog } from "../../ui/dialog"
 import { useSync } from "../../context/sync"
 import { useTheme } from "../../context/theme"
-import type { SessionMessage } from "@opencode-ai/sdk/v2/client"
+import type { Message } from "@opencode-ai/sdk/v2"
 import { ContextMeter, type ContextMeterColors } from "./index"
 import {
   type ContextMeterContext,
@@ -11,14 +11,14 @@ import {
   type ContextMeterProvider,
 } from "./model"
 
-function mapMessage(msg: SessionMessage): ContextMeterMessage | undefined {
-  if (msg.type !== "assistant") return undefined
+function mapMessage(msg: Message): ContextMeterMessage | undefined {
+  if (msg.role !== "assistant") return undefined
   const tokens = msg.tokens
   if (!tokens) return undefined
   return {
     role: "assistant",
-    providerID: msg.model.providerID,
-    modelID: msg.model.id,
+    providerID: msg.providerID,
+    modelID: msg.modelID,
     cost: msg.cost ?? 0,
     tokens: {
       input: tokens.input,

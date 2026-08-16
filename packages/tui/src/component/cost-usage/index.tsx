@@ -1,25 +1,25 @@
 import { TextAttributes } from "@opentui/core"
 import { createMemo, createResource, For, Show } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
-import type { SessionMessage } from "@opencode-ai/sdk/v2"
+import type { Message } from "@opencode-ai/sdk/v2"
 import { useSDK } from "../../context/sdk"
-import { useDialog } from "../ui/dialog"
-import { useTheme } from "../context/theme"
-import { useSync } from "../context/sync"
-import { useConnected } from "./use-connected"
+import { useDialog } from "../../ui/dialog"
+import { useTheme } from "../../context/theme"
+import { useSync } from "../../context/sync"
+import { useConnected } from "../use-connected"
 import {
   costUsageState,
   formatCost,
   formatTokens,
   type RawStep,
-} from "./cost-usage/model"
+} from "./model"
 import {
   fetchUsageLimits,
   summarizeUsageLimits,
   usageBar as limitBar,
   usageLimitTone,
-} from "../util/usage-limits-api"
-import { DialogAccountLogin } from "./dialog-account-login"
+} from "../../util/usage-limits-api"
+import { DialogAccountLogin } from "../dialog-account-login"
 
 const MAX_STEPS = 16
 
@@ -29,7 +29,7 @@ function stepToneColor(tone: "success" | "warning" | "error" | "info", theme: Re
   return theme.primary
 }
 
-function mapMessages(messages: SessionMessage[]): RawStep[] {
+function mapMessages(messages: Message[]): RawStep[] {
   return messages.map((m) => ({
     id: m.id,
     role: m.role,
@@ -91,7 +91,7 @@ export function CostUsageMeter(props: { sessionID: string }) {
 }
 
 /** Full detail dialog: actual cost, token usage, plan limits, per-step breakdown. */
-export function DialogCostUsage(props: { sessionID?: string }) {
+export function DialogCostUsage(props: { sessionID: string }) {
   const sdk = useSDK()
   const dialog = useDialog()
   const { theme } = useTheme()
@@ -261,7 +261,7 @@ export function DialogCostUsage(props: { sessionID?: string }) {
                   #{step.index} {step.model ?? step.provider ?? step.role}
                 </text>
                 <text fg={theme.text}>
-                  {formatCost(step.cost)} · {formatTokens(step.tokens.total)} tok
+                  {formatCost(step.cost)} · {formatTokens(step.tokens.input + step.tokens.output + step.tokens.reasoning + step.tokens.cacheRead + step.tokens.cacheWrite)} tok
                 </text>
               </box>
             )}

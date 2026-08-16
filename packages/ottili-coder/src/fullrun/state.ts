@@ -124,33 +124,35 @@ export interface Interface {
     stages?: ReadonlyArray<StageName>
     executor: StageExecutor
     messageIDGenerated?: string
-  }) => Effect.Effect<Run, AlreadyRunningError>
-  readonly cancel: (input: { runID: string; reason?: string }) => Effect.Effect<Run>
-  readonly resume: (input: { runID: string; executor: StageExecutor }) => Effect.Effect<Run, NotFoundError>
+  }) => Effect.Effect<Run, AlreadyRunningError | NotFoundError>
+  readonly cancel: (input: { runID: string; reason?: string }) => Effect.Effect<Run, NotFoundError>
+  readonly resume: (input: {
+    runID: string
+    executor: StageExecutor
+  }) => Effect.Effect<Run, NotFoundError | CancelledError>
   readonly get: (input: { runID: string }) => Effect.Effect<Run, NotFoundError>
   readonly status: (input: { runID: string }) => Effect.Effect<Run, NotFoundError>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode-ai/FullRunState") {}
 
-const runPath = (sessionID: string, slug?: string) =>
+const runPath = (sessions: Session.Interface) => (sessionID: string, slug?: string) =>
   Effect.gen(function* () {
     const instance = yield* InstanceState.context
-    const info = yield* Session.Service
-    const session = yield* info.get(sessionID as SessionID)
+    const session = yield* sessions.get(SessionID.make(sessionID))
     const created = session.time?.created ?? Date.now()
     const usedSlug = slug ?? session.slug ?? sessionID
     return Session.fullrun({ slug: usedSlug, time: { created } }, instance)
-  })
+  }).pipe(Effect.orDie)
 
 const readRun = (file: string) =>
   Effect.gen(function* () {
     const text = yield* Effect.tryPromise({
       try: () => Bun.file(file).text(),
-      catch: (cause) => cause,
+      catch: () => new NotFoundError({ runID: path.basename(file) }),
     })
     return yield* Effect.try({
-      try: () => Schema.decodeUnknownSync(RunSchema)(JSON.parse(text)),
+      try: () => Schema.decodeSync(RunSchema)(JSON.parse(text)),
       catch: () => new NotFoundError({ runID: path.basename(file) }),
     })
   })
@@ -252,32 +254,27 @@ const executeStages = (run: Run, executor: StageExecutor, persist: (next: Run) =
 export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const state = yield* InstanceState.make<Record<string, string>>(
-      Effect.fn("FullRunState.state")(function* () {
-        return {} as Record<string, string>
-      }),
+    const sessions = yield* Session.Service
+    const runPathFor = runPath(sessions)
+    const state = yield* InstanceState.make<Record<string, string>>(() =>
+      Effect.succeed({} as Record<string, string>),
     )
 
     const resolvePath = (sessionID: string, slug?: string) =>
       Effect.gen(function* () {
         const cached = yield* InstanceState.use(state, (map) => map[sessionID])
         if (cached) return cached
-        return yield* runPath(sessionID, slug)
+        return yield* runPathFor(sessionID, slug)
       })
 
     const persist = (sessionID: string, run: Run) =>
       Effect.gen(function* () {
         const target = yield* resolvePath(sessionID)
-        yield* Effect.tryPromise({
-          try: () => Bun.write(target, JSON.stringify(run, null, 2)),
-          catch: (cause) => cause,
-        })
-        yield* InstanceState.useEffect(
-          state,
-          (map) =>
-            Effect.sync(() => {
-              map[sessionID] = target
-            }),
+        yield* Effect.promise(() => Bun.write(target, JSON.stringify(run, null, 2)))
+        yield* InstanceState.useEffect(state, (map) =>
+          Effect.sync(() => {
+            map[sessionID] = target
+          }),
         )
       })
 
@@ -289,15 +286,17 @@ export const layer = Layer.effect(
         stopLevel?: StopLevel
         stages?: ReadonlyArray<StageName>
         executor: StageExecutor
-      }): Effect.Effect<Run, AlreadyRunningError | NotFoundError> {
-        const info = yield* Session.Service
-        const session = yield* info.get(input.sessionID as SessionID)
-        if (!session) return yield* new NotFoundError({ runID: input.sessionID })
+      }) {
+        yield* sessions.get(SessionID.make(input.sessionID)).pipe(Effect.orDie)
         const runID = `${input.sessionID}:${input.messageID}`
         const target = yield* resolvePath(input.sessionID)
-        const exists = yield* Effect.exists(
-          Effect.sync(() => Bun.file(target).size > 0),
-        )
+        const exists = yield* Effect.sync(() => {
+          try {
+            return Bun.file(target).size > 0
+          } catch {
+            return false
+          }
+        })
         if (exists) {
           const prior = yield* readRun(target)
           if (prior.status === "running" || prior.status === "queued") {

@@ -139,7 +139,9 @@ const layer = Layer.effect(
         }),
       )
 
-    const fakeVcs = Schema.decodeUnknownSync(Schema.optional(ProjectVcs))(Flag.OTTILI_CODER_FAKE_VCS)
+    const fakeVcs = Flag.OTTILI_CODER_FAKE_VCS
+      ? Schema.decodeUnknownSync(Project.Vcs)(Flag.OTTILI_CODER_FAKE_VCS)
+      : undefined
 
     const scope = yield* Scope.Scope
 

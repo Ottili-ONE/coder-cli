@@ -45,6 +45,7 @@ export class Service extends ConfigService.Service<Service>()("@opencode-ai/Runt
   experimentalLspTool: enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_LSP_TOOL"),
   experimentalOxfmt: enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_OXFMT"),
   experimentalPlanMode: enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_PLAN_MODE"),
+  experimentalCodeMode: enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_CODE_MODE"),
   experimentalEventSystem: enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_EVENT_SYSTEM"),
   experimentalWorkspaces: enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_WORKSPACES"),
   experimentalIconDiscovery: enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_ICON_DISCOVERY"),
@@ -57,7 +58,7 @@ export class Service extends ConfigService.Service<Service>()("@opencode-ai/Runt
 
 export type Info = Context.Service.Shape<typeof Service>
 
-const emptyConfigLayer = Service.defaultLayer.pipe(
+const emptyConfigLayer = Service.layer.pipe(
   Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({}))),
   Layer.orDie,
 )
@@ -71,9 +72,9 @@ export const layer = (overrides: Partial<Info> = {}) =>
     }),
   ).pipe(Layer.provide(emptyConfigLayer))
 
-export const defaultLayer = Service.defaultLayer.pipe(Layer.orDie)
+export const defaultLayer = Service.layer.pipe(Layer.orDie)
 
-export const node = LayerNode.make(defaultLayer, [])
+export const node = LayerNode.make({ service: Service, layer: defaultLayer, deps: [] })
 
 export * as RuntimeFlags from "./runtime-flags"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
