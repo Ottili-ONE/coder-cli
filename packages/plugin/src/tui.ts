@@ -223,11 +223,20 @@ export type TuiPromptProps = {
   }
 }
 
+export type TuiToastAction = {
+  label: string
+  // Wire-safe (core→TUI event / HTTP): a keymap command or route the TUI executes.
+  command?: string
+  // In-process only (plugin/runtime): a direct callback. NEVER serialized.
+  onClick?: () => void
+}
+
 export type TuiToast = {
   variant?: "info" | "success" | "warning" | "error"
   title?: string
   message: string
   duration?: number
+  action?: TuiToastAction
 }
 
 export type TuiAttentionWhen = "always" | "focused" | "blurred"
@@ -382,7 +391,20 @@ export type TuiState = {
     worktree: string
     directory: string
   }
-  readonly vcs: { branch?: string } | undefined
+  readonly vcs: {
+    branch?: string
+    default_branch?: string
+    dirty?: {
+      added: number
+      modified: number
+      deleted: number
+      untracked: number
+    }
+    ahead?: number
+    behind?: number
+    conflict?: number
+    worktree?: number
+  } | undefined
   session: {
     count: () => number
     get: (sessionID: string) => Session | undefined

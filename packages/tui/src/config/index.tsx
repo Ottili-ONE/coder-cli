@@ -32,7 +32,7 @@ export const DiffStyle = Schema.Literals(["auto", "stacked"]).annotate({
 })
 
 export const ThemeMode = Schema.Literals(["dark", "light", "system"]).annotate({
-  description: "Color mode for the TUI: dark, light, or follow the terminal (system)",
+  description: "Color mode for the TUI. Ottili Coder is dark-only; any value resolves to dark.",
 })
 export type ThemeMode = Schema.Schema.Type<typeof ThemeMode>
 
@@ -106,7 +106,7 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
 
   return {
     ...input,
-    theme_mode: input.theme_mode ?? "system",
+    theme_mode: "dark",
     attention: {
       enabled: input.attention?.enabled ?? false,
       notifications: input.attention?.notifications ?? true,

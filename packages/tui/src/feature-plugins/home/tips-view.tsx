@@ -42,7 +42,6 @@ type Shortcuts = {
   statusView: TipShortcut
   terminalSuspend: TipShortcut
   themeList: TipShortcut
-  themeSwitchMode: TipShortcut
   accountUsage: TipShortcut
   providerConnect: TipShortcut
 }
@@ -135,7 +134,6 @@ export function Tips(props: { api: TuiPluginApi; connected?: boolean }) {
     statusView: useCommandShortcut("ottiliCoder.status"),
     terminalSuspend: useCommandShortcut("terminal.suspend"),
     themeList: useCommandShortcut("theme.switch"),
-    themeSwitchMode: useCommandShortcut("theme.switch_mode"),
     accountUsage: useCommandShortcut("account.usage"),
     providerConnect: useCommandShortcut("provider.connect"),
   }
@@ -184,12 +182,9 @@ const TIPS: Tip[] = [
   "Start a message with {highlight}!{/highlight} to run shell commands directly (e.g., {highlight}!ls -la{/highlight})",
   (shortcuts) => press(shortcuts.agentCycle(), "to cycle between Build, Plan, Debug, and Ask agents"),
   (shortcuts) =>
-    press(shortcuts.themeSwitchMode(), "to switch between light and dark mode") ??
-    "Run {highlight}/light{/highlight} or {highlight}/dark{/highlight} to switch color mode",
-  (shortcuts) =>
     shortcuts.themeList()
-      ? `Use ${commandText("/themes", shortcuts.themeList())} to change theme and color mode`
-      : "Run {highlight}/themes{/highlight} to change theme and color mode",
+      ? `Use ${commandText("/themes", shortcuts.themeList())} to change theme`
+      : "Run {highlight}/themes{/highlight} to change theme",
   "Use {highlight}/undo{/highlight} to revert the last message and file changes",
   "Use {highlight}/redo{/highlight} to restore previously undone messages and file changes",
   "Run {highlight}/share{/highlight} to create a public link to your conversation at ottili.one/coder",

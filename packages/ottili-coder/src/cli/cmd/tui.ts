@@ -6,16 +6,33 @@ import { fileURLToPath } from "url"
 import { UI } from "@/cli/ui"
 import { errorMessage } from "@opencode-ai/tui/util/error"
 import { withTimeout } from "@/util/timeout"
-import { withNetworkOptions, resolveNetworkOptionsNoConfig } from "@/cli/network"
+import { withNetworkOptions, resolveNetworkOptionsNoConfig, hasArg } from "@/cli/network"
 import { Filesystem } from "@/util/filesystem"
 import type { GlobalEvent } from "@opencode-ai/sdk/v2"
 import type { EventSource } from "@opencode-ai/tui/context/sdk"
 import { writeHeapSnapshot } from "v8"
+import { ServerAuth } from "@/server/auth"
 import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard } from "@opencode-ai/tui/terminal-win32"
+import { createOttiliCoderClient } from "@opencode-ai/sdk/v2"
+import * as prompts from "@clack/prompts"
 
 declare global {
   const OTTILI_CODER_WORKER_PATH: string
+}
+
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return "just now"
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo ago`
+  return new Date(ts).toLocaleDateString()
 }
 
 type RpcClient = ReturnType<typeof Rpc.client<typeof rpc>>
@@ -96,6 +113,16 @@ export const TuiThreadCommand = cmd({
         type: "boolean",
         describe: "fork the session when continuing (use with --continue or --session)",
       })
+      .option("resume", {
+        alias: ["r"],
+        describe: "list past conversations and resume the selected one",
+        type: "boolean",
+      })
+      .option("yolo", {
+        alias: ["y"],
+        describe: "yolo mode: auto-approve every permission request (bypass prompts)",
+        type: "boolean",
+      })
       .option("prompt", {
         type: "string",
         describe: "prompt to use",
@@ -103,13 +130,98 @@ export const TuiThreadCommand = cmd({
       .option("agent", {
         type: "string",
         describe: "agent to use",
+      })
+      .option("auto", {
+        type: "boolean",
+        describe: "auto-approve permissions that are not explicitly denied (dangerous!)",
+        default: false,
+      })
+      .option("yolo", {
+        type: "boolean",
+        hidden: true,
+        default: false,
+      })
+      .option("dangerously-skip-permissions", {
+        type: "boolean",
+        hidden: true,
+        default: false,
+      })
+      .option("mini", {
+        type: "boolean",
+        describe: "start the minimal interactive interface",
+        default: false,
+      })
+      .option("replay", {
+        type: "boolean",
+        hidden: true,
+      })
+      .option("no-replay", {
+        type: "boolean",
+        describe: "disable mini session history replay on resume and after resize",
+      })
+      .option("replay-limit", {
+        type: "number",
+        describe: "cap visible mini replay to the newest N messages",
+      })
+      .option("demo", {
+        type: "boolean",
+        hidden: true,
       }),
   handler: async (args) => {
+    if (args.replay === true) {
+      UI.error("--replay is not supported; replay is enabled by default")
+      process.exitCode = 1
+      return
+    }
+    const noReplay = args.replay === false || args.noReplay === true
+
+    if (args.mini) {
+      const network = ["--port", "--hostname", "--mdns", "--no-mdns", "--mdns-domain", "--cors"].find((option) =>
+        process.argv.some((arg) => arg === option || arg.startsWith(option + "=")),
+      )
+      if (network) {
+        UI.error(`${network} cannot be used with --mini`)
+        process.exitCode = 1
+        return
+      }
+
+      const { runMini } = await import("./run")
+      await runMini({
+        directory: resolveThreadDirectory(args.project),
+        continue: args.continue,
+        session: args.session,
+        fork: args.fork,
+        model: args.model,
+        agent: args.agent,
+        prompt: args.prompt,
+        replay: noReplay ? false : undefined,
+        replayLimit: args.replayLimit,
+        demo: args.demo,
+      })
+      return
+    }
+
+    const unsupported = [
+      ["--no-replay", noReplay],
+      ["--replay-limit", args.replayLimit !== undefined],
+      ["--demo", args.demo !== undefined],
+    ].find((entry) => entry[1])?.[0]
+    if (unsupported) {
+      UI.error(`${unsupported} requires --mini`)
+      process.exitCode = 1
+      return
+    }
+
     const unguard = win32InstallCtrlCGuard()
     try {
       const { TuiConfig } = await import("@/config/tui")
       if (args.fork && !args.continue && !args.session) {
         UI.error("--fork requires --continue or --session")
+        process.exitCode = 1
+        return
+      }
+      if (args.resume && (args.continue || args.session || args.fork)) {
+        UI.error("--resume cannot be combined with --continue, --session, or --fork")
         process.exitCode = 1
         return
       }
@@ -126,12 +238,49 @@ export const TuiThreadCommand = cmd({
       }
       const cwd = Filesystem.resolve(process.cwd())
 
-      const worker = new Worker(file)
+      const worker = new Worker(file, {
+        env: Object.fromEntries(
+          Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+        ),
+      })
       const client = Rpc.client<typeof rpc>(worker)
       const reload = () => {
         client.call("reload", undefined).catch(() => {})
       }
       process.on("SIGUSR2", reload)
+
+      if (args.resume) {
+        if (!process.stdout.isTTY) {
+          UI.error("--resume requires a TTY")
+          process.exitCode = 1
+          return
+        }
+        const sdk = createOttiliCoderClient({
+          baseUrl: "http://ottiliCoder.internal",
+          fetch: createWorkerFetch(client),
+          directory: cwd,
+        })
+        const sessions = (await sdk.session.list()).data ?? []
+        if (sessions.length === 0) {
+          UI.error("No past conversations found")
+          process.exitCode = 1
+          return
+        }
+        sessions.sort((a, b) => b.time.updated - a.time.updated)
+        const selected = await prompts.select({
+          message: "Resume which conversation?",
+          options: sessions.map((s) => ({
+            value: s.id,
+            label: s.title || s.id,
+            hint: `${relativeTime(s.time.updated)} · ${s.directory}`,
+          })),
+        })
+        if (prompts.isCancel(selected)) {
+          process.exitCode = 1
+          return
+        }
+        args.session = selected as string
+      }
 
       let stopped = false
       const stop = async () => {
@@ -146,19 +295,16 @@ export const TuiThreadCommand = cmd({
       const config = await TuiConfig.get()
 
       const network = resolveNetworkOptionsNoConfig(args)
-      const external =
-        process.argv.includes("--port") ||
-        process.argv.includes("--hostname") ||
-        process.argv.includes("--mdns") ||
-        network.mdns ||
-        network.port !== 0 ||
-        network.hostname !== "127.0.0.1"
+      const external = hasArg("--port") || hasArg("--hostname") || network.mdns === true
+
+      const headers = external ? ServerAuth.headers() : undefined
 
       const transport = external
         ? {
             url: (await client.call("server", network)).url,
             fetch: undefined,
             events: undefined,
+            headers,
           }
         : {
             url: "http://ottiliCoder.internal",
@@ -172,6 +318,7 @@ export const TuiThreadCommand = cmd({
           sessionID: args.session,
           directory: cwd,
           fetch: transport.fetch,
+          headers,
         })
       } catch (error) {
         UI.error(errorMessage(error))
@@ -199,6 +346,7 @@ export const TuiThreadCommand = cmd({
             pluginHost: createLegacyTuiPluginHost(),
             directory: cwd,
             fetch: transport.fetch,
+            headers: transport.headers,
             events: transport.events,
             args: {
               continue: args.continue,
@@ -207,6 +355,7 @@ export const TuiThreadCommand = cmd({
               model: args.model,
               prompt,
               fork: args.fork,
+              yolo: args.yolo,
             },
           }),
         )

@@ -1,9 +1,3 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
-
-exports[`tool.ls basic 1`] = `
-"packages/opencode/test/fixtures/example/
-  broken.ts
-  cli.ts
-  ink.tsx
-"
-`;
+// No active snapshot entries: the tool.ls case was removed during Ottili Coder rebranding.
+// New snapshot entries will be appended here as needed.

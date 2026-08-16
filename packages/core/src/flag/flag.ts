@@ -49,6 +49,131 @@ export const Flag = {
   OTTILI_CODER_WORKSPACE_ID: process.env["OTTILI_CODER_WORKSPACE_ID"],
   OTTILI_CODER_EXPERIMENTAL_WORKSPACES: enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_WORKSPACES"),
 
+  // Checkpoint timeline (T-CLI-0166): surface Cairn checkpoint state as a
+  // user-navigable timeline. Off until staged validation passes.
+  get OTTILI_CODER_EXPERIMENTAL_CHECKPOINT_TIMELINE() {
+    return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_CHECKPOINT_TIMELINE")
+  },
+
+  // Background jobs view (T-CLI-0173): unified local + cloud background jobs
+  // surface. The redesigned cloud surface is always active; local
+  // process-local background jobs are merged in only when this is enabled.
+  get OTTILI_CODER_EXPERIMENTAL_BACKGROUND_JOBS() {
+    return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_BACKGROUND_JOBS")
+  },
+
+  // Notifications and toasts redesign (T-CLI-0177): stacked toasts with
+  // action/retry affordances and keyboard interaction. The redesigned render
+  // surface is always active; this flag additionally enables the toast
+  // keyboard layer (a = activate action, ] = dismiss all, esc = dismiss top).
+  // Off until staging validation passes.
+  get OTTILI_CODER_EXPERIMENTAL_TUI_TOAST_REDESIGN() {
+    return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_TUI_TOAST_REDESIGN")
+  },
+
+  // Update & release banner (T-CLI-0234): non-blocking top strip that surfaces
+  // update/release state (loading, empty, populated, long-content, failure,
+  // denied, offline, degraded) above the degraded-state strip. Off until
+  // staging validation passes; when off `app.tsx` keeps the identical blocking
+  // DialogConfirm behavior (zero regression). The MEE flag
+  // EVOLUTION_T_CLI_0232_TUI_REDESIGN_UPDATE_AND_RELEASE_BANNER__ENABLED maps
+  // to this env var.
+  get OTTILI_CODER_EXPERIMENTAL_TUI_UPDATE_BANNER() {
+    if (truthy("EVOLUTION_T_CLI_0232_TUI_REDESIGN_UPDATE_AND_RELEASE_BANNER__ENABLED")) return true
+    return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_TUI_UPDATE_BANNER")
+  },
+
+  // Diagnostics screen (T-CLI-0236 / T-CLI-0238 / T-CLI-0239): consolidated
+  // TUI diagnostics dialog (Environment, Providers, MCP, LSP, Formatters,
+  // Plugins, Account/Cloud, Logs) replacing the legacy status surface when the
+  // flag is on. The MEE flag EVOLUTION_T_CLI_0236_TUI_REDESIGN_DIAGNOSTICS_SCREEN__IN_ENABLED
+  // maps to this env var; off keeps the existing DialogStatus behavior.
+  get OTTILI_CODER_EXPERIMENTAL_TUI_DIAGNOSTICS() {
+    if (truthy("EVOLUTION_T_CLI_0236_TUI_REDESIGN_DIAGNOSTICS_SCREEN__IN_ENABLED")) return true
+    return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_TUI_DIAGNOSTICS")
+  },
+
+  // Search across session (T-CLI-0185): unified full-session search surface
+  // over messages, tool calls, files, tasks, errors and decisions. The
+  // redesigned surface is always active; this flag additionally exposes the
+  // "/search" slash command and the <leader>/ binding. On by default;
+  // set to false to hide the entry points until staging validation passes.
+  get EVOLUTION_T_CLI_0185_TUI_REDESIGN_SEARCH_ACROSS_SESSION__ENABLED() {
+    return (
+      process.env["EVOLUTION_T_CLI_0185_TUI_REDESIGN_SEARCH_ACROSS_SESSION__ENABLED"] === undefined
+        ? true
+        : truthy("EVOLUTION_T_CLI_0185_TUI_REDESIGN_SEARCH_ACROSS_SESSION__ENABLED")
+    )
+  },
+
+  // Code block renderer redesign (T-CLI-0193): the redesigned, Ottili-palette
+  // controlled code block surface (syntax highlighting, line-number gutter,
+  // header with language + line count, copy / line-select / wrap / run
+  // affordances). Off until staging validation passes; when off the shipped
+  // engine markdown renderer and the planned markdown path's legacy bordered
+  // text fall back unchanged (zero regression).
+  get EVOLUTION_T_CLI_0193_TUI_REDESIGN_CODE_BLOCK_RENDERER__C_ENABLED() {
+    return truthy("EVOLUTION_T_CLI_0193_TUI_REDESIGN_CODE_BLOCK_RENDERER__C_ENABLED")
+  },
+
+  // Multi-pane workspace (T-CLI-0201): resizable transcript, files, diff, tasks
+  // and terminal panes arranged in a multi-pane layout using the PanelGroup/
+  // Panel/Separator component system. Off until staging validation passes; when
+  // off the session renders the single-scrollbox legacy layout (zero regression).
+  get EVOLUTION_T_CLI_0201_TUI_REDESIGN_MULTI_PANE_WORKSPACE__ENABLED() {
+    return truthy("EVOLUTION_T_CLI_0201_TUI_REDESIGN_MULTI_PANE_WORKSPACE__ENABLED")
+  },
+
+  // Focus mode (T-CLI-0205): minimal transcript/composer surface that drops
+  // the sidebar, header strip, and status chrome behind a single keystroke.
+  // Off until staging validation passes; when off `focused()` is forced false
+  // so the session renders exactly as today (zero regression).
+  get EVOLUTION_T_CLI_0205_TUI_REDESIGN_FOCUS_MODE__CORE_IMPLE_ENABLED() {
+    return truthy("EVOLUTION_T_CLI_0205_TUI_REDESIGN_FOCUS_MODE__CORE_IMPLE_ENABLED")
+  },
+
+  // Compact mode (T-CLI-0209): high-density layout for small terminals and
+  // power users. Tightens transcript padding, message gaps, and the header
+  // strip into a single dense line so more content fits per screen. Off until
+  // staging validation passes; when off `compact()` is forced false so the
+  // session renders exactly as today (zero regression).
+  get EVOLUTION_T_CLI_0209_TUI_REDESIGN_COMPACT_MODE__CORE_IMP_ENABLED() {
+    return truthy("EVOLUTION_T_CLI_0209_TUI_REDESIGN_COMPACT_MODE__CORE_IMP_ENABLED")
+  },
+
+  // Responsive terminal layout (T-CLI-0212): tiered, width-driven layout that
+  // replaces the single `width > 120` breakpoint with narrow/compact/standard/
+  // wide tiers, a docked-vs-overlay sidebar decision, a condensed header at
+  // small widths, and auto-compact density for small terminals. Off until
+  // staging validation passes; when off `computeResponsiveLayout` returns the
+  // exact legacy mapping (docked sidebar only at > 120) so the session renders
+  // exactly as today (zero regression).
+  get EVOLUTION_T_CLI_0212_TUI_REDESIGN_RESPONSIVE_TERMINAL_LAY_ENABLED() {
+    return truthy("EVOLUTION_T_CLI_0212_TUI_REDESIGN_RESPONSIVE_TERMINAL_LAY_ENABLED")
+  },
+
+  // Web & Desktop parity (T-CLI-0244 / T-CLI-0245): single interaction
+  // vocabulary shared by the TUI, web app and desktop renderer behind one
+  // ParitySurface adapter. Off until staging validation passes; when off the
+  // surfaces render exactly as today (zero regression). The MEE flag
+  // EVOLUTION_T_CLI_0245_TUI_REDESIGN_WEB_AND_DESKTOP_PARITY__ENABLED maps to
+  // this env var.
+  get EVOLUTION_T_CLI_0245_TUI_REDESIGN_WEB_AND_DESKTOP_PARITY__ENABLED() {
+    if (truthy("EVOLUTION_T_CLI_0245_TUI_REDESIGN_WEB_AND_DESKTOP_PARITY__ENABLED")) return true
+    return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_TUI_WEB_DESKTOP_PARITY")
+  },
+
+  // Image and file attachments redesign (T-CLI-0197): redesigned AttachmentBar
+  // and user message file display with metadata, size info, and accessibility
+  // labels. Off until staging validation passes; when off the legacy surface
+  // renders identically (zero regression). The MEE flag
+  // EVOLUTION_T_CLI_0197_TUI_REDESIGN_IMAGE_AND_FILE_ATTACHME_ENABLED maps to
+  // this env var.
+  get EVOLUTION_T_CLI_0197_TUI_REDESIGN_IMAGE_AND_FILE_ATTACHME_ENABLED() {
+    if (truthy("EVOLUTION_T_CLI_0197_TUI_REDESIGN_IMAGE_AND_FILE_ATTACHME_ENABLED")) return true
+    return enabledByExperimental("OTTILI_CODER_EXPERIMENTAL_TUI_ATTACHMENT_REDESIGN")
+  },
+
   // Evaluated at access time (not module load) because tests, the CLI, and
   // external tooling set these env vars at runtime.
   get OTTILI_CODER_DISABLE_PROJECT_CONFIG() {

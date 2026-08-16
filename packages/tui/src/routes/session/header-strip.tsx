@@ -4,11 +4,17 @@ import { useSync } from "../../context/sync"
 import { useLocal } from "../../context/local"
 import { useTheme } from "../../context/theme"
 import { Locale } from "../../util/locale"
+import { Flag } from "@opencode-ai/core/flag/flag"
+import { CostUsageMeter } from "../../component/cost-usage"
+import { CheckpointStatusIndicator } from "../../component/checkpoint-timeline/indicator"
+import { useTuiParitySurface, ParityStatusBar } from "../../parity/tui-surface"
+import { ParityStateView } from "../../parity/tui-state"
 
-export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: string }) {
+export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: string; condensed?: boolean }) {
   const sync = useSync()
   const local = useLocal()
   const { theme } = useTheme()
+  const parity = useTuiParitySurface()
   const session = createMemo(() => sync.session.get(props.sessionID))
   const title = createMemo(() => {
     const value = session()?.title ?? "Session"
@@ -24,8 +30,8 @@ export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: 
       flexDirection="row"
       justifyContent="space-between"
       gap={2}
-      paddingTop={1}
-      paddingBottom={1}
+      paddingTop={props.condensed ? 0 : 1}
+      paddingBottom={props.condensed ? 0 : 1}
       border={["bottom"]}
       borderColor={theme.borderSubtle}
     >
@@ -43,7 +49,15 @@ export function SessionHeaderStrip(props: { sessionID: string; sidebarShortcut: 
             </>
           )}
         </Show>
+        <Show when={model().model}>
+          <CostUsageMeter sessionID={props.sessionID} />
+        </Show>
+        <Show when={Flag.OTTILI_CODER_EXPERIMENTAL_CHECKPOINT_TIMELINE}>
+          <CheckpointStatusIndicator sessionID={props.sessionID} />
+        </Show>
       </box>
+      <ParityStatusBar surface={parity} />
+      <ParityStateView state={parity.state} />
       <text fg={theme.textMuted} flexShrink={0}>
         {props.sidebarShortcut} sidebar
       </text>

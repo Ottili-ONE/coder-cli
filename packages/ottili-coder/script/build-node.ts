@@ -21,6 +21,7 @@ await Bun.build({
   external: ["jsonc-parser", "@lydell/node-pty"],
   define: {
     OTTILI_CODER_MODELS_DEV: generated.modelsData,
+    OTTILI_CODER_VERSION: `'${Script.version}'`,
     OTTILI_CODER_CHANNEL: `'${Script.channel}'`,
   },
   files: {

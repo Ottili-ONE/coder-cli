@@ -18,6 +18,7 @@ import { MessageID, PartID, SessionID } from "@/session/schema"
 import { NamedError } from "@opencode-ai/core/util/error"
 import { Cause, Effect, Option, Schema, Scope } from "effect"
 import * as Stream from "effect/Stream"
+import { InstanceState } from "@/effect/instance-state"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder, HttpApiError, HttpApiSchema } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
@@ -32,7 +33,7 @@ import {
   PromptPayload,
   RevertPayload,
   ShellPayload,
-  SummarizePayload,
+  CompactionPayload,
   UpdatePayload,
 } from "../groups/session"
 import { PermissionNotFoundError } from "../errors"
@@ -61,8 +62,9 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const scope = yield* Scope.Scope
 
     const list = Effect.fn("SessionHttpApi.list")(function* (ctx: { query: typeof ListQuery.Type }) {
+      const directory = ctx.query.directory ? yield* InstanceState.directory : undefined
       return yield* session.list({
-        directory: ctx.query.scope === "project" ? undefined : ctx.query.directory,
+        directory: ctx.query.scope === "project" ? undefined : directory,
         scope: ctx.query.scope,
         path: ctx.query.path,
         roots: ctx.query.roots,
@@ -268,26 +270,62 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       return yield* requireSession(ctx.params.sessionID)
     })
 
-    const summarize = Effect.fn("SessionHttpApi.summarize")(function* (ctx: {
+    const compact = Effect.fn("SessionHttpApi.compact")(function* (ctx: {
       params: { sessionID: SessionID }
-      payload: typeof SummarizePayload.Type
+      payload: typeof CompactionPayload.Type
     }) {
-      yield* revertSvc.cleanup(yield* requireSession(ctx.params.sessionID))
-      const messages = yield* SessionError.mapStorageNotFound(session.messages({ sessionID: ctx.params.sessionID }))
+      const sessionID = ctx.params.sessionID
+      yield* requireSession(sessionID)
+      // Cancellation: refuse to start a second compaction while the session is
+      // busy (running prompt loop). `force` opts out for recovery/operator use.
+      if (!ctx.payload.force) {
+        yield* SessionError.mapBusy(runState.assertNotBusy(sessionID))
+      }
+      const messages = yield* SessionError.mapStorageNotFound(session.messages({ sessionID }))
       const defaultAgent = yield* agentSvc.defaultAgent()
       const currentAgent = messages.findLast((message) => message.info.role === "user")?.info.agent ?? defaultAgent
 
-      yield* compactSvc.create({
-        sessionID: ctx.params.sessionID,
+      const admitted = yield* compactSvc.request({
+        sessionID,
         agent: currentAgent,
-        model: {
-          providerID: ctx.payload.providerID,
-          modelID: ctx.payload.modelID,
-        },
+        model: { providerID: ctx.payload.providerID, modelID: ctx.payload.modelID },
+        reason: ctx.payload.reason ?? (ctx.payload.auto ? "auto" : "command"),
         auto: ctx.payload.auto ?? false,
+        keep: ctx.payload.keep,
+        idempotencyKey: ctx.payload.idempotencyKey,
+        force: ctx.payload.force,
+        respectPermissions: ctx.payload.respectPermissions ?? true,
       })
-      yield* promptSvc.loop({ sessionID: ctx.params.sessionID })
-      return true
+      if (admitted.state === "pending" && admitted.error) {
+        return yield* compactSvc.status({ sessionID })
+      }
+      // Idempotency: if a prior request with the same key is still in flight or
+      // done, the admitted status reflects that and we skip execution.
+      const inFlight = admitted.idempotencyKey
+        ? (yield* compactSvc.status({ sessionID })).idempotencyKey === admitted.idempotencyKey &&
+          (yield* compactSvc.status({ sessionID })).state !== "idle"
+        : false
+      if (admitted.error || inFlight) {
+        return admitted
+      }
+      const finished = yield* promptSvc.loop({ sessionID }).pipe(
+        Effect.matchEffect({
+          onFailure: (cause) =>
+            compactSvc.complete({
+              sessionID,
+              error: Cause.isCause(cause) ? Cause.pretty(cause) : String(cause),
+            }),
+          onSuccess: () => compactSvc.complete({ sessionID, summaryMessageID: admitted.messageID }),
+        }),
+      )
+      return finished
+    })
+
+    const compactionStatus = Effect.fn("SessionHttpApi.compactionStatus")(function* (ctx: {
+      params: { sessionID: SessionID }
+    }) {
+      yield* requireSession(ctx.params.sessionID)
+      return yield* compactSvc.status({ sessionID: ctx.params.sessionID })
     })
 
     const prompt = Effect.fn("SessionHttpApi.prompt")(function* (ctx: {
@@ -425,7 +463,8 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("init", init)
       .handle("share", share)
       .handle("unshare", unshare)
-      .handle("summarize", summarize)
+      .handle("compact", compact)
+      .handle("compactionStatus", compactionStatus)
       .handle("prompt", prompt)
       .handle("promptAsync", promptAsync)
       .handle("command", command)

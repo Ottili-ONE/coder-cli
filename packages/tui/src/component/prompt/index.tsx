@@ -9,7 +9,7 @@ import {
   type Renderable,
 } from "@opentui/core"
 import type { CommandContext } from "@opentui/keymap"
-import { createEffect, createMemo, onMount, createSignal, onCleanup, on, Show, Switch, Match } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, onMount, Show, Switch } from "solid-js"
 import "opentui-spinner/solid"
 import path from "path"
 import { fileURLToPath } from "url"
@@ -19,7 +19,7 @@ import { tint, useTheme } from "../../context/theme"
 import { EmptyBorder, SplitBorder } from "../../ui/border"
 import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { useClipboard } from "../../context/clipboard"
-import { Spinner } from "../spinner"
+import { Spinner, StreamingIndicator } from "../spinner"
 import { useSDK } from "../../context/sdk"
 import { useRoute } from "../../context/route"
 import { useProject } from "../../context/project"
@@ -41,7 +41,6 @@ import type { AssistantMessage, FilePart, UserMessage } from "@opencode-ai/sdk/v
 import { Locale } from "../../util/locale"
 import { errorMessage } from "../../util/error"
 import { formatDuration } from "../../util/format"
-import { createColors, createFrames } from "../../ui/spinner"
 import { useDialog } from "../../ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
@@ -56,6 +55,7 @@ import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
+import { attachmentKind, mimeBadge, mimeColor, formatFileSize, truncateFilename, estimateDataUrlBytes, attachmentAccessibilityLabel, isDataUrl } from "./attachment-utils"
 
 export type PromptProps = {
   sessionID?: string
@@ -137,6 +137,79 @@ function formatEditorContext(selection: EditorSelection) {
 
 let stashed: { prompt: PromptInfo; cursor: number } | undefined
 
+/** Virtual text label for a file part in the prompt textarea extmark. */
+function filePartLabel(part: { type: string; mime?: string }, index: number): string {
+  if (part.type !== "file") return ""
+  const mime = part.mime ?? ""
+  if (mime === "application/pdf") return `[PDF ${index}]`
+  if (mime.startsWith("image/")) return `[Image ${index}]`
+  return `[File ${index}]`
+}
+
+function rebuildExtmarks(
+  draft: { prompt: { input: string; parts: unknown[] }; extmarkToPartIndex: Map<number, number> },
+  input: TextareaRenderable,
+) {
+  draft.extmarkToPartIndex = new Map()
+  // Extmarks are cleared by clearPrompt; here we just sync the map state
+  // after parts are removed so the map and parts array stay consistent.
+}
+
+function AttachmentBar(props: {
+  parts: PromptInfo["parts"]
+  onRemove: (index: number) => void
+  theme: ReturnType<typeof useTheme>["theme"]
+}) {
+  const fileParts = createMemo(() =>
+    props.parts
+      .map((p, i) => ({ part: p, index: i }))
+      .filter(({ part }) => part.type === "file") as {
+        part: Omit<FilePart, "id" | "messageID" | "sessionID">
+        index: number
+      }[],
+  )
+  return (
+    <Show when={fileParts().length > 0}>
+      <box paddingLeft={2} paddingRight={2} paddingTop={1} flexDirection="row" gap={1} flexWrap="wrap">
+        <For each={fileParts()}>
+          {({ part, index }) => {
+            const mime = part.mime ?? ""
+            const badge = mimeBadge(mime)
+            const fg = mimeColor(mime, props.theme)
+            const size = isDataUrl(part.url) ? estimateDataUrlBytes(part.url) : undefined
+            const kind = attachmentKind(mime)
+            const label = attachmentAccessibilityLabel(part, size)
+            return (
+              <box
+                flexDirection="row"
+                gap={0}
+                borderColor={props.theme.border}
+                border={["left"]}
+                aria-label={label}
+              >
+                <text fg={props.theme.background} style={{ bg: fg }}>
+                  {" "}
+                  {badge}{" "}
+                </text>
+                <text fg={props.theme.textMuted}>
+                  {" "}
+                  {truncateFilename(part.filename ?? "attachment", 28)}{" "}
+                </text>
+                <Show when={size !== undefined && kind === "image"}>
+                  <text fg={props.theme.borderSubtle}> {formatFileSize(size!)} </text>
+                </Show>
+                <box onMouseUp={() => props.onRemove(index)}>
+                  <text fg={props.theme.textMuted}> × </text>
+                </box>
+              </box>
+            )
+          }}
+        </For>
+      </box>
+    </Show>
+  )
+}
+
 export function Prompt(props: PromptProps) {
   let input: TextareaRenderable
   let anchor: BoxRenderable
@@ -157,6 +230,12 @@ export function Prompt(props: PromptProps) {
   const dialog = useDialog()
   const toast = useToast()
   const status = createMemo(() => sync.data.session_status?.[props.sessionID ?? ""] ?? { type: "idle" })
+
+  // Queue of prompts submitted while the agent is busy. They are flushed (sent) on the
+  // busy -> idle transition so they are dispatched when the agent finishes its work.
+  type QueuedPrompt = Parameters<typeof sdk.client.session.prompt>[0]
+  const [queue, setQueue] = createSignal<QueuedPrompt[]>([])
+  let prevIdle = true
   const history = usePromptHistory()
   const stash = usePromptStash()
   const keymap = useOttiliCoderKeymap()
@@ -572,6 +651,27 @@ export function Prompt(props: PromptProps) {
       "session.move",
     ]),
   }))
+
+  // Flush queued prompts when the agent becomes idle, so each queued message is sent
+  // once the agent finishes its current work and the queue drains in submission order.
+  createEffect(() => {
+    const idle = status().type === "idle"
+    const q = queue()
+    if (idle && !prevIdle && q.length > 0) {
+      const [first, ...rest] = q
+      setQueue(rest)
+      void sdk.client.session
+        .prompt(first)
+        .catch((err) => {
+          console.log("Queued prompt failed:", err)
+          toast.show({
+            message: errorMessage(err) || "Queued prompt failed.",
+            variant: "error",
+          })
+        })
+    }
+    prevIdle = idle
+  })
 
   const ref: PromptRef = {
     get focused() {
@@ -1085,30 +1185,39 @@ export function Prompt(props: PromptProps) {
       })
     } else {
       move.startSubmit()
-      sdk.client.session
-        .prompt({
-          sessionID,
-          ...selectedModel,
-          agent: agent.name,
-          model: selectedModel,
-          variant,
-          parts: [
-            ...editorParts,
-            {
-              type: "text",
-              text: inputText,
-            },
-            ...nonTextParts,
-          ],
+      const parts: NonNullable<QueuedPrompt["parts"]> = [
+        ...editorParts,
+        {
+          type: "text",
+          text: inputText,
+        },
+        ...nonTextParts,
+      ]
+      if (status().type !== "idle") {
+        setQueue([...queue(), { sessionID, ...selectedModel, agent: agent.name, model: selectedModel, variant, parts }])
+        toast.show({
+          message: `Queued (${queue().length + 1}) — sent when the agent is idle`,
+          variant: "info",
         })
-        .catch((err) => {
-          console.log("Prompt failed:", err)
-          toast.show({
-            message: errorMessage(err) || "Prompt fehlgeschlagen. Details in der Konsole.",
-            variant: "error",
+      } else {
+        sdk.client.session
+          .prompt({
+            sessionID,
+            ...selectedModel,
+            agent: agent.name,
+            model: selectedModel,
+            variant,
+            parts,
           })
-        })
-      if (editorParts.length > 0) editor.markSelectionSent()
+          .catch((err) => {
+            console.log("Prompt failed:", err)
+            toast.show({
+              message: errorMessage(err) || "Prompt fehlgeschlagen. Details in der Konsole.",
+              variant: "error",
+            })
+          })
+        if (editorParts.length > 0) editor.markSelectionSent()
+      }
     }
     history.append({
       ...store.prompt,
@@ -1310,28 +1419,12 @@ export function Prompt(props: PromptProps) {
     return `Ask anything... "${list()[store.placeholder % list().length]}"`
   })
 
-  const spinnerDef = createMemo(() => {
+  const motionColor = createMemo(() => {
     const agent =
       status().type !== "idle"
         ? (local.agent.list().find((a) => a.name === lastUserMessage()?.agent) ?? local.agent.current())
         : local.agent.current()
-    const color = agent ? local.agent.color(agent.name) : theme.border
-    return {
-      frames: createFrames({
-        color,
-        style: "blocks",
-        inactiveFactor: 0.6,
-        // enableFading: false,
-        minAlpha: 0.3,
-      }),
-      color: createColors({
-        color,
-        style: "blocks",
-        inactiveFactor: 0.6,
-        // enableFading: false,
-        minAlpha: 0.3,
-      }),
-    }
+    return agent ? local.agent.color(agent.name) : theme.border
   })
   const maxHeight = createMemo(() => tuiConfig.prompt?.max_height ?? Math.max(6, Math.floor(dimensions().height / 3)))
   const moveLabelWidth = createMemo(() => Math.max(12, Math.min(44, dimensions().width - 48)))
@@ -1430,6 +1523,18 @@ export function Prompt(props: PromptProps) {
               cursorColor={props.disabled ? theme.backgroundElement : theme.text}
               syntaxStyle={syntax()}
             />
+            <AttachmentBar
+              parts={store.prompt.parts}
+              onRemove={(index) => {
+                setStore(
+                  produce((draft) => {
+                    draft.prompt.parts.splice(index, 1)
+                    rebuildExtmarks(draft, input)
+                  }),
+                )
+              }}
+              theme={theme}
+            />
             <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">
               <box flexDirection="row" gap={1}>
                 <Show when={local.agent.current()} fallback={<box height={1} />}>
@@ -1507,9 +1612,7 @@ export function Prompt(props: PromptProps) {
               >
                 <box flexShrink={0} flexDirection="row" gap={1}>
                   <box marginLeft={1}>
-                    <Show when={kv.get("animations_enabled", true)} fallback={<text fg={theme.textMuted}>[⋯]</text>}>
-                      <spinner color={spinnerDef().color} frames={spinnerDef().frames} interval={40} />
-                    </Show>
+                    <StreamingIndicator color={motionColor()} interval={40} />
                   </box>
                   <box flexDirection="row" gap={1} flexShrink={0}>
                     {(() => {

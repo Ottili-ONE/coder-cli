@@ -267,7 +267,10 @@ export const UsageCommand = effectCmd({
   describe: "show Ottili ONE plan usage limits",
   instance: false,
   builder: (yargs) =>
-    yargs.boolean("all").describe("show all limits, including unused unlimited rows"),
+    yargs.option("all", {
+      type: "boolean",
+      describe: "show all limits, including unused unlimited rows",
+    }),
   handler: Effect.fn("Cli.account.usage")(function* (args) {
     UI.empty()
     yield* Effect.orDie(usageEffect(Boolean(args.all)))

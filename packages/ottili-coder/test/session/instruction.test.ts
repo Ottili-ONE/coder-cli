@@ -2,34 +2,42 @@ import { describe, expect, test } from "bun:test"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import path from "path"
 import { Effect, FileSystem, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
-import { NodeFileSystem } from "@effect/platform-node"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
-import { FSUtil } from "@opencode-ai/core/fs-util"
 
 import { Instruction } from "../../src/session/instruction"
 import type { MessageV2 } from "../../src/session/message-v2"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { Global } from "@opencode-ai/core/global"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"
-import { provideInstance, provideTmpdirInstance, testInstanceStoreLayer, tmpdirScoped } from "../fixture/fixture"
+import { provideInstance, provideTmpdirInstance, tmpdirScoped } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { TestConfig } from "../fixture/config"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { LayerNodePlatform } from "@opencode-ai/core/effect/app-node-platform"
+import { InstanceStore } from "@/project/instance-store"
+import { InstanceBootstrap } from "@/project/bootstrap"
+import { Config } from "@/config/config"
 
-const it = testEffect(Layer.mergeAll(CrossSpawnSpawner.defaultLayer, NodeFileSystem.layer, testInstanceStoreLayer))
+const it = testEffect(
+  AppNodeBuilder.build(LayerNode.group([CrossSpawnSpawner.node, LayerNodePlatform.filesystem, InstanceStore.node]), [
+    [
+      InstanceBootstrap.node,
+      Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void })),
+    ],
+  ]),
+)
 
-const configLayer = TestConfig.layer()
+const configLayer = Layer.succeed(Config.Service, TestConfig.make())
 
 const instructionLayer = (global: Partial<Global.Interface>, flags: Partial<RuntimeFlags.Info> = {}) =>
-  Instruction.layer.pipe(
-    Layer.provide(configLayer),
-    Layer.provide(FSUtil.defaultLayer),
-    Layer.provide(FetchHttpClient.layer),
-    Layer.provide(Global.layerWith(global)),
-    Layer.provide(RuntimeFlags.layer(flags)),
-  )
+  AppNodeBuilder.build(Instruction.node, [
+    [Config.node, configLayer],
+    [Global.node, Global.layerWith(global)],
+    [RuntimeFlags.node, RuntimeFlags.layer(flags)],
+  ])
 
 const provideInstruction =
   (global: Partial<Global.Interface>, flags?: Partial<RuntimeFlags.Info>) =>
@@ -238,6 +246,28 @@ describe("Instruction.system", () => {
       )
     }),
   )
+
+  it.live("prefers OTTILI.md over AGENTS.md and CLAUDE.md in the project", () =>
+    Effect.gen(function* () {
+      const projectTmp = yield* tmpWithFiles({
+        "OTTILI.md": "# Ottili Instructions",
+        "AGENTS.md": "# Agents Instructions",
+        "CLAUDE.md": "# Claude Instructions",
+      })
+
+      yield* Effect.gen(function* () {
+        const svc = yield* Instruction.Service
+        const paths = yield* svc.systemPaths()
+        expect(paths.has(path.join(projectTmp, "OTTILI.md"))).toBe(true)
+        expect(paths.has(path.join(projectTmp, "AGENTS.md"))).toBe(false)
+        expect(paths.has(path.join(projectTmp, "CLAUDE.md"))).toBe(false)
+
+        const rules = yield* svc.system()
+        expect(rules).toHaveLength(1)
+        expect(rules[0]).toBe(`Instructions from: ${path.join(projectTmp, "OTTILI.md")}\n# Ottili Instructions`)
+      }).pipe(provideInstance(projectTmp), provideInstruction({ home: projectTmp, config: projectTmp }))
+    }),
+  )
 })
 
 describe("Instruction.systemPaths global config", () => {
@@ -250,6 +280,23 @@ describe("Instruction.systemPaths global config", () => {
         const svc = yield* Instruction.Service
         const paths = yield* svc.systemPaths()
         expect(paths.has(path.join(globalTmp, "AGENTS.md"))).toBe(true)
+      }).pipe(provideInstance(projectTmp), provideInstruction({ home: globalTmp, config: globalTmp }))
+    }),
+  )
+
+  it.live("prefers OTTILI.md over AGENTS.md in Global.Service config", () =>
+    Effect.gen(function* () {
+      const globalTmp = yield* tmpWithFiles({
+        "OTTILI.md": "# Global Ottili",
+        "AGENTS.md": "# Global Agents",
+      })
+      const projectTmp = yield* tmpdirScoped()
+
+      yield* Effect.gen(function* () {
+        const svc = yield* Instruction.Service
+        const paths = yield* svc.systemPaths()
+        expect(paths.has(path.join(globalTmp, "OTTILI.md"))).toBe(true)
+        expect(paths.has(path.join(globalTmp, "AGENTS.md"))).toBe(false)
       }).pipe(provideInstance(projectTmp), provideInstruction({ home: globalTmp, config: globalTmp }))
     }),
   )

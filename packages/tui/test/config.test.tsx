@@ -31,13 +31,20 @@ test("validates config constraints", () => {
       prompt: { max_height: 10, max_width: "auto" },
       scroll_speed: 0.001,
       diff_style: "stacked",
+      cursor: { blinking: false },
       plugin: ["example-plugin"],
     }),
-  ).toMatchObject({ leader_timeout: 250, attention: { volume: 1 }, diff_style: "stacked" })
+  ).toMatchObject({
+    leader_timeout: 250,
+    attention: { volume: 1 },
+    diff_style: "stacked",
+    cursor: { blinking: false },
+  })
   expect(() => decodeInfo({ leader_timeout: 0 })).toThrow()
   expect(() => decodeInfo({ attention: { volume: 1.1 } })).toThrow()
   expect(() => decodeInfo({ prompt: { max_width: 0 } })).toThrow()
   expect(() => decodeInfo({ scroll_speed: 0 })).toThrow()
+  expect(() => decodeInfo({ cursor: { style: "beam" } })).toThrow()
   expect(decodeInfo({ attention: { sounds: { unknown: "sound.wav" } } })).toEqual({ attention: { sounds: {} } })
 })
 
@@ -75,9 +82,20 @@ test("resolves overrides without mutating input", () => {
   }
   const config = resolve(input, { terminalSuspend: true })
 
-  expect(config).toMatchObject({ theme: "custom", mouse: false, leader_timeout: 750, attention: input.attention })
+  expect(config).toMatchObject({
+    theme: "custom",
+    mouse: false,
+    leader_timeout: 750,
+    attention: input.attention,
+  })
   expect(config.keybinds.get("session.list")).toHaveLength(1)
   expect(input.keybinds).toEqual({ session_list: "ctrl+l" })
+})
+
+test("resolves a session move keybind", () => {
+  const config = resolve({ keybinds: { session_move: "ctrl+o" } }, { terminalSuspend: true })
+
+  expect(config.keybinds.get("session.move")).toMatchObject([{ key: "ctrl+o" }])
 })
 
 test("disables suspend and assigns ctrl+z to undo when unsupported", () => {

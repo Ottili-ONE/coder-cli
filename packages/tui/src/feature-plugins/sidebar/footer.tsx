@@ -3,6 +3,7 @@ import type { BuiltinTuiPlugin } from "../builtins"
 import { createMemo, Show } from "solid-js"
 import { BrandLabel } from "../../component/brand-label"
 import { ThemeModeLabel } from "../../component/theme-mode-label"
+import { GitStatusBar } from "../../component/git-status-bar"
 import { abbreviateHome } from "../../runtime"
 import { useTuiPaths } from "../../context/runtime"
 
@@ -22,9 +23,7 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
     const session = props.api.state.session.get(props.sessionID)
     const dir = session?.directory || props.api.state.path.directory || paths.cwd
     const out = abbreviateHome(dir, paths.home)
-    const branch = session?.directory === props.api.state.path.directory ? props.api.state.vcs?.branch : undefined
-    const text = branch ? out + ":" + branch : out
-    const list = text.split("/")
+    const list = out.split("/")
     return {
       parent: list.slice(0, -1).join("/"),
       name: list.at(-1) ?? "",
@@ -80,6 +79,7 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
         <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
         <span style={{ fg: theme().text }}>{path().name}</span>
       </text>
+      <GitStatusBar api={props.api} />
       <box flexDirection="row" gap={2} alignItems="center">
         <ThemeModeLabel mode={props.api.theme.mode()} muted={theme().textMuted} />
         <BrandLabel fg={theme().text} muted={theme().textMuted} version={props.api.app.version} />

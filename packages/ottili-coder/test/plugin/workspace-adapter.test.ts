@@ -1,24 +1,16 @@
 import { afterEach, describe, expect } from "bun:test"
 import { Effect, Layer } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
-import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
-import { Database } from "@opencode-ai/core/database/database"
-import { FSUtil } from "@opencode-ai/core/fs-util"
+import { Npm } from "@opencode-ai/core/npm"
 import { Ripgrep } from "@opencode-ai/core/ripgrep"
-import { EffectFlock } from "@opencode-ai/core/util/effect-flock"
 import path from "path"
 import { pathToFileURL } from "url"
 import { Auth } from "../../src/auth"
-import { EventV2Bridge } from "../../src/event-v2-bridge"
-import { Config } from "../../src/config/config"
-import { Env } from "../../src/env"
+import { Account } from "../../src/account/account"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"
 import { Workspace } from "../../src/control-plane/workspace"
 import { Plugin } from "../../src/plugin/index"
-import { InstanceBootstrap } from "../../src/project/bootstrap-service"
+import { InstanceBootstrap } from "../../src/project/bootstrap"
 import { InstanceStore } from "../../src/project/instance-store"
-import { Project } from "../../src/project/project"
-import { Vcs } from "../../src/project/vcs"
 import { InstanceState } from "../../src/effect/instance-state"
 import { Session } from "../../src/session/session"
 import { SessionPrompt } from "../../src/session/prompt"
@@ -28,38 +20,32 @@ import { testEffect } from "../lib/effect"
 import { AccountTest } from "../fake/account"
 import { AuthTest } from "../fake/auth"
 import { NpmTest } from "../fake/npm"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 
-const configLayer = Config.layer.pipe(
-  Layer.provide(EffectFlock.defaultLayer),
-  Layer.provide(FSUtil.defaultLayer),
-  Layer.provide(Env.defaultLayer),
-  Layer.provide(AuthTest.empty),
-  Layer.provide(AccountTest.empty),
-  Layer.provide(NpmTest.noop),
-  Layer.provide(FetchHttpClient.layer),
-)
-const pluginLayer = Plugin.layer.pipe(
-  Layer.provide(EventV2Bridge.defaultLayer),
-  Layer.provide(configLayer),
-  Layer.provide(RuntimeFlags.layer({ disableDefaultPlugins: true })),
-)
 const noopBootstrapLayer = Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))
 const workspaceLayer = Workspace.layer.pipe(
-  Layer.provide(Auth.defaultLayer),
-  Layer.provide(Session.defaultLayer),
-  Layer.provide(SessionPrompt.defaultLayer),
-  Layer.provide(Cairn.defaultLayer),
-  Layer.provide(Project.defaultLayer),
-  Layer.provide(Vcs.defaultLayer),
+  Layer.provide(LayerNode.compile(Auth.node)),
+  Layer.provide(LayerNode.compile(Session.node)),
+  Layer.provide(LayerNode.compile(SessionPrompt.node)),
+  Layer.provide(LayerNode.compile(Cairn.node)),
+  Layer.provide(LayerNode.compile(Project.node)),
+  Layer.provide(LayerNode.compile(Vcs.node)),
   Layer.provide(FetchHttpClient.layer),
-  Layer.provide(Database.defaultLayer),
-  Layer.provide(EventV2Bridge.defaultLayer),
-  Layer.provide(FSUtil.defaultLayer),
-  Layer.provide(InstanceStore.defaultLayer.pipe(Layer.provide(noopBootstrapLayer))),
+  Layer.provide(LayerNode.compile(Database.node)),
+  Layer.provide(LayerNode.compile(EventV2Bridge.node)),
+  Layer.provide(LayerNode.compile(FSUtil.node)),
+  Layer.provide(LayerNode.compile(InstanceStore.node).pipe(Layer.provide(noopBootstrapLayer))),
   Layer.provide(RuntimeFlags.layer({ experimentalWorkspaces: true })),
 )
 const it = testEffect(
-  Layer.mergeAll(pluginLayer, workspaceLayer, CrossSpawnSpawner.defaultLayer).pipe(Layer.provide(Ripgrep.defaultLayer)),
+  AppNodeBuilder.build(LayerNode.group([Plugin.node, Workspace.node, InstanceStore.node, Ripgrep.node]), [
+    [Auth.node, AuthTest.empty],
+    [Account.node, AccountTest.empty],
+    [Npm.node, NpmTest.noop],
+    [InstanceStore.bootstrapNode, noopBootstrapLayer],
+    [RuntimeFlags.node, RuntimeFlags.layer({ disableDefaultPlugins: true, experimentalWorkspaces: true })],
+  ]),
 )
 
 afterEach(async () => {

@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 
 import { $ } from "bun"
-import fs from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
@@ -49,6 +48,7 @@ const createEmbeddedWebUIBundle = async () => {
 }
 
 const embeddedFileMap = skipEmbedWebUi ? null : await createEmbeddedWebUIBundle()
+const treeSitterWorker = await Bun.file(fileURLToPath(import.meta.resolve("@opentui/core/parser.worker"))).text()
 
 const allTargets: {
   os: string
@@ -156,14 +156,9 @@ for (const item of targets) {
   console.log(`building ${name}`)
   await $`mkdir -p dist/${name}/bin`
 
-  const localPath = path.resolve(dir, "node_modules/@opentui/core/parser.worker.js")
-  const rootPath = path.resolve(dir, "../../node_modules/@opentui/core/parser.worker.js")
-  const parserWorker = fs.realpathSync(fs.existsSync(localPath) ? localPath : rootPath)
   const workerPath = "./src/cli/tui/worker.ts"
-
-  // Use platform-specific bunfs root path based on target OS
+  const treeSitterWorkerPath = "opentui-tree-sitter-worker.js"
   const bunfsRoot = item.os === "win32" ? "B:/~BUN/root/" : "/$bunfs/root/"
-  const workerRelativePath = path.relative(dir, parserWorker).replaceAll("\\", "/")
 
   await Bun.build({
     conditions: ["bun", "node"],
@@ -184,13 +179,21 @@ for (const item of targets) {
       execArgv: [`--user-agent=ottili-coder/${Script.version}`, "--use-system-ca", "--"],
       windows: {},
     },
-    files: embeddedFileMap ? { "ottili-coder-web-ui.gen.ts": embeddedFileMap } : {},
-    entrypoints: ["./src/index.ts", parserWorker, workerPath, ...(embeddedFileMap ? ["ottili-coder-web-ui.gen.ts"] : [])],
+    files: {
+      [treeSitterWorkerPath]: treeSitterWorker,
+      ...(embeddedFileMap ? { "ottili-coder-web-ui.gen.ts": embeddedFileMap } : {}),
+    },
+    entrypoints: [
+      "./src/index.ts",
+      workerPath,
+      treeSitterWorkerPath,
+      ...(embeddedFileMap ? ["ottili-coder-web-ui.gen.ts"] : []),
+    ],
     define: {
       FFF_LIBC: JSON.stringify(item.abi === "musl" ? "musl" : "gnu"),
-      OTTILI_CODER_VERSION: `'${Script.version}'`,
+      OTTILI_CODER_VERSION: `'${process.env.OTTILI_CODER_VERSION || (Script.release ? Script.version : pkg.version)}'`,
       OTTILI_CODER_MODELS_DEV: generated.modelsData,
-      OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
+      OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + treeSitterWorkerPath,
       OTTILI_CODER_WORKER_PATH: workerPath,
       OTTILI_CODER_CHANNEL: `'${Script.channel}'`,
       OTTILI_CODER_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",

@@ -83,6 +83,10 @@ export interface Interface {
   readonly status: (cwd: string) => Effect.Effect<Item[]>
   readonly diff: (cwd: string, ref: string) => Effect.Effect<Item[]>
   readonly stats: (cwd: string, ref: string) => Effect.Effect<Stat[]>
+  readonly aheadBehind: (
+    cwd: string,
+  ) => Effect.Effect<{ readonly ahead: number; readonly behind: number } | undefined>
+  readonly worktreeCount: (cwd: string) => Effect.Effect<number>
   readonly patch: (cwd: string, ref: string, file: string, options?: PatchOptions) => Effect.Effect<Patch>
   readonly patchAll: (cwd: string, ref: string, options?: PatchOptions) => Effect.Effect<Patch>
   readonly patchUntracked: (cwd: string, file: string, options?: PatchOptions) => Effect.Effect<Patch>
@@ -100,7 +104,7 @@ const kind = (code: string): Kind => {
 
 export class Service extends Context.Service<Service, Interface>()("@opencode-ai/Git") {}
 
-export const layer = Layer.effect(
+const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const appProcess = yield* AppProcess.Service
@@ -260,6 +264,26 @@ export const layer = Layer.effect(
       })
     })
 
+    const aheadBehind = Effect.fn("Git.aheadBehind")(function* (cwd: string) {
+      const result = yield* run(["rev-list", "--left-right", "--count", "@{upstream}...HEAD"], { cwd })
+      if (result.exitCode !== 0) return
+      const parts = out(result).split(/\s+/).filter(Boolean)
+      if (parts.length < 2) return
+      const behind = Number.parseInt(parts[0], 10)
+      const ahead = Number.parseInt(parts[1], 10)
+      if (Number.isNaN(ahead) || Number.isNaN(behind)) return
+      return { ahead, behind } satisfies { ahead: number; behind: number }
+    })
+
+    const worktreeCount = Effect.fn("Git.worktreeCount")(function* (cwd: string) {
+      const result = yield* run(["worktree", "list"], { cwd })
+      if (result.exitCode !== 0) return 0
+      return out(result)
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter(Boolean).length
+    })
+
     const patch = Effect.fn("Git.patch")(function* (cwd: string, ref: string, file: string, options?: PatchOptions) {
       const result = yield* run(
         ["diff", "--patch", "--no-ext-diff", "--no-renames", `--unified=${options?.context ?? 3}`, ref, "--", file],
@@ -334,6 +358,8 @@ export const layer = Layer.effect(
       status,
       diff,
       stats,
+      aheadBehind,
+      worktreeCount,
       patch,
       patchAll,
       patchUntracked,
@@ -343,8 +369,6 @@ export const layer = Layer.effect(
   }),
 )
 
-export const defaultLayer = layer.pipe(Layer.provide(AppProcess.defaultLayer))
-
-export const node = LayerNode.make(layer, [AppProcess.node])
+export const node = LayerNode.make({ service: Service, layer: layer, deps: [AppProcess.node] })
 
 export * as Git from "."

@@ -1,6 +1,7 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
+import { NonNegativeInt } from "@opencode-ai/core/schema"
 import { Session } from "./session"
 import { SessionID, MessageID, PartID } from "./schema"
 import { Provider } from "@/provider/provider"
@@ -13,36 +14,135 @@ import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
 import { NotFoundError } from "@/storage/storage"
 
-import { Effect, Layer, Context } from "effect"
+import { Effect, Layer, Context, MutableHashMap, Schema, Option } from "effect"
 import * as DateTime from "effect/DateTime"
 import { InstanceState } from "@/effect/instance-state"
 import { isOverflow as overflow, usable } from "./overflow"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
-import { SessionEvent } from "@opencode-ai/core/session/event"
-import { SessionMessage } from "@opencode-ai/core/session/message"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
-import { EventV2 } from "@opencode-ai/core/event"
 import { buildPrompt } from "@opencode-ai/core/session/compaction"
+import { SessionCompactionEvent } from "@opencode-ai/schema/session-compaction-event"
+import { SessionEvent } from "@opencode-ai/core/session/event"
+import { SessionMessage } from "@opencode-ai/schema/session-message"
 
-export const Event = {
-  Compacted: EventV2.define({
-    type: "session.compacted",
-    schema: {
-      sessionID: SessionID,
-    },
+export const Event = SessionCompactionEvent
+
+// JSON/headless output for compaction status is versioned so headless
+// consumers can detect and adapt to wire-shape changes without breaking.
+export const CompactionOutputVersion = "1" as const
+
+export const CompactionReason = Schema.Literals(["auto", "manual", "overflow", "command"])
+export type CompactionReason = Schema.Schema.Type<typeof CompactionReason>
+
+export const CompactionKeep = Schema.Struct({
+  tokens: NonNegativeInt.pipe(Schema.optional).annotate({
+    description: "Override: max recent tokens preserved verbatim (maps to keep.tokens)",
   }),
-}
+  turns: NonNegativeInt.pipe(Schema.optional).annotate({
+    description: "Override: recent user turns preserved verbatim (maps to keep.turns)",
+  }),
+}).annotate({
+  identifier: "CompactionKeep",
+  description: "Per-request overrides for the recent-context budget.",
+})
+
+// Service-level input contract for an explicit compaction request. Reuses the
+// config schema (auto/prune/keep) as defaults and adds request-scoped flags.
+export const CompactionInput = Schema.Struct({
+  sessionID: SessionID,
+  agent: Schema.String,
+  model: Schema.Struct({
+    providerID: ProviderV2.ID,
+    modelID: ModelV2.ID,
+  }),
+  reason: CompactionReason.pipe(Schema.optional).annotate({
+    description: "Why compaction was triggered; drives idempotency key and event reason.",
+  }),
+  auto: Schema.optional(Schema.Boolean).annotate({
+    description: "Whether this compaction auto-continues the session afterwards (default: false).",
+  }),
+  keep: CompactionKeep.pipe(Schema.optional).annotate({
+    description: "Per-request recent-context overrides; merged over config.compaction.keep.",
+  }),
+  // Idempotency: same key within a session is a no-op if a compaction is
+  // already in flight or recently completed. Prevents duplicate work when a
+  // client retries after a network/timeout error.
+  idempotencyKey: Schema.String.pipe(Schema.optional).annotate({
+    description: "Client-supplied idempotency key. Replays of the same key are coalesced.",
+  }),
+  // Cancellation: an explicit compaction request refuses to run while another
+  // compaction owns the session (SessionBusyError -> HTTP 409). `force` opts
+  // out of the conflict check for recovery/operator use only.
+  force: Schema.optional(Schema.Boolean).annotate({
+    description: "Skip the busy/session-ownership conflict check. Recovery/operator use only.",
+  }),
+  // Permissions: explicit compaction triggers the compaction agent which may
+  // read tool history but never executes tools, so no tool permission prompt
+  // is required. `respectPermissions` keeps this explicit at the boundary.
+  respectPermissions: Schema.optional(Schema.Boolean).annotate({
+    description: "Honor permission rules for compaction context gathering (default: true).",
+  }),
+}).annotate({
+  identifier: "CompactionInput",
+  description: "Request contract for an explicit context compaction.",
+})
+export type CompactionInput = Schema.Schema.Type<typeof CompactionInput>
+
+export const CompactionState = Schema.Literals(["idle", "pending", "running", "completed", "failed"])
+export type CompactionState = Schema.Schema.Type<typeof CompactionState>
+
+// Versioned, headless-friendly status payload returned by session.compaction_status
+// and emitted on completion. Designed for JSON output consumers.
+export const CompactionStatus = Schema.Struct({
+  version: Schema.Literal(CompactionOutputVersion).annotate({
+    description: "Output schema version for headless/JSON consumers.",
+  }),
+  sessionID: SessionID,
+  state: CompactionState,
+  reason: CompactionReason.pipe(Schema.optional),
+  messageID: MessageID.pipe(Schema.optional).annotate({
+    description: "The compaction user-message ID once a request is admitted.",
+  }),
+  summaryMessageID: MessageID.pipe(Schema.optional).annotate({
+    description: "The assistant summary message ID once compaction completes.",
+  }),
+  tailStartID: MessageID.pipe(Schema.optional).annotate({
+    description: "First message ID kept verbatim after compaction (source-linked boundary).",
+  }),
+  prunedParts: Schema.Number.pipe(Schema.optional).annotate({
+    description: "Count of tool-output parts pruned to reclaim context (source-linked).",
+  }),
+  preservedDecisions: Schema.Number.pipe(Schema.optional).annotate({
+    description: "Count of decision/failure/unresolved markers preserved in the summary (T-CLI-0331 outcome).",
+  }),
+  idempotencyKey: Schema.String.pipe(Schema.optional),
+  error: Schema.String.pipe(Schema.optional),
+  updatedAt: Schema.Number,
+}).annotate({
+  identifier: "CompactionStatus",
+  description: "Versioned headless status for the context compaction engine.",
+})
+export type CompactionStatus = Schema.Schema.Type<typeof CompactionStatus>
+
+export const COMPACTION_EXIT_CODES = {
+  success: 0,
+  cancelled: 130,
+  busy: 1,
+  invalidInput: 2,
+  notFound: 3,
+  permissionDenied: 4,
+  internalError: 5,
+} as const
 
 export const PRUNE_MINIMUM = 20_000
 export const PRUNE_PROTECT = 40_000
 const TOOL_OUTPUT_MAX_CHARS = 2_000
 const PRUNE_PROTECTED_TOOLS = ["skill"]
-const DEFAULT_TAIL_TURNS = 2
 const MIN_PRESERVE_RECENT_TOKENS = 2_000
-const MAX_PRESERVE_RECENT_TOKENS = 8_000
+const MAX_PRESERVE_RECENT_TOKENS = 15_000
 type Turn = {
   start: number
   end: number
@@ -58,6 +158,42 @@ type CompletedCompaction = {
   userIndex: number
   assistantIndex: number
   summary: string | undefined
+}
+
+const truncate = (value: string) =>
+  value.length <= TOOL_OUTPUT_MAX_CHARS ? value : `${value.slice(0, TOOL_OUTPUT_MAX_CHARS)}\n[truncated]`
+
+const serialize = (message: SessionV1.WithParts) => {
+  if (message.info.role === "user") {
+    const text = message.parts
+      .filter((part): part is SessionV1.TextPart => part.type === "text" && !part.ignored)
+      .map((part) => part.text)
+      .filter(Boolean)
+      .join("\n")
+    const files = message.parts.flatMap((part) =>
+      part.type === "file" ? [`[Attached ${part.mime}: ${part.filename ?? "file"}]`] : [],
+    )
+    return [...(text ? [`[User]: ${text}`] : []), ...files].join("\n")
+  }
+  return message.parts
+    .flatMap((part) => {
+      if (part.type === "text") return part.text ? [`[Assistant]: ${part.text}`] : []
+      if (part.type === "reasoning") return part.text ? [`[Assistant reasoning]: ${part.text}`] : []
+      if (part.type !== "tool") return []
+      const call = `[Assistant tool call]: ${part.tool}(${JSON.stringify(part.state.input)})`
+      if (part.state.status === "completed") {
+        const attachments = (part.state.attachments ?? []).map(
+          (item) => `[Attached ${item.mime}: ${item.filename ?? "file"}]`,
+        )
+        const output = part.state.time.compacted
+          ? "[Old tool result content cleared]"
+          : truncate([part.state.output, ...attachments].join("\n"))
+        return [call, `[Tool result]: ${output}`]
+      }
+      if (part.state.status === "error") return [call, `[Tool error]: ${part.state.error}`]
+      return [call]
+    })
+    .join("\n")
 }
 
 function summaryText(message: SessionV1.WithParts) {
@@ -158,13 +294,19 @@ export interface Interface {
     auto: boolean
     overflow?: boolean
   }) => Effect.Effect<void>
+  // Admission + status contract for explicit compaction requests. Tracks
+  // in-flight requests per session for idempotency and cancellation, and
+  // reports versioned headless status.
+  readonly request: (input: CompactionInput) => Effect.Effect<CompactionStatus>
+  readonly complete: (input: { sessionID: SessionID; summaryMessageID?: MessageID; error?: string }) => Effect.Effect<CompactionStatus>
+  readonly status: (input: { sessionID: SessionID }) => Effect.Effect<CompactionStatus>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode-ai/SessionCompaction") {}
 
 export const use = serviceUse(Service)
 
-export const layer = Layer.effect(
+const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const config = yield* Config.Service
@@ -201,27 +343,22 @@ export const layer = Layer.effect(
       cfg: ConfigV1.Info
       model: Provider.Model
     }) {
-      const limit = input.cfg.compaction?.tail_turns ?? DEFAULT_TAIL_TURNS
-      if (limit <= 0) return { head: input.messages, tail_start_id: undefined }
+      const limit = input.cfg.compaction?.tail_turns
+      if (limit !== undefined && limit <= 0) return { head: input.messages, tail_start_id: undefined }
       const budget = preserveRecentBudget({ cfg: input.cfg, model: input.model })
       const all = turns(input.messages)
       if (!all.length) return { head: input.messages, tail_start_id: undefined }
-      const recent = all.slice(-limit)
-      const sizes = yield* Effect.forEach(
-        recent,
-        (turn) =>
-          estimate({
-            messages: input.messages.slice(turn.start, turn.end),
-            model: input.model,
-          }),
-        { concurrency: 1 },
-      )
+      const recent = limit === undefined ? all : all.slice(-limit)
 
       let total = 0
       let keep: Tail | undefined
       for (let i = recent.length - 1; i >= 0; i--) {
         const turn = recent[i]!
-        const size = sizes[i]
+        // estimate lazily so cost stays proportional to the retained tail, not the whole session
+        const size = yield* estimate({
+          messages: input.messages.slice(turn.start, turn.end),
+          model: input.model,
+        })
         if (total + size <= budget) {
           total += size
           keep = { start: turn.start, id: turn.id }
@@ -341,7 +478,7 @@ export const layer = Layer.effect(
       let executionModelID = userMessage.model.modelID
       if (OttiliAuto.isOttiliAutoModel(executionProviderID, executionModelID)) {
         const autoProvider = yield* provider.getProvider(ProviderV2.ID.make("ottili-auto")).pipe(
-          Effect.catchAll(() => Effect.succeed(undefined)),
+          Effect.catch(() => Effect.succeed(undefined)),
         )
         const resolved = yield* Effect.tryPromise({
           try: () =>
@@ -355,7 +492,7 @@ export const layer = Layer.effect(
             ),
           catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
         }).pipe(
-          Effect.catchAll(() =>
+          Effect.catch(() =>
             Effect.sync(() =>
               OttiliAuto.resolveExecutionTargetSync({
                 agent: userMessage.agent,
@@ -387,25 +524,20 @@ export const layer = Layer.effect(
         { sessionID: input.sessionID },
         { context: [], prompt: undefined },
       )
-      const nextPrompt = compacting.prompt ?? buildPrompt({ previousSummary, context: compacting.context })
       const msgs = structuredClone(selected.head)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
-      const modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model, {
-        stripMedia: true,
-        toolOutputMaxChars: TOOL_OUTPUT_MAX_CHARS,
-      })
-      const tailIndex = selected.tail_start_id
-        ? history.findIndex((message) => message.info.id === selected.tail_start_id)
-        : -1
-      const recent =
-        tailIndex < 0
-          ? ""
-          : JSON.stringify(
-              yield* MessageV2.toModelMessagesEffect(history.slice(tailIndex), model, {
-                stripMedia: true,
-                toolOutputMaxChars: TOOL_OUTPUT_MAX_CHARS,
-              }),
-            )
+      const conversation = msgs.map(serialize).filter(Boolean).join("\n\n")
+      const nextPrompt =
+        compacting.prompt ??
+        [
+          buildPrompt({
+            previousSummary,
+            context: [conversation],
+          }),
+          ...compacting.context,
+        ]
+          .filter(Boolean)
+          .join("\n\n")
       const ctx = yield* InstanceState.context
       const msg: SessionV1.Assistant = {
         id: MessageID.ascending(),
@@ -446,10 +578,19 @@ export const layer = Layer.effect(
         tools: {},
         system: [],
         messages: [
-          ...modelMessages,
           {
             role: "user",
-            content: [{ type: "text", text: nextPrompt }],
+            content: [
+              {
+                type: "text",
+                text: [
+                  nextPrompt,
+                  ...(compacting.prompt ? ["The following is the conversation history:", conversation] : []),
+                ]
+                  .filter(Boolean)
+                  .join("\n\n"),
+              },
+            ],
           },
         ],
         model,
@@ -557,25 +698,6 @@ export const layer = Layer.effect(
 
       if (processor.message.error) return "stop"
       if (result === "continue") {
-        const summary = summaryText(
-          (yield* session.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)).find(
-            (item) => item.info.id === msg.id,
-          ) ?? {
-            info: msg,
-            parts: [],
-          },
-        )
-        if (flags.experimentalEventSystem) {
-          if (summary)
-            yield* events.publish(SessionEvent.Compaction.Ended, {
-              sessionID: input.sessionID,
-              messageID: SessionMessage.ID.make(input.parentID),
-              timestamp: DateTime.makeUnsafe(Date.now()),
-              reason: input.auto ? "auto" : "manual",
-              text: summary ?? "",
-              recent,
-            })
-        }
         yield* events.publish(Event.Compacted, { sessionID: input.sessionID })
       }
       return result
@@ -604,14 +726,114 @@ export const layer = Layer.effect(
         auto: input.auto,
         overflow: input.overflow,
       })
+    })
+
+    // Per-session in-flight status registry. Drives idempotency,
+    // cancellation (busy) and headless status reporting.
+    const registry = MutableHashMap.empty<SessionID, CompactionStatus>()
+
+    const store = (status: CompactionStatus) => {
+      MutableHashMap.set(registry, status.sessionID, status)
+      return status
+    }
+
+    const current = (sessionID: SessionID) => Option.getOrUndefined(MutableHashMap.get(registry, sessionID))
+
+    // Admission contract: validates conflict/idempotency, admits a compaction
+    // user-message, records in-flight status, and returns the versioned status.
+    // Execution is owned by the caller (HTTP handler) so this service stays
+    // free of SessionPrompt and avoids a circular layer dependency.
+    const request = Effect.fn("SessionCompaction.request")(function* (input: CompactionInput) {
+      const now = Date.now()
+      const existing = current(input.sessionID)
+      if (existing && (existing.state === "running" || existing.state === "pending")) {
+        if (input.force) {
+          yield* Effect.logWarning("compaction conflict overridden by force", { sessionID: input.sessionID })
+        } else if (input.idempotencyKey && existing.idempotencyKey === input.idempotencyKey) {
+          return existing
+        } else {
+          return store({
+            ...existing,
+            error: "session already has an in-flight compaction",
+            updatedAt: now,
+          })
+        }
+      }
+      if (input.idempotencyKey && existing?.idempotencyKey === input.idempotencyKey) {
+        return existing
+      }
+
+      const message = yield* session.updateMessage({
+        id: MessageID.ascending(),
+        role: "user",
+        model: input.model,
+        sessionID: input.sessionID,
+        agent: input.agent,
+        time: { created: now },
+      })
+      yield* session.updatePart({
+        id: PartID.ascending(),
+        messageID: message.id,
+        sessionID: input.sessionID,
+        type: "compaction",
+        auto: input.auto ?? false,
+        overflow: input.reason === "overflow",
+      })
+      const admitted = store({
+        version: CompactionOutputVersion,
+        sessionID: input.sessionID,
+        state: "pending",
+        reason: input.reason,
+        messageID: message.id,
+        idempotencyKey: input.idempotencyKey,
+        updatedAt: now,
+      })
       if (flags.experimentalEventSystem) {
         yield* events.publish(SessionEvent.Compaction.Started, {
           sessionID: input.sessionID,
-          messageID: SessionMessage.ID.make(msg.id),
-          timestamp: DateTime.makeUnsafe(Date.now()),
-          reason: input.auto ? "auto" : "manual",
+          messageID: SessionMessage.ID.make(message.id),
+          timestamp: DateTime.makeUnsafe(now),
+          reason: (input.reason ?? (input.auto ? "auto" : "manual")) as "auto" | "manual",
         })
       }
+      return admitted
+    })
+
+    // Called by the execution owner after the compaction prompt loop resolves.
+    const complete = Effect.fn("SessionCompaction.complete")(function* (input: {
+      sessionID: SessionID
+      summaryMessageID?: MessageID
+      error?: string
+    }) {
+      const existing = current(input.sessionID)
+      const next: CompactionStatus = {
+        version: CompactionOutputVersion,
+        sessionID: input.sessionID,
+        state: input.error ? "failed" : "completed",
+        reason: existing?.reason,
+        messageID: existing?.messageID,
+        summaryMessageID: input.summaryMessageID,
+        tailStartID: existing?.tailStartID,
+        idempotencyKey: existing?.idempotencyKey,
+        error: input.error,
+        updatedAt: Date.now(),
+      }
+      store(next)
+      if (next.state === "completed") {
+        yield* events.publish(Event.Compacted, { sessionID: input.sessionID })
+      }
+      return next
+    })
+
+    const status = Effect.fn("SessionCompaction.status")(function* (input: { sessionID: SessionID }) {
+      return (
+        current(input.sessionID) ?? {
+          version: CompactionOutputVersion,
+          sessionID: input.sessionID,
+          state: "idle" as const,
+          updatedAt: Date.now(),
+        }
+      )
     })
 
     return Service.of({
@@ -619,32 +841,26 @@ export const layer = Layer.effect(
       prune,
       process: processCompaction,
       create,
+      request,
+      complete,
+      status,
     })
   }),
 )
 
-export const defaultLayer = Layer.suspend(() =>
-  layer.pipe(
-    Layer.provide(Provider.defaultLayer),
-    Layer.provide(Session.defaultLayer),
-    Layer.provide(SessionProcessor.defaultLayer),
-    Layer.provide(Agent.defaultLayer),
-    Layer.provide(Plugin.defaultLayer),
-    Layer.provide(Config.defaultLayer),
-    Layer.provide(RuntimeFlags.defaultLayer),
-    Layer.provide(EventV2Bridge.defaultLayer),
-  ),
-)
-
-export const node = LayerNode.make(layer, [
-  Config.node,
-  Session.node,
-  Agent.node,
-  Plugin.node,
-  SessionProcessor.node,
-  Provider.node,
-  EventV2Bridge.node,
-  RuntimeFlags.node,
-])
+export const node = LayerNode.make({
+  service: Service,
+  layer: layer,
+  deps: [
+    Config.node,
+    Session.node,
+    Agent.node,
+    Plugin.node,
+    SessionProcessor.node,
+    Provider.node,
+    EventV2Bridge.node,
+    RuntimeFlags.node,
+  ],
+})
 
 export * as SessionCompaction from "./compaction"

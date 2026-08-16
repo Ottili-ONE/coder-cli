@@ -27,7 +27,7 @@ export function DialogAlert(props: DialogAlertProps) {
     ],
   }))
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
+    <box paddingLeft={2} paddingRight={2} gap={1} aria-label={`Alert: ${props.title}`}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {props.title}
@@ -48,6 +48,7 @@ export function DialogAlert(props: DialogAlertProps) {
             props.onConfirm?.()
             dialog.clear()
           }}
+          aria-label="ok"
         >
           <text fg={theme.selectedListItemText}>ok</text>
         </box>

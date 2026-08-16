@@ -1,10 +1,11 @@
 import type { PermissionV1 } from "@opencode-ai/core/v1/permission"
+import { FSUtil } from "@opencode-ai/core/fs-util"
 // CLI entry point for `ottili-coder run`.
 //
 // Handles three modes:
 //   1. Non-interactive (default): sends a single prompt, streams events to
 //      stdout, and exits when the session goes idle.
-//   2. Interactive local (`--interactive`): boots the split-footer direct mode
+//   2. Interactive local (`opencode --mini`): boots the split-footer direct mode
 //      with an in-process server (no external HTTP).
 //   3. Interactive attach (`--interactive --attach`): connects to a running
 //      ottili-coder server and runs interactive mode against it.
@@ -15,7 +16,9 @@ import type { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import type { Argv } from "yargs"
 import path from "path"
 import { pathToFileURL } from "url"
+import { open } from "node:fs/promises"
 import { Effect } from "effect"
+import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { effectCmd } from "../effect-cmd"
 import { EOL } from "os"
@@ -54,6 +57,8 @@ type FilePart = {
   mime: string
 }
 
+const ATTACH_FILE_MAX_BYTES = 10 * 1024 * 1024
+
 type Inline = {
   icon: string
   title: string
@@ -64,6 +69,20 @@ type SessionInfo = {
   id: string
   title?: string
   directory?: string
+}
+
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return "just now"
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo ago`
+  return new Date(ts).toLocaleDateString()
 }
 
 function inline(info: Inline) {
@@ -154,6 +173,11 @@ export const RunCommand = effectCmd({
         describe: "fork the session before continuing (requires --continue or --session)",
         type: "boolean",
       })
+      .option("resume", {
+        alias: ["r"],
+        describe: "list past conversations and resume the selected one",
+        type: "boolean",
+      })
       .option("share", {
         type: "boolean",
         describe: "share the session",
@@ -213,13 +237,20 @@ export const RunCommand = effectCmd({
         type: "boolean",
         describe: "show thinking blocks",
       })
+      .option("mini", {
+        type: "boolean",
+        hidden: true,
+        default: false,
+      })
       .option("replay", {
         type: "boolean",
         default: true,
+        hidden: true,
         describe: "replay interactive session history on resume and after resize (use --no-replay to disable)",
       })
       .option("replay-limit", {
         type: "number",
+        hidden: true,
         describe: "cap visible interactive replay to the newest N messages",
       })
       .option("interactive", {
@@ -228,14 +259,26 @@ export const RunCommand = effectCmd({
         describe: "run in direct interactive split-footer mode",
         default: false,
       })
+      .option("auto", {
+        type: "boolean",
+        alias: ["yolo", "y"],
+        describe: "auto-approve permissions that are not explicitly denied (dangerous!)",
+        default: false,
+      })
+      .option("yolo", {
+        type: "boolean",
+        hidden: true,
+        default: false,
+      })
       .option("dangerously-skip-permissions", {
         type: "boolean",
-        describe: "auto-approve permissions that are not explicitly denied (dangerous!)",
+        hidden: true,
         default: false,
       })
       .option("demo", {
         type: "boolean",
         default: false,
+        hidden: true,
         describe: "enable direct interactive demo slash commands; pass one as the message to run it immediately",
       }),
   handler: Effect.fn("Cli.run")(function* (args) {
@@ -248,7 +291,9 @@ export const RunCommand = effectCmd({
     const localInstance = yield* InstanceRef
     yield* Effect.promise(async () => {
       const rawMessage = [...args.message, ...(args["--"] || [])].join(" ")
-      const thinking = args.interactive ? (args.thinking ?? true) : (args.thinking ?? false)
+      const interactive = args.mini
+      const auto = args.auto || args.yolo || args["dangerously-skip-permissions"]
+      const thinking = interactive ? (args.thinking ?? true) : (args.thinking ?? false)
       const die = (message: string): never => {
         UI.error(message)
         process.exit(1)
@@ -265,20 +310,24 @@ export const RunCommand = effectCmd({
         .map((arg) => (arg.includes(" ") ? `"${arg.replace(/"/g, '\\"')}"` : arg))
         .join(" ")
 
-      if (args.interactive && args.command) {
-        die("--interactive cannot be used with --command")
+      if (interactive && args.command) {
+        die("--mini cannot be used with --command")
       }
 
-      if (args.demo && !args.interactive) {
-        die("--demo requires --interactive")
+      if (interactive && args._?.[0] !== "mini") {
+        die("--mini must be used without the run subcommand")
       }
 
-      if (args.interactive && args.format === "json") {
-        die("--interactive cannot be used with --format json")
+      if (args.demo && !interactive) {
+        die("--demo requires --mini")
       }
 
-      if (args["replay-limit"] !== undefined && !args.interactive) {
-        die("--replay-limit requires --interactive")
+      if (interactive && args.format === "json") {
+        die("--mini cannot be used with --format json")
+      }
+
+      if (args["replay-limit"] !== undefined && !interactive) {
+        die("--replay-limit requires --mini")
       }
 
       if (
@@ -288,11 +337,11 @@ export const RunCommand = effectCmd({
         die("--replay-limit must be a positive integer")
       }
 
-      if (args.interactive && !process.stdout.isTTY) {
-        die("--interactive requires a TTY stdout")
+      if (interactive && !process.stdout.isTTY) {
+        die("--mini requires a TTY stdout")
       }
 
-      if (args.interactive) {
+      if (interactive) {
         try {
           resolveInteractiveStdin().cleanup?.()
         } catch (error) {
@@ -300,7 +349,7 @@ export const RunCommand = effectCmd({
         }
       }
 
-      const replay = args.replay || args["replay-limit"] !== undefined
+      const replay = args.replay === false ? false : args.replay || args["replay-limit"] !== undefined
 
       const root = Filesystem.resolve(process.env.PWD ?? process.cwd())
       const directory = (() => {
@@ -326,6 +375,49 @@ export const RunCommand = effectCmd({
         })
       }
 
+      const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const { Server } = await import("@/server/server")
+        const request = new Request(input, init)
+        return Server.Default().app.fetch(request)
+      }) as typeof globalThis.fetch
+      const localSdk = createOttiliCoderClient({
+        baseUrl: "http://ottiliCoder.internal",
+        fetch: fetchFn,
+        directory,
+      })
+
+      if (args.resume) {
+        if (args.continue || args.session || args.fork) {
+          die("--resume cannot be combined with --continue, --session, or --fork")
+        }
+        if (!process.stdout.isTTY) {
+          die("--resume requires a TTY")
+        }
+
+        const listSdk = args.attach ? attachSDK(directory) : localSdk
+        const sessions = (await listSdk.session.list()).data ?? []
+        if (sessions.length === 0) {
+          UI.error("No past conversations found")
+          process.exit(1)
+        }
+        sessions.sort((a, b) => b.time.updated - a.time.updated)
+
+        const selected = await prompts.select({
+          message: "Resume which conversation?",
+          options: sessions.map((session) => ({
+            value: session.id,
+            label: session.title || session.id,
+            hint: `${relativeTime(session.time.updated)} · ${session.directory}`,
+          })),
+        })
+        if (prompts.isCancel(selected)) {
+          process.exit(1)
+        }
+
+        args.session = selected as string
+        args.interactive = true
+      }
+
       const files: FilePart[] = []
       if (args.file) {
         const list = Array.isArray(args.file) ? args.file : [args.file]
@@ -337,11 +429,48 @@ export const RunCommand = effectCmd({
             process.exit(1)
           }
 
-          const mime = (await Filesystem.isDir(resolvedPath)) ? "application/x-directory" : "text/plain"
+          const stat = Filesystem.stat(resolvedPath)
+          const isDirectory = stat?.isDirectory() ?? false
+          if (args.attach && isDirectory) {
+            UI.error(`Cannot attach local directory without a shared filesystem: ${filePath}`)
+            process.exit(1)
+          }
+
+          const content = await (async () => {
+            if (!args.attach) return
+            const handle = await open(resolvedPath, "r")
+            try {
+              const opened = await handle.stat()
+              if (!opened.isFile() || Number(opened.size) > ATTACH_FILE_MAX_BYTES) {
+                UI.error(`Cannot attach local file larger than 10 MiB or a special file: ${filePath}`)
+                process.exit(1)
+              }
+              if (opened.size === 0) return Buffer.alloc(0)
+              const buffer = Buffer.alloc(Number(opened.size))
+              let offset = 0
+              while (offset < buffer.length) {
+                const read = await handle.read(buffer, offset, buffer.length - offset, offset)
+                if (read.bytesRead === 0) break
+                offset += read.bytesRead
+              }
+              return buffer.subarray(0, offset)
+            } finally {
+              await handle.close()
+            }
+          })()
+          const detected = FSUtil.mimeType(resolvedPath)
+          const text = content?.toString("utf8")
+          const mime = !args.attach
+            ? isDirectory
+              ? "application/x-directory"
+              : "text/plain"
+            : content && text !== undefined && Buffer.from(text, "utf8").equals(content)
+              ? "text/plain"
+              : detected
 
           files.push({
             type: "file",
-            url: pathToFileURL(resolvedPath).href,
+            url: content ? `data:${mime};base64,${content.toString("base64")}` : pathToFileURL(resolvedPath).href,
             filename: path.basename(resolvedPath),
             mime,
           })
@@ -352,7 +481,7 @@ export const RunCommand = effectCmd({
       message = resolveRunInput(message, piped) ?? ""
       const initialInput = resolveRunInput(rawMessage, piped)
 
-      if (message.trim().length === 0 && !args.command && !args.interactive) {
+      if (message.trim().length === 0 && !args.command && !interactive) {
         UI.error("You must provide a message or a command")
         process.exit(1)
       }
@@ -362,25 +491,34 @@ export const RunCommand = effectCmd({
         process.exit(1)
       }
 
+      const skipPermissions = Boolean(args["dangerously-skip-permissions"])
       const rules: PermissionV1.Ruleset = args.interactive
         ? []
-        : [
-            {
-              permission: "question",
-              action: "deny",
-              pattern: "*",
-            },
-            {
-              permission: "plan_enter",
-              action: "deny",
-              pattern: "*",
-            },
-            {
-              permission: "plan_exit",
-              action: "deny",
-              pattern: "*",
-            },
-          ]
+        : skipPermissions
+          ? [
+              {
+                permission: "question",
+                action: "deny",
+                pattern: "*",
+              },
+            ]
+          : [
+              {
+                permission: "question",
+                action: "deny",
+                pattern: "*",
+              },
+              {
+                permission: "plan_enter",
+                action: "deny",
+                pattern: "*",
+              },
+              {
+                permission: "plan_exit",
+                action: "deny",
+                pattern: "*",
+              },
+            ]
 
       function title() {
         if (args.title === undefined) return
@@ -629,6 +767,10 @@ export const RunCommand = effectCmd({
         // to stdout/UI. `client` is passed explicitly because attach mode may
         // rebind the SDK to the session's directory after the subscription is
         // created, and replies issued from inside the loop must use that client.
+        // Hoisted out of `loop` so the non-interactive `finish()` below can read
+        // the task-graph outcome after the stream is drained.
+        let taskGraphFailed = false
+
         async function loop(client: OttiliCoderClient, events: Awaited<ReturnType<typeof sdk.event.subscribe>>) {
           const toggles = new Map<string, boolean>()
           let error: string | undefined
@@ -708,6 +850,18 @@ export const RunCommand = effectCmd({
               }
             }
 
+            const eventType = event.type as string
+            if (eventType.startsWith("taskgraph.")) {
+              // Task-graph events are Ottili-specific and not part of the SDK
+              // event union, so read them through an unknown-valued record.
+              const properties = event.properties as Record<string, unknown>
+              if (properties.sessionID !== sessionID) continue
+              if (eventType === "taskgraph.complete" && properties.status === "failed") taskGraphFailed = true
+              if (eventType === "taskgraph.error") taskGraphFailed = true
+              emit(eventType, { ...properties })
+              continue
+            }
+
             if (event.type === "session.error") {
               const props = event.properties
               if (props.sessionID !== sessionID || !props.error) continue
@@ -732,7 +886,7 @@ export const RunCommand = effectCmd({
               const permission = event.properties
               if (permission.sessionID !== sessionID) continue
 
-              if (args["dangerously-skip-permissions"]) {
+              if (auto) {
                 await client.permission.reply({
                   requestID: permission.id,
                   reply: "once",
@@ -760,7 +914,7 @@ export const RunCommand = effectCmd({
 
         await share(client, sessionID)
 
-        if (!args.interactive) {
+        if (!interactive) {
           const events = await client.event.subscribe()
           const completed = loop(client, events).catch((e) => {
             console.error(e)
@@ -770,6 +924,7 @@ export const RunCommand = effectCmd({
             if (args.attach) return
             const error = await completed
             if (error) process.exitCode = 1
+            if (taskGraphFailed) process.exitCode = 1
           }
 
           if (args.command) {
@@ -834,13 +989,16 @@ export const RunCommand = effectCmd({
         return
       }
 
-      if (args.interactive && !args.attach && !args.session && !args.continue) {
+      if (interactive && !args.attach && !args.session && !args.continue) {
         const model = pick(args.model)
         const { runInteractiveLocalMode } = await import("./run/runtime")
         const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
           const { Server } = await import("@/server/server")
           const request = new Request(input, init)
-          return Server.Default().app.fetch(request)
+          const headers = new Headers(request.headers)
+          const auth = ServerAuth.header()
+          if (auth) headers.set("Authorization", auth)
+          return Server.Default().app.fetch(new Request(request, { headers }))
         }) as typeof globalThis.fetch
 
         try {
@@ -868,21 +1026,63 @@ export const RunCommand = effectCmd({
       }
 
       if (args.attach) {
-        const sdk = attachSDK(directory)
-        return await execute(sdk)
+        return await execute(attachSDK(directory))
       }
 
-      const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
-        const { Server } = await import("@/server/server")
-        const request = new Request(input, init)
-        return Server.Default().app.fetch(request)
-      }) as typeof globalThis.fetch
-      const sdk = createOttiliCoderClient({
-        baseUrl: "http://ottiliCoder.internal",
-        fetch: fetchFn,
-        directory,
-      })
-      await execute(sdk)
+      await execute(localSdk)
     })
   }),
 })
+
+type MiniCommandInput = {
+  directory?: string
+  attach?: string
+  password?: string
+  username?: string
+  continue?: boolean
+  session?: string
+  fork?: boolean
+  model?: string
+  agent?: string
+  prompt?: string
+  replay?: boolean
+  replayLimit?: number
+  demo?: boolean
+}
+
+export async function runMini(input: MiniCommandInput) {
+  if (!RunCommand.handler) throw new Error("Mini command handler is unavailable")
+  await RunCommand.handler({
+    $0: "opencode",
+    _: ["mini"],
+    message: input.prompt ? [input.prompt] : [],
+    command: undefined,
+    continue: input.continue,
+    session: input.session,
+    fork: input.fork,
+    resume: undefined,
+    share: undefined,
+    model: input.model,
+    agent: input.agent,
+    format: "default",
+    file: undefined,
+    title: undefined,
+    attach: input.attach,
+    password: input.password,
+    username: input.username,
+    dir: input.directory,
+    port: undefined,
+    variant: undefined,
+    thinking: undefined,
+    mini: true,
+    interactive: false,
+    replay: input.replay ?? true,
+    "replay-limit": input.replayLimit,
+    replayLimit: input.replayLimit,
+    auto: false,
+    yolo: false,
+    "dangerously-skip-permissions": false,
+    dangerouslySkipPermissions: false,
+    demo: input.demo ?? false,
+  })
+}

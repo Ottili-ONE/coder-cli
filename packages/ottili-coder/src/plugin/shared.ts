@@ -197,7 +197,7 @@ export async function checkPluginCompatibility(target: string, ottiliCoderVersio
   if (!hit) return
   const engines = hit.json.engines
   if (!isRecord(engines)) return
-  const range = engines.ottili-coder
+  const range = engines["ottili-coder"]
   if (typeof range !== "string") return
   if (!semver.satisfies(ottiliCoderVersion, range)) {
     throw new Error(`Plugin requires ottili-coder ${range} but running ${ottiliCoderVersion}`)

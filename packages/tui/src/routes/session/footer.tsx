@@ -6,13 +6,33 @@ import { useConnected } from "../../component/use-connected"
 import { createStore } from "solid-js/store"
 import { useRoute } from "../../context/route"
 
+// Self-contained status-label helpers for screen readers. Every status item
+// renders its meaning in words so it survives no-color terminals and is
+// announced, not just painted (WCAG 2.1 Success Criterion 1.1.1 / 1.4.1).
+
+function permissionAriaLabel(count: number): string {
+  return `${count} pending permission${count === 1 ? "" : "s"}`
+}
+
+function lspAriaLabel(count: number): string {
+  return `${count} language ${count === 1 ? "server" : "servers"} active`
+}
+
+function mcpAriaLabel(count: number): string {
+  return `${count} MCP ${count === 1 ? "server" : "servers"} connected`
+}
+
+function mcpErrorAriaLabel(count: number): string {
+  return `${count} MCP ${count === 1 ? "server has" : "servers have"} connection errors`
+}
+
 export function Footer() {
   const { theme } = useTheme()
   const sync = useSync()
   const route = useRoute()
   const mcp = createMemo(() => Object.values(sync.data.mcp).filter((x) => x.status === "connected").length)
   const mcpError = createMemo(() => Object.values(sync.data.mcp).some((x) => x.status === "failed"))
-  const lsp = createMemo(() => Object.keys(sync.data.lsp))
+  const lspCount = createMemo(() => Object.keys(sync.data.lsp).length)
   const permissions = createMemo(() => {
     if (route.data.type !== "session") return []
     return sync.data.permission[route.data.sessionID] ?? []
@@ -50,6 +70,8 @@ export function Footer() {
     })
   })
 
+  const permissionCount = () => permissions().length
+
   return (
     <box flexDirection="row" justifyContent="space-between" gap={1} flexShrink={0}>
       <text fg={theme.textMuted}>{directory()}</text>
@@ -79,17 +101,17 @@ export function Footer() {
             <text fg={theme.textMuted}>/status</text>
           </Match>
           <Match when={connected() && account().loggedIn}>
-            <Show when={permissions().length > 0}>
-              <text fg={theme.warning}>
-                <span style={{ fg: theme.warning }}>△</span> {permissions().length} Permission
-                {permissions().length > 1 ? "s" : ""}
+            <Show when={permissionCount() > 0}>
+              <text fg={theme.warning} aria-label={permissionAriaLabel(permissionCount())}>
+                <span style={{ fg: theme.warning }}>△</span> {permissionCount()} Permission
+                {permissionCount() > 1 ? "s" : ""}
               </text>
             </Show>
-            <text fg={theme.text}>
-              <span style={{ fg: lsp().length > 0 ? theme.success : theme.textMuted }}>•</span> {lsp().length} LSP
+            <text fg={theme.text} aria-label={lspAriaLabel(lspCount())}>
+              <span style={{ fg: lspCount() > 0 ? theme.success : theme.textMuted }}>•</span> {lspCount()} LSP
             </text>
             <Show when={mcp()}>
-              <text fg={theme.text}>
+              <text fg={theme.text} aria-label={mcpError() ? mcpErrorAriaLabel(mcp()) : mcpAriaLabel(mcp())}>
                 <Switch>
                   <Match when={mcpError()}>
                     <span style={{ fg: theme.error }}>⊙ </span>

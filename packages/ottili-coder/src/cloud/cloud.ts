@@ -47,6 +47,7 @@ export interface CloudJob {
   completion_pct: number
   repository_id: number | null
   execution_backend: string
+  settings?: Record<string, unknown>
   result_summary: string | null
   error_summary: string | null
   created_by: string
@@ -67,20 +68,55 @@ export interface CloudArtifact {
   created_at: string | null
 }
 
+export interface CloudTaskRun {
+  id: number
+  attempt: number
+  agent_type: string | null
+  provider_info: string | null
+  stdout: string | null
+  stderr: string | null
+  diff_text: string | null
+  duration_seconds: number | null
+  tokens_used: number | null
+  cost_dollars: number | null
+  success: boolean
+  created_at: string | null
+}
+
 export interface CloudTask {
   id: number
   job_id: number
-  sequence: number
   title: string
+  description: string | null
   kind: string
   status: string
-  phase: string | null
+  order: number
+  depends_on: number[]
+  assigned_agent: string | null
+  prompt_text: string | null
+  files_involved: string[]
+  acceptance_criteria: string[]
+  result_summary: string | null
+  error_summary: string | null
+  diff_text: string | null
+  files_changed: string[]
+  retry_count: number
+  max_retries: number
+  started_at: string | null
+  completed_at: string | null
+  created_at: string | null
+  updated_at: string | null
+  /** Only present on the single-task detail endpoint (``getTask``). */
+  runs?: CloudTaskRun[]
 }
 
 export interface CloudEvent {
   id: number
-  kind: string
+  job_id: number
+  task_id: number | null
+  event_type: string
   message: string
+  metadata: Record<string, unknown>
   created_at: string | null
 }
 
@@ -97,11 +133,65 @@ export interface CloudRepository {
   default_branch?: string
 }
 
+export interface CloudCreditBalance {
+  company_id?: number | string
+  plan_code?: string
+  credit_mode?: string
+  included_monthly_credits?: number
+  included_remaining?: number
+  recharge_credits_total?: number
+  recharge_remaining?: number
+  current_balance?: number
+  available_credits?: number
+  current_period_start?: string | null
+  current_period_end?: string | null
+  auto_recharge_enabled?: boolean
+  auto_recharge_threshold?: number
+  auto_recharge_package?: string | null
+  hard_cap_status?: string
+}
+
+export interface CloudCreditEstimateSummary {
+  company_id?: number | string
+  plan_code?: string
+  surface?: string
+  public_model_name?: string
+  provider_name?: string
+  provider_model_name?: string
+  estimated_min_credits?: number
+  estimated_max_credits?: number
+  recommended_budget?: number
+  current_balance?: number
+  warnings?: string[]
+}
+
+export interface CloudCreditEstimate {
+  workspace_slug: string
+  metered: boolean
+  resolved_model: string
+  tier: string
+  surface: string
+  estimate: CloudCreditEstimateSummary
+}
+
+export interface CloudModelRegistryEntry {
+  public_model_name: string
+  provider_name?: string
+  provider_model_name?: string
+  model_class?: string
+  default_multiplier?: number
+  allowed_plans?: string[]
+  supports_coding?: boolean
+  supports_long_context?: boolean
+  supports_tool_use?: boolean
+}
+
 export interface CreateCloudJobInput {
   title?: string
   objective: string
   mode?: CloudMode
   target_task_count?: number
+  model?: string
   default_agent?: string
   validation_commands?: string[]
   approval_required?: boolean
@@ -110,6 +200,13 @@ export interface CreateCloudJobInput {
   repository_id?: number
   auto_create_pr?: boolean
   execution_target?: CloudExecutionTarget
+  run_budget_credits?: number
+}
+
+export interface EstimateCloudCreditsInput {
+  mode?: CloudMode
+  target_task_count?: number
+  model?: string
 }
 
 export interface CloudConfig {
@@ -199,9 +296,13 @@ export function disconnect(): string {
   return configPath()
 }
 
-function actionUrl(config: CloudConfig, action: string): string {
+function actionUrl(config: CloudConfig, action: string, query?: Record<string, string | number>): string {
   const normalized = action.replace(/^\/+/, "")
-  return `${config.url}/api/v1/developer/modules/${MODULE_SLUG}/actions/${normalized}`
+  const base = `${config.url}/api/v1/developer/modules/${MODULE_SLUG}/actions/${normalized}`
+  if (!query || Object.keys(query).length === 0) return base
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) params.set(key, String(value))
+  return `${base}?${params.toString()}`
 }
 
 /**
@@ -244,7 +345,7 @@ function errorMessage(payload: unknown, status: number): string {
 async function request<T>(
   method: "GET" | "POST" | "PATCH" | "DELETE",
   action: string,
-  options: { body?: Record<string, unknown>; signal?: AbortSignal } = {},
+  options: { body?: Record<string, unknown>; query?: Record<string, string | number>; signal?: AbortSignal } = {},
 ): Promise<T> {
   const config = resolveConfig()
   if (!config.token) {
@@ -266,7 +367,7 @@ async function request<T>(
 
   let res: Response
   try {
-    res = await fetch(actionUrl(config, action), init)
+    res = await fetch(actionUrl(config, action, options.query), init)
   } catch (e) {
     throw new CloudError(`Could not reach Ottili Coder Cloud at ${config.url}: ${(e as Error).message}`)
   }
@@ -302,6 +403,7 @@ export function createJob(input: CreateCloudJobInput, signal?: AbortSignal): Pro
     mode: input.mode ?? "autonomous_build",
   }
   if (input.target_task_count !== undefined) body["target_task_count"] = input.target_task_count
+  if (input.model) body["model"] = input.model
   if (input.default_agent) body["default_agent"] = input.default_agent
   if (input.validation_commands) body["validation_commands"] = input.validation_commands
   if (input.approval_required !== undefined) body["approval_required"] = input.approval_required
@@ -310,6 +412,7 @@ export function createJob(input: CreateCloudJobInput, signal?: AbortSignal): Pro
   if (input.repository_id !== undefined) body["repository_id"] = input.repository_id
   if (input.auto_create_pr !== undefined) body["auto_create_pr"] = input.auto_create_pr
   if (input.execution_target) body["execution_target"] = input.execution_target
+  if (input.run_budget_credits !== undefined) body["run_budget_credits"] = input.run_budget_credits
   return request<CloudJob>("POST", "coder/jobs", { body, signal })
 }
 
@@ -329,8 +432,30 @@ export async function listJobTasks(jobId: number, signal?: AbortSignal): Promise
   return res?.tasks ?? []
 }
 
-export async function listJobEvents(jobId: number, signal?: AbortSignal): Promise<CloudEvent[]> {
-  const res = await request<{ events?: CloudEvent[] } | CloudEvent[]>("GET", `coder/jobs/${jobId}/events`, { signal })
+/** Fetch one task, including its run history (attempts, cost, diff per attempt). */
+export function getTask(taskId: number, signal?: AbortSignal): Promise<CloudTask> {
+  return request<CloudTask>("GET", `coder/tasks/${taskId}`, { signal })
+}
+
+export interface ListJobEventsOptions {
+  /** Only return events with id greater than this — for incremental polling. */
+  afterId?: number
+  /** Max events to return (server default 200, max 1000). */
+  limit?: number
+  signal?: AbortSignal
+}
+
+export async function listJobEvents(
+  jobId: number,
+  options: ListJobEventsOptions = {},
+): Promise<CloudEvent[]> {
+  const query: Record<string, string | number> = {}
+  if (options.afterId !== undefined) query["after_id"] = options.afterId
+  if (options.limit !== undefined) query["limit"] = options.limit
+  const res = await request<{ events?: CloudEvent[] } | CloudEvent[]>("GET", `coder/jobs/${jobId}/events`, {
+    query,
+    signal: options.signal,
+  })
   if (Array.isArray(res)) return res
   return res?.events ?? []
 }
@@ -349,6 +474,32 @@ export async function listRepositories(signal?: AbortSignal): Promise<CloudRepos
   const res = await request<{ repositories?: CloudRepository[] } | CloudRepository[]>("GET", "repositories", { signal })
   if (Array.isArray(res)) return res
   return res?.repositories ?? []
+}
+
+export async function getCreditBalance(signal?: AbortSignal): Promise<CloudCreditBalance> {
+  return request<CloudCreditBalance>("GET", "coder/credits/balance", { signal })
+}
+
+export async function estimateCredits(
+  input: EstimateCloudCreditsInput,
+  signal?: AbortSignal,
+): Promise<CloudCreditEstimate> {
+  const body: Record<string, unknown> = {
+    mode: input.mode ?? "autonomous_build",
+  }
+  if (input.target_task_count !== undefined) body["target_task_count"] = input.target_task_count
+  if (input.model) body["model"] = input.model
+  return request<CloudCreditEstimate>("POST", "coder/credits/estimate", { body, signal })
+}
+
+export async function listCreditModels(signal?: AbortSignal): Promise<CloudModelRegistryEntry[]> {
+  const res = await request<{ models?: CloudModelRegistryEntry[] } | CloudModelRegistryEntry[]>(
+    "GET",
+    "coder/credits/models",
+    { signal },
+  )
+  if (Array.isArray(res)) return res
+  return res?.models ?? []
 }
 
 const TERMINAL: CloudJobStatus[] = ["completed", "failed", "cancelled"]

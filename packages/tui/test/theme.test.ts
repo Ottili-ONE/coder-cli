@@ -73,24 +73,19 @@ function rgbaHex(color: { toInts: () => [number, number, number, number] }) {
   return `#${[r, g, b].map((value) => value.toString(16).padStart(2, "0")).join("")}`
 }
 
-test("resolveTheme resolves ottiliCoder light palette", () => {
+test("resolveTheme resolves ottiliCoder dark palette", () => {
   const dark = resolveTheme(DEFAULT_THEMES.ottiliCoder, "dark")
-  const light = resolveTheme(DEFAULT_THEMES.ottiliCoder, "light")
 
-  expect(rgbaHex(dark.background)).not.toBe(rgbaHex(light.background))
-  expect(rgbaHex(light.primary)).toBe("#f97316")
-  expect(rgbaHex(light.background)).toBe("#fafaf9")
-  expect(rgbaHex(light.text)).toBe("#1c1917")
+  expect(rgbaHex(dark.primary)).toBe("#f97316")
+  expect(rgbaHex(dark.background)).toBe("#0d0a08")
+  expect(rgbaHex(dark.text)).toBe("#eae6e1")
 })
 
-test("resolveTheme uses mode-specific diff backgrounds", () => {
+test("resolveTheme uses dark diff backgrounds", () => {
   const dark = resolveTheme(DEFAULT_THEMES.ottiliCoder, "dark")
-  const light = resolveTheme(DEFAULT_THEMES.ottiliCoder, "light")
 
   expect(rgbaHex(dark.diffAddedBg)).toBe("#1a241c")
-  expect(rgbaHex(light.diffAddedBg)).toBe("#e7f5eb")
   expect(rgbaHex(dark.diffRemovedBg)).toBe("#2a1a1c")
-  expect(rgbaHex(light.diffRemovedBg)).toBe("#fce8ea")
 })
 
 test("custom theme precedence follows directory order", async () => {

@@ -1,7 +1,7 @@
 import { marked } from "marked"
 import markedKatex from "marked-katex-extension"
 import markedShiki from "marked-shiki"
-import katex from "katex"
+import katex, { type KatexOptions } from "katex"
 import { bundledLanguages, type BundledLanguage } from "shiki"
 import { createSimpleContext } from "./helper"
 import { getSharedHighlighter, registerCustomTheme, ThemeRegistrationResolved } from "@pierre/diffs"
@@ -480,7 +480,7 @@ export const { use: useMarked, provider: MarkedProvider } = createSimpleContext(
       markedKatex({
         throwOnError: false,
         nonStandard: true,
-      }),
+      } as KatexOptions & { nonStandard?: boolean }),
       markedShiki({
         async highlight(code, lang) {
           const highlighter = await getSharedHighlighter({

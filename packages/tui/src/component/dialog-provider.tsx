@@ -368,28 +368,8 @@ function ApiMethod(props: ApiMethodProps) {
       title={props.title}
       placeholder="API key"
       description={
-        {
-          ottiliCoder: (
-            <box gap={1}>
-              <text fg={theme.textMuted}>
-                Sign in with your Ottili ONE account via browser — no API key required.
-              </text>
-              <text fg={theme.text}>
-                Use <span style={{ fg: theme.primary }}>/login</span> or choose OAuth above.
-              </text>
-            </box>
-          ),
-          "ottili-coder": (
-            <box gap={1}>
-              <text fg={theme.textMuted}>
-                Sign in with your Ottili ONE account via browser — no API key required.
-              </text>
-              <text fg={theme.text}>
-                Use <span style={{ fg: theme.primary }}>/login</span> or choose OAuth above.
-              </text>
-            </box>
-          ),
-          "ottili-coder-go": (
+        props.providerID === "ottili-coder-go"
+          ? () => (
             <box gap={1}>
               <text fg={theme.textMuted}>
                 Ottili Coder Go is a $10 per month subscription that provides reliable access to popular open coding models
@@ -399,8 +379,19 @@ function ApiMethod(props: ApiMethodProps) {
                 Go to <span style={{ fg: theme.primary }}>https://ottili.one/coder/go</span> and enable Ottili Coder Go
               </text>
             </box>
-          ),
-        }[props.providerID] ?? undefined
+          )
+          : props.providerID === "ottiliCoder" || props.providerID === "ottili-coder"
+            ? () => (
+              <box gap={1}>
+                <text fg={theme.textMuted}>
+                  Sign in with your Ottili ONE account via browser — no API key required.
+                </text>
+                <text fg={theme.text}>
+                  Use <span style={{ fg: theme.primary }}>/login</span> or choose OAuth above.
+                </text>
+              </box>
+            )
+            : undefined
       }
       onConfirm={async (value) => {
         if (!value) return

@@ -39,6 +39,10 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
     const background = yield* BackgroundJob.Service
     const flags = yield* RuntimeFlags.Service
 
+    const capabilities = Effect.fn("ExperimentalHttpApi.capabilities")(function* () {
+      return { backgroundSubagents: flags.experimentalBackgroundSubagents }
+    })
+
     const getConsole = Effect.fn("ExperimentalHttpApi.console")(function* () {
       const [state, groups] = yield* Effect.all(
         [
@@ -93,15 +97,9 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
     const loginAccount = Effect.fn("ExperimentalHttpApi.accountLogin")(function* (ctx: {
       payload: { authUrl?: string }
     }) {
-      const result = yield* account.loginOttiliOne(ctx.payload.authUrl).pipe(
-        Effect.catchAll((cause) =>
-          Effect.fail(
-            new HttpApiError.BadRequest({
-              message: cause instanceof Error ? cause.message : String(cause),
-            }),
-          ),
-        ),
-      )
+      const result = yield* account
+        .loginOttiliOne(ctx.payload.authUrl)
+        .pipe(Effect.catch(() => Effect.fail(new HttpApiError.InternalServerError({}))))
       return { email: result.email }
     })
 
@@ -133,10 +131,7 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
     const cloudTry = <A>(run: () => Promise<A>) =>
       Effect.tryPromise({
         try: run,
-        catch: (cause) =>
-          new HttpApiError.BadRequest({
-            message: cause instanceof Error ? cause.message : String(cause),
-          }),
+        catch: () => new HttpApiError.BadRequest({}),
       })
 
     const cloudStatus = Effect.fn("ExperimentalHttpApi.cloudStatus")(function* () {
@@ -144,7 +139,9 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       if (!config.token) {
         return { configured: false, dashboardUrl: config.dashboardUrl }
       }
-      const jobs = yield* cloudTry(() => OttiliCloud.listJobs())
+      const jobs = yield* cloudTry(() => OttiliCloud.listJobs()).pipe(
+        Effect.mapError(() => new HttpApiError.InternalServerError({})),
+      )
       const activeJobs = jobs.filter((job) => !OttiliCloud.isTerminal(job.status)).length
       return {
         configured: true,
@@ -159,7 +156,7 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       payload: { url?: string; token: string; company?: string }
     }) {
       const token = ctx.payload.token.trim()
-      if (!token) return yield* Effect.fail(new HttpApiError.BadRequest({ message: "API key is required." }))
+      if (!token) return yield* Effect.fail(new HttpApiError.BadRequest({}))
 
       const existing = OttiliCloud.loadConfigFile()
       const url = ctx.payload.url?.trim() || existing.url || "https://api.ottili.one"
@@ -197,7 +194,7 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       }
     }) {
       const objective = ctx.payload.objective.trim()
-      if (!objective) return yield* Effect.fail(new HttpApiError.BadRequest({ message: "Objective is required." }))
+      if (!objective) return yield* Effect.fail(new HttpApiError.BadRequest({}))
       const target =
         ctx.payload.execution_target ??
         (ctx.payload.repository_id !== undefined ? ("github_agent" as const) : undefined)
@@ -223,9 +220,23 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
 
     const cloudJobEvents = Effect.fn("ExperimentalHttpApi.cloudJobEvents")(function* (ctx: {
       params: { jobId: number }
+      query: { after_id?: number; limit?: number }
     }) {
-      const events = yield* cloudTry(() => OttiliCloud.listJobEvents(ctx.params.jobId))
+      const events = yield* cloudTry(() =>
+        OttiliCloud.listJobEvents(ctx.params.jobId, { afterId: ctx.query.after_id, limit: ctx.query.limit }),
+      )
       return { events }
+    })
+
+    const cloudJobTasks = Effect.fn("ExperimentalHttpApi.cloudJobTasks")(function* (ctx: {
+      params: { jobId: number }
+    }) {
+      const tasks = yield* cloudTry(() => OttiliCloud.listJobTasks(ctx.params.jobId))
+      return { tasks }
+    })
+
+    const cloudTask = Effect.fn("ExperimentalHttpApi.cloudTask")(function* (ctx: { params: { taskId: number } }) {
+      return yield* cloudTry(() => OttiliCloud.getTask(ctx.params.taskId))
     })
 
     const cloudJobDashboard = Effect.fn("ExperimentalHttpApi.cloudJobDashboard")(function* (ctx: {
@@ -280,8 +291,9 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
 
     const session = Effect.fn("ExperimentalHttpApi.session")(function* (ctx: { query: typeof SessionListQuery.Type }) {
       const limit = ctx.query.limit ?? 100
+      const directory = ctx.query.directory ? yield* InstanceState.directory : undefined
       const all = yield* sessions.listGlobal({
-        directory: ctx.query.directory,
+        directory,
         roots: ctx.query.roots,
         start: ctx.query.start,
         cursor: ctx.query.cursor,
@@ -317,7 +329,40 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       return yield* mcp.resources()
     })
 
+    // Process-local background jobs (subagents / tasks) tracked by this instance.
+    const backgroundJobs = Effect.fn("ExperimentalHttpApi.backgroundJobs")(function* () {
+      const jobs = yield* background.list()
+      return {
+        jobs: jobs.map((job) => ({
+          id: job.id,
+          type: job.type,
+          ...(job.title === undefined ? {} : { title: job.title }),
+          status: job.status,
+          started_at: job.started_at,
+          completed_at: job.completed_at ?? null,
+          output: job.output ?? null,
+          error: job.error ?? null,
+          ...(job.metadata === undefined ? {} : { metadata: job.metadata }),
+        })),
+      }
+    })
+
+    const backgroundJobCancel = Effect.fn("ExperimentalHttpApi.backgroundJobCancel")(function* (ctx: {
+      params: { jobId: string }
+    }) {
+      const cancelled = yield* background.cancel(ctx.params.jobId)
+      return cancelled !== undefined
+    })
+
+    const cloudJobAction = Effect.fn("ExperimentalHttpApi.cloudJobAction")(function* (ctx: {
+      params: { jobId: number }
+      payload: { action: "pause" | "resume" }
+    }) {
+      return yield* cloudTry(() => OttiliCloud.jobAction(ctx.params.jobId, ctx.payload.action))
+    })
+
     return handlers
+      .handle("capabilities", capabilities)
       .handle("console", getConsole)
       .handle("consoleOrgs", listConsoleOrgs)
       .handle("consoleSwitch", switchConsole)
@@ -333,7 +378,12 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       .handle("cloudCreateJob", cloudCreateJob)
       .handle("cloudJobCancel", cloudJobCancel)
       .handle("cloudJobEvents", cloudJobEvents)
+      .handle("cloudJobTasks", cloudJobTasks)
+      .handle("cloudTask", cloudTask)
       .handle("cloudJobDashboard", cloudJobDashboard)
+      .handle("backgroundJobs", backgroundJobs)
+      .handle("backgroundJobCancel", backgroundJobCancel)
+      .handle("cloudJobAction", cloudJobAction)
       .handle("tool", tool)
       .handle("toolIDs", toolIDs)
       .handle("worktree", worktree)

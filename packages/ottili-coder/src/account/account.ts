@@ -1,5 +1,5 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
-import { httpClient } from "@opencode-ai/core/effect/layer-node-platform"
+import { httpClient } from "@opencode-ai/core/effect/app-node-platform"
 import { Cache, Clock, Duration, Effect, Layer, Option, Schema, SchemaGetter, Context } from "effect"
 import { serviceUse } from "@opencode-ai/core/effect/service-use"
 import {
@@ -223,7 +223,7 @@ export class Service extends Context.Service<Service, Interface>()("@opencode-ai
 
 export const use = serviceUse(Service)
 
-export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient.HttpClient> = Layer.effect(
+const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient.HttpClient> = Layer.effect(
   Service,
   Effect.gen(function* () {
     const repo = yield* AccountRepo.Service
@@ -266,14 +266,16 @@ export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient
         const expiry = Option.some(now + parsed.expires_in * 1000)
         const refreshTokenValue = parsed.refresh_token ?? row.refresh_token
 
+        const accessToken = AccessToken.make(parsed.access_token)
+
         yield* repo.persistToken({
           accountID: row.id,
-          accessToken: parsed.access_token,
-          refreshToken: refreshTokenValue,
+          accessToken,
+          refreshToken: RefreshToken.make(refreshTokenValue),
           expiry,
         })
 
-        return parsed.access_token
+        return accessToken
       }
 
       const response = yield* executeEffectOk(
@@ -425,6 +427,18 @@ export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient
       return yield* fetchOrgs(account.url, accessToken)
     })
 
+    const remove = Effect.fn("Account.remove")(function* (accountID: AccountID) {
+      const active = yield* repo.active()
+      yield* repo.remove(accountID)
+      if (Option.isNone(active) || active.value.id !== accountID) return
+
+      const next = (yield* orgsByAccount()).flatMap((group) =>
+        group.orgs.map((org) => ({ accountID: group.account.id, orgID: org.id })),
+      )[0]
+      if (!next) return
+      yield* repo.use(next.accountID, Option.some(next.orgID))
+    })
+
     const config = Effect.fn("Account.config")(function* (accountID: AccountID, orgID: OrgID) {
       const resolved = yield* resolveAccess(accountID)
       if (Option.isNone(resolved)) return Option.none()
@@ -455,7 +469,9 @@ export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient
         catch: (cause) => accountErrorFromCause(cause, "Failed to sign in with Ottili"),
       })
 
-      const email = yield* persistOttiliOneLogin(result)
+      const email = yield* persistOttiliOneLogin(result).pipe(
+        Effect.provideService(AccountRepo.Service, repo),
+      )
       return new PollSuccess({ email })
     })
 
@@ -509,7 +525,7 @@ export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient
         )
       })
 
-      let planResponse: Awaited<ReturnType<typeof executeRead>> | undefined
+      let planResponse: HttpClientResponse.HttpClientResponse | undefined
       for (const path of USAGE_LIMIT_API_PATHS.plan) {
         const response = yield* readAuthed(path)
         if (response.status === 404) continue
@@ -662,7 +678,7 @@ export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient
       activeOrg,
       list: repo.list,
       orgsByAccount,
-      remove: repo.remove,
+      remove,
       use: repo.use,
       orgs,
       config,
@@ -677,8 +693,6 @@ export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient
   }),
 )
 
-export const defaultLayer = layer.pipe(Layer.provide(AccountRepo.defaultLayer), Layer.provide(FetchHttpClient.layer))
-
-export const node = LayerNode.make(layer, [AccountRepo.node, httpClient])
+export const node = LayerNode.make({ service: Service, layer: layer, deps: [AccountRepo.node, httpClient] })
 
 export * as Account from "./account"

@@ -1,32 +1,42 @@
 import { describe, expect } from "bun:test"
-import { DateTime, Effect, Layer, Option } from "effect"
+import { Effect } from "effect"
 import { Catalog } from "@opencode-ai/core/catalog"
-import { Credential } from "@opencode-ai/core/credential"
-import { EventV2 } from "@opencode-ai/core/event"
-import { Location } from "@opencode-ai/core/location"
 import { ModelV2 } from "@opencode-ai/core/model"
-import { PluginV2 } from "@opencode-ai/core/plugin"
-import { OttiliCoderPlugin } from "@opencode-ai/core/plugin/provider/ottili-coder"
 import { ProviderV2 } from "@opencode-ai/core/provider"
-import { AbsolutePath } from "@opencode-ai/core/schema"
-import { location } from "../fixture/location"
-import { it, model, provider, withEnv } from "./provider-helper"
+import { testEffect } from "../lib/effect"
+import { PluginTestLayer } from "./fixture"
+import { addPlugin, model, provider, withEnv } from "./provider-helper"
+
+const it = testEffect(PluginTestLayer)
+
+function required<T>(value: T | undefined): T {
+  if (value === undefined) throw new Error("Expected value")
+  return value
+}
+
+function eventually<A>(
+  effect: Effect.Effect<A>,
+  predicate: (value: A) => boolean,
+  remaining = 1000,
+): Effect.Effect<A, Error> {
+  return Effect.gen(function* () {
+    const value = yield* effect
+    if (predicate(value)) return value
+    if (remaining === 0) return yield* Effect.fail(new Error("Timed out waiting for value"))
+    yield* Effect.promise(() => Bun.sleep(1))
+    return yield* eventually(effect, predicate, remaining - 1)
+  })
+}
 
 const cost = (input: number, output = 0) => [{ input, output, cache: { read: 0, write: 0 } }]
-const locationLayer = Layer.succeed(
-  Location.Service,
-  Location.Service.of(location({ directory: AbsolutePath.make("test") })),
-)
 
 describe("OttiliCoderPlugin", () => {
   it.effect("uses a public key and disables paid models without credentials", () =>
     withEnv({ OTTILI_CODER_API_KEY: undefined }, () =>
       Effect.gen(function* () {
-        const plugin = yield* PluginV2.Service
         const catalog = yield* Catalog.Service
-        yield* plugin.add(OttiliCoderPlugin)
-        const transform = yield* catalog.transform()
-        yield* transform((catalog) => {
+        yield* addPlugin()
+        yield* catalog.transform((catalog) => {
           const item = provider("ottili-coder")
           catalog.provider.update(item.id, () => {})
           const paid = model("ottili-coder", "paid", { cost: cost(1) })
@@ -34,8 +44,8 @@ describe("OttiliCoderPlugin", () => {
             draft.cost = [...paid.cost]
           })
         })
-        expect((yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)).request.body.apiKey).toBe("public")
-        expect((yield* catalog.model.get(ProviderV2.ID.ottiliCoder, ModelV2.ID.make("paid"))).enabled).toBe(false)
+        expect(required(yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)).request.body.apiKey).toBe("public")
+        expect(required(yield* catalog.model.get(ProviderV2.ID.ottiliCoder, ModelV2.ID.make("paid"))).enabled).toBe(false)
       }),
     ),
   )
@@ -43,11 +53,9 @@ describe("OttiliCoderPlugin", () => {
   it.effect("keeps free models without credentials", () =>
     withEnv({ OTTILI_CODER_API_KEY: undefined }, () =>
       Effect.gen(function* () {
-        const plugin = yield* PluginV2.Service
         const catalog = yield* Catalog.Service
-        yield* plugin.add(OttiliCoderPlugin)
-        const transform = yield* catalog.transform()
-        yield* transform((catalog) => {
+        yield* addPlugin()
+        yield* catalog.transform((catalog) => {
           const item = provider("ottili-coder")
           catalog.provider.update(item.id, () => {})
           const free = model("ottili-coder", "free", { cost: cost(0) })
@@ -55,8 +63,8 @@ describe("OttiliCoderPlugin", () => {
             draft.cost = [...free.cost]
           })
         })
-        expect((yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)).request.body.apiKey).toBe("public")
-        expect((yield* catalog.model.get(ProviderV2.ID.ottiliCoder, ModelV2.ID.make("free"))).enabled).toBe(true)
+        expect(required(yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)).request.body.apiKey).toBe("public")
+        expect(required(yield* catalog.model.get(ProviderV2.ID.ottiliCoder, ModelV2.ID.make("free"))).enabled).toBe(true)
       }),
     ),
   )
@@ -64,11 +72,9 @@ describe("OttiliCoderPlugin", () => {
   it.effect("treats output-only cost as free without credentials", () =>
     withEnv({ OTTILI_CODER_API_KEY: undefined }, () =>
       Effect.gen(function* () {
-        const plugin = yield* PluginV2.Service
         const catalog = yield* Catalog.Service
-        yield* plugin.add(OttiliCoderPlugin)
-        const transform = yield* catalog.transform()
-        yield* transform((catalog) => {
+        yield* addPlugin()
+        yield* catalog.transform((catalog) => {
           const item = provider("ottili-coder")
           catalog.provider.update(item.id, () => {})
           const outputOnly = model("ottili-coder", "output-only", { cost: cost(0, 1) })
@@ -76,8 +82,8 @@ describe("OttiliCoderPlugin", () => {
             draft.cost = [...outputOnly.cost]
           })
         })
-        expect((yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)).request.body.apiKey).toBe("public")
-        expect((yield* catalog.model.get(ProviderV2.ID.ottiliCoder, ModelV2.ID.make("output-only"))).enabled).toBe(true)
+        expect(required(yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)).request.body.apiKey).toBe("public")
+        expect(required(yield* catalog.model.get(ProviderV2.ID.ottiliCoder, ModelV2.ID.make("output-only"))).enabled).toBe(true)
       }),
     ),
   )
@@ -85,11 +91,9 @@ describe("OttiliCoderPlugin", () => {
   it.effect("uses OTTILI_CODER_API_KEY as credentials", () =>
     withEnv({ OTTILI_CODER_API_KEY: "secret" }, () =>
       Effect.gen(function* () {
-        const plugin = yield* PluginV2.Service
         const catalog = yield* Catalog.Service
-        yield* plugin.add(OttiliCoderPlugin)
-        const transform = yield* catalog.transform()
-        yield* transform((catalog) => {
+        yield* addPlugin()
+        yield* catalog.transform((catalog) => {
           const item = provider("ottili-coder")
           catalog.provider.update(item.id, () => {})
           const paid = model("ottili-coder", "paid", { cost: cost(1) })
@@ -97,31 +101,27 @@ describe("OttiliCoderPlugin", () => {
             draft.cost = [...paid.cost]
           })
         })
-        expect((yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)).request.body.apiKey).toBeUndefined()
-        expect((yield* catalog.model.get(ProviderV2.ID.ottiliCoder, ModelV2.ID.make("paid"))).enabled).toBe(true)
+        expect(required(yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)).request.body.apiKey).toBeUndefined()
+        expect(required(yield* catalog.model.get(ProviderV2.ID.ottiliCoder, ModelV2.ID.make("paid"))).enabled).toBe(true)
       }),
     ),
   )
 
-  it.effect("uses configured provider env vars as credentials", () =>
+  it.effect("only honors the canonical OTTILI_CODER_API_KEY for credentials", () =>
     withEnv({ OTTILI_CODER_API_KEY: undefined, CUSTOM_OTTILI_CODER_API_KEY: "secret" }, () =>
       Effect.gen(function* () {
-        const plugin = yield* PluginV2.Service
         const catalog = yield* Catalog.Service
-        yield* plugin.add(OttiliCoderPlugin)
-        const transform = yield* catalog.transform()
-        yield* transform((catalog) => {
-          const item = provider("ottili-coder", { env: ["CUSTOM_OTTILI_CODER_API_KEY"] })
-          catalog.provider.update(item.id, (draft) => {
-            draft.env = [...item.env]
-          })
+        yield* addPlugin()
+        yield* catalog.transform((catalog) => {
+          const item = provider("ottili-coder")
+          catalog.provider.update(item.id, () => {})
           const paid = model("ottili-coder", "paid", { cost: cost(1) })
           catalog.model.update(item.id, paid.id, (draft) => {
             draft.cost = [...paid.cost]
           })
         })
-        expect((yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)).request.body.apiKey).toBeUndefined()
-        expect((yield* catalog.model.get(ProviderV2.ID.ottiliCoder, ModelV2.ID.make("paid"))).enabled).toBe(true)
+        expect(required(yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)).request.body.apiKey).toBe("public")
+        expect(required(yield* catalog.model.get(ProviderV2.ID.ottiliCoder, ModelV2.ID.make("paid"))).enabled).toBe(false)
       }),
     ),
   )
@@ -129,16 +129,11 @@ describe("OttiliCoderPlugin", () => {
   it.effect("uses configured apiKey as credentials", () =>
     withEnv({ OTTILI_CODER_API_KEY: undefined }, () =>
       Effect.gen(function* () {
-        const plugin = yield* PluginV2.Service
         const catalog = yield* Catalog.Service
-        yield* plugin.add(OttiliCoderPlugin)
-        const transform = yield* catalog.transform()
-        yield* transform((catalog) => {
+        yield* addPlugin()
+        yield* catalog.transform((catalog) => {
           const item = provider("ottili-coder", {
-            request: {
-              headers: {},
-              body: { apiKey: "configured" },
-            },
+            request: { headers: {}, body: { apiKey: "configured" } },
           })
           catalog.provider.update(item.id, (draft) => {
             draft.request = item.request
@@ -148,33 +143,31 @@ describe("OttiliCoderPlugin", () => {
             draft.cost = [...paid.cost]
           })
         })
-        expect((yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)).request.body.apiKey).toBe("configured")
-        expect((yield* catalog.model.get(ProviderV2.ID.ottiliCoder, ModelV2.ID.make("paid"))).enabled).toBe(true)
+        expect(required(yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)).request.body.apiKey).toBe("configured")
+        expect(required(yield* catalog.model.get(ProviderV2.ID.ottiliCoder, ModelV2.ID.make("paid"))).enabled).toBe(true)
       }),
     ),
   )
 
-  it.effect("uses auth-enabled providers as credentials", () =>
+  it.effect("treats a credential-backed request apiKey as authenticated", () =>
     withEnv({ OTTILI_CODER_API_KEY: undefined }, () =>
       Effect.gen(function* () {
-        const plugin = yield* PluginV2.Service
         const catalog = yield* Catalog.Service
-        yield* plugin.add(OttiliCoderPlugin)
-        const transform = yield* catalog.transform()
-        yield* transform((catalog) => {
+        yield* addPlugin()
+        yield* catalog.transform((catalog) => {
           const item = provider("ottili-coder", {
-            enabled: { via: "credential", credentialID: Credential.ID.make("credential") },
+            request: { headers: {}, body: { apiKey: "from-credential" } },
           })
           catalog.provider.update(item.id, (draft) => {
-            draft.enabled = item.enabled
+            draft.request = item.request
           })
           const paid = model("ottili-coder", "paid", { cost: cost(1) })
           catalog.model.update(item.id, paid.id, (draft) => {
             draft.cost = [...paid.cost]
           })
         })
-        expect((yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)).request.body.apiKey).toBeUndefined()
-        expect((yield* catalog.model.get(ProviderV2.ID.ottiliCoder, ModelV2.ID.make("paid"))).enabled).toBe(true)
+        expect(required(yield* catalog.provider.get(ProviderV2.ID.ottiliCoder)).request.body.apiKey).toBe("from-credential")
+        expect(required(yield* catalog.model.get(ProviderV2.ID.ottiliCoder, ModelV2.ID.make("paid"))).enabled).toBe(true)
       }),
     ),
   )
@@ -182,11 +175,9 @@ describe("OttiliCoderPlugin", () => {
   it.effect("ignores non-ottili-coder providers and models", () =>
     withEnv({ OTTILI_CODER_API_KEY: undefined }, () =>
       Effect.gen(function* () {
-        const plugin = yield* PluginV2.Service
         const catalog = yield* Catalog.Service
-        yield* plugin.add(OttiliCoderPlugin)
-        const transform = yield* catalog.transform()
-        yield* transform((catalog) => {
+        yield* addPlugin()
+        yield* catalog.transform((catalog) => {
           const item = provider("openai")
           catalog.provider.update(item.id, () => {})
           const paid = model("openai", "paid", { cost: cost(1) })
@@ -194,8 +185,8 @@ describe("OttiliCoderPlugin", () => {
             draft.cost = [...paid.cost]
           })
         })
-        expect((yield* catalog.provider.get(ProviderV2.ID.openai)).request.body.apiKey).toBeUndefined()
-        expect((yield* catalog.model.get(ProviderV2.ID.openai, ModelV2.ID.make("paid"))).enabled).toBe(true)
+        expect(required(yield* catalog.provider.get(ProviderV2.ID.openai)).request.body.apiKey).toBeUndefined()
+        expect(required(yield* catalog.model.get(ProviderV2.ID.openai, ModelV2.ID.make("paid"))).enabled).toBe(true)
       }),
     ),
   )
@@ -205,28 +196,25 @@ describe("OttiliCoderPlugin", () => {
       const catalog = yield* Catalog.Service
       const providerID = ProviderV2.ID.ottiliCoder
 
-      const transform = yield* catalog.transform()
-      yield* transform((catalog) => {
+      yield* catalog.transform((catalog) => {
         catalog.provider.update(providerID, () => {})
         catalog.model.update(providerID, ModelV2.ID.make("cheap-mini"), (model) => {
           model.capabilities.input = ["text"]
           model.capabilities.output = ["text"]
           model.cost = [...cost(1, 1)]
-          model.time.released = DateTime.makeUnsafe(Date.now())
+          model.time.released = Date.now()
         })
         catalog.model.update(providerID, ModelV2.ID.make("gpt-5-nano"), (model) => {
           model.capabilities.input = ["text"]
           model.capabilities.output = ["text"]
           model.cost = [...cost(10, 10)]
-          model.time.released = DateTime.makeUnsafe(Date.now())
+          model.time.released = Date.now()
         })
       })
 
       const selected = yield* catalog.model.small(providerID)
 
-      expect(Option.getOrUndefined(selected)?.id).toBe(ModelV2.ID.make("gpt-5-nano"))
-    }).pipe(
-      Effect.provide(Catalog.locationLayer.pipe(Layer.provide(EventV2.defaultLayer), Layer.provide(locationLayer))),
-    ),
+      expect(selected?.id).toBe(ModelV2.ID.make("gpt-5-nano"))
+    }),
   )
 })

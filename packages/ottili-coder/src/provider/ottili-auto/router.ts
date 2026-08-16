@@ -1,4 +1,5 @@
 import type { SessionV1 } from "@opencode-ai/core/v1/session"
+import { openRouterAttributionHeaders } from "@opencode-ai/llm/providers"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import {
@@ -233,8 +234,7 @@ export async function routeWithLlama(
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": "https://ottili.one/coder/",
-      "X-Title": "ottili-coder-auto-router",
+      ...openRouterAttributionHeaders(),
     },
     body: JSON.stringify({
       model: OTTILI_AUTO_ROUTER_MODEL,

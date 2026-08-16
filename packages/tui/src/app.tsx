@@ -3,7 +3,7 @@ import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { Deferred, Effect } from "effect"
 import { Global } from "@opencode-ai/core/global"
 import { Flag } from "@opencode-ai/core/flag/flag"
-import { InstallationVersion } from "@opencode-ai/core/installation/version"
+import { InstallationVersion, InstallationChannel } from "@opencode-ai/core/installation/version"
 import { ClipboardProvider, useClipboard } from "./context/clipboard"
 import { ExitProvider, useExit } from "./context/exit"
 import { EpilogueProvider } from "./context/epilogue"
@@ -27,6 +27,8 @@ import { TuiPathsProvider, TuiStartupProvider, TuiTerminalEnvironmentProvider, u
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { DialogProvider as DialogProviderList } from "./component/dialog-provider"
 import { ErrorComponent } from "./component/error-component"
+import { DegradedStateProvider, DegradedStates, useDegradedState } from "./component/error-state"
+import { classifyError, toDegradedState } from "./component/error-state/model"
 import { PluginRouteMissing } from "./component/plugin-route-missing"
 import { ProjectProvider, useProject } from "./context/project"
 import { EditorContextProvider } from "./context/editor"
@@ -40,12 +42,13 @@ import { DialogModel } from "./component/dialog-model"
 import { useConnected } from "./component/use-connected"
 import { DialogMcp } from "./component/dialog-mcp"
 import { DialogStatus } from "./component/dialog-status"
+import { DialogGitStatus } from "./component/dialog-git-status"
+import { DialogConflictResolution } from "./component/conflict-resolution/dialog"
 import { DialogUsageLimits } from "./component/dialog-usage-limits"
 import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogAgent } from "./component/dialog-agent"
-import { DialogSessionList } from "./component/dialog-session-list"
-import { DialogWorkspaceList } from "./component/dialog-workspace-list"
+import { DialogProjectSwitcher } from "./component/project-switcher"
 import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { DialogAccountLogin } from "./component/dialog-account-login"
 import { DialogAccountLogout } from "./component/dialog-account-logout"
@@ -87,6 +90,7 @@ import { createTuiAttention } from "./attention"
 import * as TuiAudio from "./audio"
 import { win32DisableProcessedInput, win32FlushInputBuffer } from "./terminal-win32"
 import { destroyRenderer } from "./util/renderer"
+import { requestSessionSidebarOpen } from "./routes/session/session-sidebar/controller"
 import { cliErrorMessage, errorFormat } from "./util/error"
 
 const appGlobalBindingCommands = [
@@ -123,8 +127,6 @@ const appBindingCommands = [
   "console.org.switch",
   "ottiliCoder.status",
   "theme.switch",
-  "theme.switch_mode",
-  "theme.mode.lock",
   "help.show",
   "docs.open",
   "workspace.list",
@@ -238,14 +240,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
       yield* Effect.tryPromise(async () => {
         // Prewarm palette before ThemeProvider mounts so `system` theme avoids a first-paint fallback flash.
         void renderer.getPalette({ size: 16 }).catch(() => undefined)
-        const terminalMode = await renderer.waitForThemeMode(1000)
-        const configured = input.config.theme_mode ?? "system"
-        const mode =
-          configured === "light"
-            ? "light"
-            : configured === "dark"
-              ? "dark"
-              : (terminalMode ?? "dark")
+        // Ottili Coder is dark-only; no terminal mode detection.
         if (renderer.isDestroyed) return
 
         await render(() => {
@@ -258,7 +253,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
               }}
             >
               <EpilogueProvider set={(value) => (exit.epilogue = value)}>
-                <ErrorBoundary fallback={(error, reset) => <ErrorComponent error={error} reset={reset} mode={mode} />}>
+                <ErrorBoundary fallback={(error, reset) => <ErrorComponent error={error} reset={reset} />}>
                   <TuiPathsProvider
                     value={{
                       cwd: process.cwd(),
@@ -311,7 +306,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                           <ProjectProvider>
                                             <SyncProvider>
                                               <DataProvider>
-                                                <ThemeProvider mode={mode}>
+                                                <ThemeProvider>
                                                   <LocalProvider>
                                                     <PromptStashProvider>
                                                       <DialogProvider>
@@ -319,10 +314,12 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                           <PromptHistoryProvider>
                                                             <PromptRefProvider>
                                                               <EditorContextProvider>
-                                                                <App
-                                                                  onSnapshot={input.onSnapshot}
-                                                                  pluginHost={input.pluginHost}
-                                                                />
+                                                                <DegradedStateProvider>
+                                                                  <App
+                                                                    onSnapshot={input.onSnapshot}
+                                                                    pluginHost={input.pluginHost}
+                                                                  />
+                                                                </DegradedStateProvider>
                                                               </EditorContextProvider>
                                                             </PromptRefProvider>
                                                           </PromptHistoryProvider>
@@ -374,11 +371,12 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const local = useLocal()
   const kv = useKV()
   const keymap = useOttiliCoderKeymap()
+  const degraded = useDegradedState()
   const event = useEvent()
   const sdk = useSDK()
   const toast = useToast()
   const themeState = useTheme()
-  const { theme, mode, setMode, locked, lock, unlock } = themeState
+  const { theme } = themeState
   const sync = useSync()
   const project = useProject()
   const exit = useExit()
@@ -577,7 +575,16 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         slashName: "sessions",
         slashAliases: ["resume", "continue"],
         run: () => {
-          dialog.replace(() => <DialogSessionList />)
+          if (route.data.type === "session") {
+            requestSessionSidebarOpen(true)
+            return
+          }
+          const match = sync.data.session
+            .toSorted((a, b) => b.time.updated - a.time.updated)
+            .find((x) => x.parentID === undefined)?.id
+          if (!match) return
+          route.navigate({ type: "session", sessionID: match })
+          requestSessionSidebarOpen(true)
         },
       },
       {
@@ -616,7 +623,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         hidden: !Flag.OTTILI_CODER_EXPERIMENTAL_WORKSPACES,
         slashName: "workspaces",
         run: () => {
-          dialog.replace(() => <DialogWorkspaceList />)
+          dialog.replace(() => <DialogProjectSwitcher />)
         },
       },
       ...Array.from({ length: 9 }, (_, i) => ({
@@ -765,7 +772,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         slashName: "usage",
         slashAliases: ["limits", "plan-usage"],
         run: () => {
-          dialog.replace(() => <DialogUsageLimits />)
+          const sessionID = route.data.type === "session" ? route.data.sessionID : ""
+          dialog.replace(() => <DialogUsageLimits sessionID={sessionID} />)
         },
         category: "System",
       },
@@ -834,51 +842,29 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         category: "System",
       },
       {
+        name: "ottiliCoder.git",
+        title: "View git status",
+        slashName: "git",
+        run: () => {
+          dialog.replace(() => <DialogGitStatus />)
+        },
+        category: "System",
+      },
+      {
+        name: "ottiliCoder.git.resolve",
+        title: "Resolve conflicts",
+        slashName: "resolve",
+        run: () => {
+          dialog.replace(() => <DialogConflictResolution api={api} />)
+        },
+        category: "System",
+      },
+      {
         name: "theme.switch",
         title: "Switch theme",
         slashName: "themes",
         run: () => {
           dialog.replace(() => <DialogThemeList />)
-        },
-        category: "System",
-      },
-      {
-        name: "theme.switch_mode",
-        title: mode() === "dark" ? "Switch to light mode" : "Switch to dark mode",
-        slashName: "theme",
-        run: () => {
-          setMode(mode() === "dark" ? "light" : "dark")
-          dialog.clear()
-        },
-        category: "System",
-      },
-      {
-        name: "theme.light",
-        title: "Switch to light mode",
-        slashName: "light",
-        run: () => {
-          setMode("light")
-          dialog.clear()
-        },
-        category: "System",
-      },
-      {
-        name: "theme.dark",
-        title: "Switch to dark mode",
-        slashName: "dark",
-        run: () => {
-          setMode("dark")
-          dialog.clear()
-        },
-        category: "System",
-      },
-      {
-        name: "theme.mode.lock",
-        title: locked() ? "Unlock theme mode" : "Lock theme mode",
-        run: () => {
-          if (locked()) unlock()
-          else lock()
-          dialog.clear()
         },
         category: "System",
       },
@@ -1086,12 +1072,19 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     const error = evt.properties.error
     if (error && typeof error === "object" && error.name === "MessageAbortedError") return
     const message = errorMessage(error)
-
-    toast.show({
-      variant: "error",
-      message,
-      duration: 5000,
-    })
+    if (!message) return
+    const category = classifyError(message)
+    const isConnection = category === "provider" || category === "network"
+    degraded.push(
+      toDegradedState(error, {
+        id: `session-error:${message.slice(0, 120)}`,
+        category,
+        title: "Session error",
+        actionLabel: isConnection ? "Connect" : undefined,
+        actionCommand: isConnection ? "connect" : undefined,
+        dismissible: true,
+      }),
+    )
   })
 
   event.on("installation.update-available", async (evt) => {
@@ -1175,6 +1168,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       </Show>
       <Show when={ready()}>
         <box flexGrow={1} minHeight={0} flexDirection="column">
+          <DegradedStates />
           <Switch>
             <Match when={route.data.type === "home"}>
               <Home />

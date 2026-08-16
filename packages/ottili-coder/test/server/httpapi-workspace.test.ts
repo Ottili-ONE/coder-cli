@@ -2,6 +2,8 @@ import { afterEach, describe, expect, mock } from "bun:test"
 import { mkdir } from "node:fs/promises"
 import path from "node:path"
 import { Effect, Layer, Stream } from "effect"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { registerAdapter } from "../../src/control-plane/adapters"
 import { WorkspaceV2 } from "@opencode-ai/core/workspace"
@@ -23,20 +25,21 @@ import { testEffect } from "../lib/effect"
 import { httpApiLayer, requestInDirectory } from "./httpapi-layer"
 
 const originalWorkspaces = Flag.OTTILI_CODER_EXPERIMENTAL_WORKSPACES
-const workspaceLayer = Workspace.defaultLayer.pipe(
-  Layer.provide(InstanceStore.defaultLayer),
-  Layer.provide(InstanceBootstrap.defaultLayer),
+const workspaceLayer = LayerNode.compile(Workspace.node).pipe(
+  Layer.provide(LayerNode.compile(InstanceStore.node)),
+  Layer.provide(LayerNode.compile(InstanceBootstrap.node)),
 )
 const it = testEffect(
   Layer.mergeAll(
-    Project.defaultLayer,
-    Session.defaultLayer,
+    LayerNode.compile(Project.node),
+    LayerNode.compile(Session.node),
     workspaceLayer,
-    InstanceStore.defaultLayer.pipe(Layer.provide(InstanceBootstrap.defaultLayer)),
-    Database.defaultLayer,
+    LayerNode.compile(InstanceStore.node).pipe(Layer.provide(LayerNode.compile(InstanceBootstrap.node))),
+    LayerNode.compile(Database.node),
     httpApiLayer,
-  ).pipe(Layer.provide(Ripgrep.defaultLayer)),
+  ).pipe(Layer.provide(LayerNode.compile(Ripgrep.node))),
 )
+const it = testEffect(Layer.mergeAll(appLayer, httpApiLayer))
 
 function request(path: string, directory: string, init: RequestInit = {}) {
   return requestInDirectory(path, directory, init)

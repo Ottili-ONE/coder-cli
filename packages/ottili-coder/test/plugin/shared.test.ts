@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parsePluginSpecifier } from "../../src/plugin/shared"
+import { parsePluginSpecifier, readV1Plugin, resolvePluginId, isDeprecatedPlugin } from "../../src/plugin/shared"
 
 describe("parsePluginSpecifier", () => {
   test("parses standard npm package without version", () => {
@@ -84,5 +84,103 @@ describe("parsePluginSpecifier", () => {
       pkg: "@opencode-ai/acme",
       version: "latest",
     })
+  })
+})
+
+describe("readV1Plugin", () => {
+  test("returns the server plugin object in strict mode", () => {
+    const plugin = readV1Plugin({ default: { id: "demo", server: () => ({}) } }, "demo", "server")
+    expect(plugin).toBeDefined()
+    expect(typeof plugin!.server).toBe("function")
+  })
+
+  test("returns the tui plugin object in tui mode", () => {
+    const plugin = readV1Plugin({ default: { id: "demo", tui: () => ({}) } }, "demo", "tui")
+    expect(plugin).toBeDefined()
+    expect(typeof plugin!.tui).toBe("function")
+  })
+
+  test("detects a plugin without throwing in detect mode", () => {
+    const plugin = readV1Plugin({ default: { id: "demo", server: () => ({}) } }, "demo", "server", "detect")
+    expect(plugin).toBeDefined()
+    expect(typeof plugin!.server).toBe("function")
+  })
+
+  test("returns undefined for a non-plugin module in detect mode", () => {
+    const plugin = readV1Plugin({ default: { unrelated: true } }, "demo", "server", "detect")
+    expect(plugin).toBeUndefined()
+  })
+
+  test("rejects a module that exports neither server nor tui in strict mode", () => {
+    expect(() => readV1Plugin({ default: { id: "demo" } }, "demo", "server")).toThrow()
+  })
+
+  test("rejects a module exporting both server and tui", () => {
+    expect(() =>
+      readV1Plugin({ default: { id: "demo", server: () => ({}), tui: () => ({}) } }, "demo", "server"),
+    ).toThrow()
+  })
+
+  test("rejects a server plugin requested as tui", () => {
+    expect(() => readV1Plugin({ default: { id: "demo", server: () => ({}) } }, "demo", "tui")).toThrow()
+  })
+
+  test("rejects a non-function server export", () => {
+    expect(() => readV1Plugin({ default: { id: "demo", server: 123 } }, "demo", "server")).toThrow()
+  })
+
+  test("rejects a default export that is not an object", () => {
+    expect(() => readV1Plugin({ default: 42 }, "demo", "server")).toThrow()
+  })
+})
+
+describe("resolvePluginId", () => {
+  test("uses the explicit id for file plugins", async () => {
+    const id = await resolvePluginId("file", "file:///tmp/plugin.ts", "file:///tmp/plugin.ts", "my-plugin")
+    expect(id).toBe("my-plugin")
+  })
+
+  test("requires an id from file plugins", async () => {
+    await expect(resolvePluginId("file", "file:///tmp/plugin.ts", "file:///tmp/plugin.ts", undefined)).rejects.toThrow()
+  })
+
+  test("falls back to the npm package name when no id is given", async () => {
+    const id = await resolvePluginId("npm", "acme-plugin", "/x/acme-plugin", undefined, {
+      dir: "/x/acme-plugin",
+      pkg: "acme-plugin",
+      json: { name: "acme-plugin" },
+    })
+    expect(id).toBe("acme-plugin")
+  })
+
+  test("prefers an explicit id over the npm package name", async () => {
+    const id = await resolvePluginId("npm", "acme-plugin", "/x/acme-plugin", "override", {
+      dir: "/x/acme-plugin",
+      pkg: "acme-plugin",
+      json: { name: "acme-plugin" },
+    })
+    expect(id).toBe("override")
+  })
+
+  test("rejects a nameless npm package", async () => {
+    await expect(
+      resolvePluginId("npm", "acme-plugin", "/x/acme-plugin", undefined, {
+        dir: "/x/acme-plugin",
+        pkg: "acme-plugin",
+        json: {},
+      }),
+    ).rejects.toThrow()
+  })
+})
+
+describe("isDeprecatedPlugin", () => {
+  test("flags built-in auth packages as deprecated", () => {
+    expect(isDeprecatedPlugin("ottili-coder-openai-codex-auth")).toBe(true)
+    expect(isDeprecatedPlugin("ottili-coder-copilot-auth")).toBe(true)
+  })
+
+  test("does not flag ordinary plugins as deprecated", () => {
+    expect(isDeprecatedPlugin("acme-plugin")).toBe(false)
+    expect(isDeprecatedPlugin("some-ottili-coder-openai-codex-auth-suffix")).toBe(false)
   })
 })

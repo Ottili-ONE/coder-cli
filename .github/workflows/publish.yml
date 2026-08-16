@@ -327,6 +327,7 @@ jobs:
         working-directory: packages/desktop
         env:
           OTTILI_CODER_CHANNEL: ${{ (github.ref_name == 'beta' && 'beta') || 'prod' }}
+          NODE_OPTIONS: --max-old-space-size=4096
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.WEB_SENTRY_PROJECT }}
